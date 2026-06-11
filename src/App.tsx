@@ -1118,50 +1118,127 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
     return diff <= 2;
   };
 
-  const processFile = (file: File) => {
-    if (file.size > 15 * 1024 * 1024) { // 15MB limit
-      setError('File size exceeds 15MB limit.');
+  const processFile = async (file: File) => {
+    console.log('[processFile] called — name:', file.name, '| type:', file.type, '| size:', file.size);
+
+    if (file.size > 50 * 1024 * 1024) {
+      setError('File size exceeds 50MB limit.');
       return;
     }
-    
+
     const fileName = file.name ? file.name.toLowerCase() : '';
-    
-    // Explicitly handle iOS HEIC/HEIF formats which are typical in iPhone camera snaps sent to WhatsApp
+    console.log('[processFile] fileName (lower):', fileName);
+
+    // --- PDF ---
+    if (fileName.endsWith('.pdf') || file.type === 'application/pdf') {
+      console.log('[processFile] → PDF branch entered');
+      try {
+        setError(null);
+        console.log('[processFile] importing pdfjs-dist...');
+        const pdfjsLib = await import('pdfjs-dist');
+        console.log('[processFile] pdfjs version:', pdfjsLib.version);
+        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+          'pdfjs-dist/build/pdf.worker.min.mjs',
+          import.meta.url
+        ).toString();
+        console.log('[processFile] workerSrc set to:', pdfjsLib.GlobalWorkerOptions.workerSrc);
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        console.log('[processFile] PDF loaded, pages:', pdf.numPages);
+        const page = await pdf.getPage(1);
+        const viewport = page.getViewport({ scale: 2.0 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d')!;
+        await page.render({ canvasContext: ctx as any, canvas, viewport }).promise;
+        console.log('[processFile] PDF rendered to canvas ✓');
+        setImage(canvas.toDataURL('image/jpeg', 0.92));
+        setRotation(0);
+      } catch (e) {
+        console.error('[processFile] PDF render error:', e);
+        setError('Failed to render PDF. Please ensure the file is not password-protected.');
+      }
+      return;
+    }
+
+    // --- Word (DOC / DOCX) ---
+    if (
+      fileName.endsWith('.docx') ||
+      fileName.endsWith('.doc') ||
+      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      file.type === 'application/msword'
+    ) {
+      console.log('[processFile] → DOCX branch entered');
+      try {
+        setError(null);
+        console.log('[processFile] importing mammoth...');
+        const mammoth = await import('mammoth');
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        console.log('[processFile] mammoth HTML length:', result.value.length);
+
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText = 'position:fixed;left:-9999px;width:800px;height:1100px;';
+        document.body.appendChild(iframe);
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!iframeDoc) {
+          setError('Could not render Word document.');
+          document.body.removeChild(iframe);
+          return;
+        }
+        iframeDoc.open();
+        iframeDoc.write(`<html><body style="font-family:serif;padding:40px;font-size:14px;">${result.value}</body></html>`);
+        iframeDoc.close();
+
+        await new Promise(r => setTimeout(r, 400));
+        console.log('[processFile] importing html2canvas...');
+        const { default: html2canvas } = await import('html2canvas');
+        const canvas = await html2canvas(iframeDoc.body, { scale: 2, useCORS: true });
+        document.body.removeChild(iframe);
+        console.log('[processFile] DOCX rendered to canvas ✓');
+        setImage(canvas.toDataURL('image/jpeg', 0.92));
+        setRotation(0);
+      } catch (e) {
+        console.error('[processFile] DOCX render error:', e);
+        setError('Failed to render Word document. Please try saving as PDF or image first.');
+      }
+      return;
+    }
+
+    // --- HEIC/HEIF ---
     if (fileName.endsWith('.heic') || fileName.endsWith('.heif')) {
       setError('HEIC/HEIF images (commonly from iPhones) are not supported natively by web browsers. Please save or export the image as standard JPG or PNG before uploading.');
       return;
     }
-    
-    const isImageExtension = fileName.endsWith('.jpg') || 
-                             fileName.endsWith('.jpeg') || 
-                             fileName.endsWith('.png') || 
-                             fileName.endsWith('.webp') || 
-                             fileName.endsWith('.jfif') ||
-                             fileName.endsWith('.gif');
-    
-    // Some mobile scanners/whatsapp images might have missing or generic MIME types
-    // We'll proceed if it's an image OR if type is empty/octet-stream but has a popular image format
+
+    // --- Standard images ---
+    console.log('[processFile] → image branch');
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.jfif', '.gif', '.bmp', '.tiff', '.tif', '.svg', '.avif'];
+    const isImageExtension = imageExtensions.some(ext => fileName.endsWith(ext));
+
     let isValid = false;
     if (file.type && file.type.startsWith('image/')) {
       isValid = true;
     } else if (isImageExtension) {
       isValid = true;
     } else if (!file.type || file.type === 'application/octet-stream') {
-      isValid = true; // Let the reader verify it by loading
+      isValid = true;
     }
 
+    console.log('[processFile] isValid:', isValid);
+
     if (!isValid) {
-      setError('Please upload a valid image file (JPG, PNG, WebP).');
+      setError('Please upload a valid image file (JPG, PNG, WebP), PDF, or Word document (DOCX).');
       return;
     }
 
     const reader = new FileReader();
     reader.onloadend = () => {
       const dataUrl = reader.result as string;
-      
-      // Verify visual content
       const img = new Image();
       img.onload = () => {
+        console.log('[processFile] image loaded ✓');
         setImage(dataUrl);
         setRotation(0);
         setError(null);
@@ -1178,9 +1255,12 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('[handleImageUpload] triggered, files:', e.target.files);
     const file = e.target.files?.[0];
     if (file) {
       processFile(file);
+    } else {
+      console.warn('[handleImageUpload] no file selected');
     }
   };
 
@@ -2620,7 +2700,7 @@ ${result.report}
                     Upload or capture handwriting sample
                   </p>
                   <p className="text-[10px] opacity-50 mt-2">
-                    JPG, PNG (Max 10MB)
+                    JPG, PNG, WebP, PDF, Word (Max 50MB)
                   </p>
                 </div>
               )}
@@ -2629,7 +2709,7 @@ ${result.report}
                 ref={fileInputRef} 
                 onChange={handleImageUpload} 
                 className="hidden" 
-                accept="image/*"
+                accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,.tiff,.tif,.svg,.avif,.jfif,.pdf,.doc,.docx"
               />
             </div>
 
