@@ -1,6 +1,5 @@
-import OpenAI from "openai";
-
-const client = new OpenAI({ apiKey: import.meta.env.VITE_OPENAI_API_KEY, dangerouslyAllowBrowser: true });
+// API calls go through the local backend proxy to avoid CORS issues
+const API_BASE = "/api";
 
 export interface AnalysisResult {
   report: string;
@@ -244,26 +243,40 @@ export async function analyzeHandwriting(
   `;
 
   try {
-    const response = await client.chat.completions.create({
-      model,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            {
-              type: "image_url",
-              image_url: {
-                url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
+    const response = await fetch(`${API_BASE}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        max_tokens: 4096,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
+                },
               },
-            },
-          ],
-        },
-      ],
-      max_tokens: 4096,
+            ],
+          },
+        ],
+      }),
     });
 
-    const text = response.choices[0]?.message?.content || "";
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      const errorMessage = (errData as any)?.error || `HTTP ${response.status}`;
+      if (response.status === 429) {
+        throw new Error("API_QUOTA_EXCEEDED: The AI service is currently busy or the rate limit has been reached. Please wait a minute and try again.");
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json() as { choices: { message: { content: string } }[] };
+    const text = data.choices[0]?.message?.content || "";
     
     if (!text.trim()) {
       throw new Error("AI returned an empty response. This may be due to safety filters or image clarity issues.");
@@ -329,7 +342,6 @@ export async function analyzeHandwriting(
   } catch (error: any) {
     console.error("OpenAI Analysis Error:", error);
     
-    // Check for rate limit / quota errors
     const errorMessage = error?.message || String(error);
     if (errorMessage.includes("429") || errorMessage.toLowerCase().includes("quota") || errorMessage.toLowerCase().includes("rate limit")) {
       throw new Error("API_QUOTA_EXCEEDED: The AI service is currently busy or the rate limit has been reached. Please wait a minute and try again.");
