@@ -1,0 +1,10 @@
+{
+  "name": "Dysgraphia Analysis Pro - AI Handwriting Diagnostics",
+  "description": "Professional AI-powered handwriting and spelling analysis tool for identifying dysgraphia and learning barriers. Requires camera access for sample capturing.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

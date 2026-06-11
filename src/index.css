@@ -1,0 +1,243 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@theme {
+  --font-sans: "Times New Roman", Times, serif;
+  --font-serif: "Times New Roman", Times, serif;
+  --font-mono: "Courier New", Courier, monospace;
+
+  /* Force standard colors to avoid oklab/oklch issues with html2canvas */
+  --color-black: #000000;
+  --color-white: #ffffff;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+  --color-gray-950: #030712;
+
+  --color-zinc-50: #fafafa;
+  --color-zinc-100: #f4f4f5;
+  --color-zinc-200: #e4e4e7;
+  --color-zinc-300: #d4d4d8;
+  --color-zinc-400: #a1a1aa;
+  --color-zinc-500: #71717a;
+  --color-zinc-600: #52525b;
+  --color-zinc-700: #3f3f46;
+  --color-zinc-800: #27272a;
+  --color-zinc-900: #18181b;
+  --color-zinc-950: #09090b;
+
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+  --color-slate-950: #020617;
+
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f5f5f5;
+  --color-neutral-200: #e5e5e5;
+  --color-neutral-300: #d4d4d4;
+  --color-neutral-400: #a3a3a3;
+  --color-neutral-500: #737373;
+  --color-neutral-600: #525252;
+  --color-neutral-700: #404040;
+  --color-neutral-800: #262626;
+  --color-neutral-900: #171717;
+  --color-neutral-950: #0a0a0a;
+
+  --color-indigo-50: #eef2ff;
+  --color-indigo-100: #e0e7ff;
+  --color-indigo-200: #c7d2fe;
+  --color-indigo-300: #a5b4fc;
+  --color-indigo-400: #818cf8;
+  --color-indigo-500: #6366f1;
+  --color-indigo-600: #4f46e5;
+  --color-indigo-700: #4338ca;
+  --color-indigo-800: #3730a3;
+  --color-indigo-900: #312e81;
+  --color-indigo-950: #1e1b4b;
+
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-300: #93c5fd;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+  --color-blue-800: #1e40af;
+  --color-blue-900: #1e3a8a;
+  --color-blue-950: #172554;
+  
+  --color-green-50: #f0fdf4;
+  --color-green-100: #dcfce7;
+  --color-green-500: #22c55e;
+  --color-green-600: #16a34a;
+  --color-green-700: #15803d;
+
+  --color-yellow-500: #eab308;
+  --color-yellow-700: #a16207;
+
+  --color-red-50: #fef2f2;
+  --color-red-100: #fee2e2;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #141414;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #2a2a2a;
+}
+
+@layer base {
+  body {
+    @apply antialiased;
+  }
+}
+
+/* Custom prose styles for the clinical report */
+.prose {
+  @apply text-[#141414];
+}
+
+.prose h1, .prose h2, .prose h3 {
+  @apply font-bold italic text-[#141414] mt-8 mb-4;
+}
+
+.prose p {
+  @apply mb-4 leading-relaxed;
+}
+
+.prose ul, .prose ol {
+  @apply mb-4 pl-6;
+}
+
+.prose li {
+  @apply mb-2;
+}
+
+.prose strong {
+  @apply font-bold text-[#141414];
+}
+
+/* Clinical Report Specific Styles */
+.html2pdf__page-break {
+  page-break-inside: avoid;
+  break-inside: avoid;
+  margin-bottom: 2rem;
+}
+
+.report-content p, 
+.report-content li, 
+.report-content h1, 
+.report-content h2, 
+.report-content h3,
+.report-content .border {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.report-content {
+  width: 100%;
+}
+
+.report-content h1,
+.report-content h2 {
+  page-break-inside: avoid;
+  break-inside: avoid;
+  page-break-after: avoid;
+  break-after: avoid;
+  margin-top: 1.5rem;
+}
+
+.report-content h1 {
+  border-bottom: 2px solid #141414;
+  padding-bottom: 0.5rem;
+}
+
+.report-content ol {
+  list-style-type: none !important;
+  counter-reset: report-counter;
+  padding-left: 0 !important;
+}
+
+.report-content li {
+  counter-increment: report-counter;
+  display: flex !important;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+}
+
+.report-content li::before {
+  content: counter(report-counter) ".";
+  font-weight: bold;
+  min-width: 1.5rem;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.report-content ul {
+  list-style-type: none !important;
+  padding-left: 0 !important;
+}
+
+.report-content ul li::before {
+  content: "•";
+  font-weight: bold;
+  min-width: 1.5rem;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+@media print {
+  body, html {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+  }
+  .report-page {
+    width: 210mm !important;
+    height: 297mm !important;
+    min-height: 297mm !important;
+    max-height: 297mm !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    break-inside: avoid !important;
+  }
+}
