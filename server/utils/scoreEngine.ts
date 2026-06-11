@@ -1,0 +1,303 @@
+// ─── GraphiaCheck Scoring Engine — Exact Client Formula ──────────────────────
+// Reverse-engineered from g10 report. Deterministic. Same input = same score.
+
+export interface EvidenceData {
+  transcription: string;
+  wordCount: number;          // Node-counted, not AI
+  cancelledWords: string[];
+
+  // Spelling
+  spellingErrors: Array<{ written: string; intended: string; gradeLevel: string }>;
+
+  // Grammar
+  grammarMistakes: Array<{ type: 'agreement' | 'plural' | 'syntax' | 'other'; example: string }>;
+  runOnSentences: number;
+  missingCapitals: number;
+  missingPunctuation: number;
+
+  // Past tense
+  pastTenseErrors: number;    // count of misuses
+
+  // Visual mechanics (observation strings from AI)
+  letterFormationObservations: string[];
+  alignmentObservations: string[];
+  spacingObservations: string[];
+  lineQualityObservations: string[];
+
+  // Fluency
+  wpm: number;
+
+  // RTI
+  rtiImprovement: boolean;
+
+  // DSM-5 traits for narrative
+  dsm5Traits: string[];
+  features?: Record<string, string>;
+
+  uncertainWords?: Array<{ word: string; confidence: number; possibleAlternatives: string[] }>;
+  ocrConfidence?: number;
+  dysgraphiaIndicators?: string[];
+}
+
+export interface Scores {
+  spelling: number;
+  grammar: number;
+  sentenceBoundaries: number;
+  pastTenseUsage: number;
+  letterFormation: number;
+  alignment: number;
+  spatialOrganisation: number;
+  writingSpeed: number;
+  lineQuality: number;
+  horizontal: number;
+  vertical: number;
+  mechanics: number;
+}
+
+// ─── Node word counter (reliable — not AI) ───────────────────────────────────
+export function countWords(transcription: string): number {
+  return transcription
+    .replace(/\[CANCELLED:[^\]]+\]/gi, '') // remove cancelled blocks
+    .replace(/\n/g, ' ')                   // normalize line breaks
+    .trim()
+    .split(/\s+/)
+    .filter(w => w.length > 0)
+    .length;
+}
+
+// ─── WPM grade norms ──────────────────────────────────────────────────────────
+export function getWpmNorm(grade: string): { min: number; max: number } {
+  const n = parseInt(grade.toLowerCase().replace(/[^0-9]/g, ''));
+  if (n === 1)           return { min: 5,  max: 10  };
+  if (n === 2)           return { min: 8,  max: 12  };
+  if (n === 3)           return { min: 10, max: 15  };
+  if (n === 4)           return { min: 12, max: 18  };
+  if (n === 5)           return { min: 15, max: 20  };
+  if (n >= 6 && n <= 12) return { min: 20, max: 30  };
+  if (n >= 13)           return { min: 30, max: 40  };
+  return { min: 20, max: 30 };
+}
+
+// ─── Individual scorers (exact client formulas) ───────────────────────────────
+
+/** SPELLING: 100 - (errors × 10), clamped 0-100 */
+function scoreSpelling(spellingErrors: number): number {
+  return Math.max(0, Math.min(100, 100 - spellingErrors * 10));
+}
+
+/** SENTENCE BOUNDARIES: 100 - runOn×15 - missingCapital×10 - missingPunct×10 */
+function scoreSentenceBoundaries(
+  runOnSentences: number,
+  missingCapitals: number,
+  missingPunctuation: number
+): number {
+  return Math.max(0, Math.min(100,
+    100 - (runOnSentences * 15) - (missingCapitals * 10) - (missingPunctuation * 10)
+  ));
+}
+
+/** GRAMMAR: 100 - agreement×15 - plural×15 - syntax×20 - other×10 */
+function scoreGrammar(
+  mistakes: Array<{ type: string; example: string }>
+): number {
+  let deduction = 0;
+  for (const m of mistakes) {
+    switch (m.type) {
+      case 'agreement': deduction += 15; break;
+      case 'plural':    deduction += 15; break;
+      case 'syntax':    deduction += 20; break;
+      default:          deduction += 10;
+    }
+  }
+  return Math.max(0, Math.min(100, 100 - deduction));
+}
+
+/** PAST TENSE: 100 - errors×20 */
+function scorePastTense(pastTenseErrors: number): number {
+  return Math.max(0, Math.min(100, 100 - pastTenseErrors * 20));
+}
+
+/**
+ * LETTER FORMATION:
+ * 0 issues = 90 | 1 = 80 | 2 = 70 | 3+ = 65
+ */
+function scoreLetterFormation(observations: string[]): number {
+  const n = observations.length;
+  if (n === 0) return 90;
+  if (n === 1) return 80;
+  if (n === 2) return 70;
+  return 65;
+}
+
+/**
+ * ALIGNMENT:
+ * stable/none = 90 | minor = 75 | moderate = 60 | severe = 40
+ */
+function scoreAlignment(observations: string[]): number {
+  if (observations.length === 0) return 90;
+  const text = observations.join(' ').toLowerCase();
+  if (text.includes('severe') || text.includes('erratic')) return 40;
+  if (text.includes('moderate') || observations.length >= 3)  return 60;
+  if (text.includes('minor') || text.includes('slight') || observations.length >= 1) return 75;
+  return 90;
+}
+
+/** SPATIAL ORGANISATION: similar to alignment */
+function scoreSpatialOrganisation(observations: string[]): number {
+  if (observations.length === 0) return 88;
+  const text = observations.join(' ').toLowerCase();
+  if (text.includes('severe') || text.includes('crowded')) return 35;
+  if (observations.length >= 3 || text.includes('frequent')) return 58;
+  if (observations.length >= 1) return 75;
+  return 88;
+}
+
+/** LINE QUALITY */
+function scoreLineQuality(observations: string[]): number {
+  if (observations.length === 0) return 88;
+  if (observations.length === 1) return 75;
+  if (observations.length <= 3)  return 60;
+  return 40;
+}
+
+/** WRITING SPEED relative to grade norm */
+function scoreWritingSpeed(wpm: number, normMin: number, normMax: number): number {
+  if (wpm <= 0)          return 0;
+  if (wpm >= normMax)    return 90;
+  if (wpm >= normMin)    return 80;
+  const pct = (wpm / normMin) * 100;
+  if (pct >= 75)         return 72;
+  if (pct >= 50)         return 60;
+  return 40;
+}
+
+// ─── Main calculator ──────────────────────────────────────────────────────────
+export function calculateScores(e: EvidenceData): Scores {
+  const norm = getWpmNorm(''); // fallback — caller should set wpm against norm separately
+
+  const spelling           = scoreSpelling(e.spellingErrors.length);
+  const grammar            = scoreGrammar(e.grammarMistakes);
+  const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation);
+  const pastTenseUsage     = scorePastTense(e.pastTenseErrors);
+  const letterFormation    = scoreLetterFormation(e.letterFormationObservations);
+  const alignment          = scoreAlignment(e.alignmentObservations);
+  const spatialOrganisation = scoreSpatialOrganisation(e.spacingObservations);
+  const lineQuality        = scoreLineQuality(e.lineQualityObservations);
+  const writingSpeed       = scoreWritingSpeed(e.wpm, norm.min, norm.max);
+
+  const horizontal = Math.round((spatialOrganisation + alignment) / 2);
+  const vertical   = Math.round((alignment + lineQuality) / 2);
+  const mechanics  = Math.round(
+    letterFormation    * 0.25 +
+    alignment          * 0.20 +
+    spatialOrganisation * 0.20 +
+    lineQuality        * 0.15 +
+    writingSpeed       * 0.20
+  );
+
+  return {
+    spelling, grammar, sentenceBoundaries, pastTenseUsage,
+    letterFormation, alignment, spatialOrganisation, writingSpeed,
+    lineQuality, horizontal, vertical, mechanics,
+  };
+}
+
+// ─── calculateScoresWithNorm (main entry point) ───────────────────────────────
+export function calculateScoresWithNorm(e: EvidenceData, grade: string): Scores {
+  const norm = getWpmNorm(grade);
+
+  const spelling           = scoreSpelling(e.spellingErrors.length);
+  const grammar            = scoreGrammar(e.grammarMistakes);
+  const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation);
+  const pastTenseUsage     = scorePastTense(e.pastTenseErrors);
+  const letterFormation    = scoreLetterFormation(e.letterFormationObservations);
+  const alignment          = scoreAlignment(e.alignmentObservations);
+  const spatialOrganisation = scoreSpatialOrganisation(e.spacingObservations);
+  const lineQuality        = scoreLineQuality(e.lineQualityObservations);
+  const writingSpeed       = scoreWritingSpeed(e.wpm, norm.min, norm.max);
+
+  const horizontal = Math.round((spatialOrganisation + alignment) / 2);
+  const vertical   = Math.round((alignment + lineQuality) / 2);
+  const mechanics  = Math.round(
+    letterFormation    * 0.25 +
+    alignment          * 0.20 +
+    spatialOrganisation * 0.20 +
+    lineQuality        * 0.15 +
+    writingSpeed       * 0.20
+  );
+
+  return {
+    spelling, grammar, sentenceBoundaries, pastTenseUsage,
+    letterFormation, alignment, spatialOrganisation, writingSpeed,
+    lineQuality, horizontal, vertical, mechanics,
+  };
+}
+
+// ─── Probability engine (exact client logic) ──────────────────────────────────
+export function calculateProbability(
+  scores: Scores,
+  rtiImprovement: boolean,
+  wpm: number
+): string {
+  const { spelling, writingSpeed, letterFormation, alignment } = scores;
+
+  // HIGH if spelling AND fluency both bad AND at least one visual domain bad
+  if (
+    spelling <= 40 &&
+    wpm < 10 &&
+    (letterFormation <= 70 || alignment <= 75)
+  ) {
+    return rtiImprovement ? 'MODERATE' : 'HIGH';
+  }
+
+  // Count impaired domains (score < 60)
+  const impaired = [
+    scores.spelling < 60,
+    scores.grammar < 60,
+    scores.sentenceBoundaries < 60,
+    scores.pastTenseUsage < 60,
+    scores.letterFormation < 60,
+    scores.alignment < 60,
+    scores.writingSpeed < 60,
+  ].filter(Boolean).length;
+
+  if (impaired >= 2) return 'MODERATE';
+  return 'LOW';
+}
+
+// ─── Actionable strategies library ───────────────────────────────────────────
+export function getActionableStrategies(scores: Scores, rtiImprovement: boolean): string[] {
+  const strategies: string[] = [];
+
+  if (scores.writingSpeed < 60) {
+    strategies.push('Allow extended time on all written tasks and assessments.');
+    strategies.push('Introduce speech-to-text tools for longer writing assignments so ideas are not blocked by the physical act of writing.');
+  }
+
+  if (scores.spelling < 60) {
+    strategies.push('Use a multi-sensory spelling approach: say, spell, write, and check each word.');
+    strategies.push('Provide a personalised spelling list of high-frequency words for regular practice.');
+    strategies.push('Encourage editing in stages — first for ideas, then separately for spelling.');
+  }
+
+  if (scores.letterFormation < 70) {
+    strategies.push('Provide lined paper with raised tactile lines to help the student maintain letter size and baseline.');
+    strategies.push('Practice letter formation using large motor movements (whiteboard, sand trays) before moving to paper.');
+  }
+
+  if (scores.grammar < 60) {
+    strategies.push('Use graphic organisers to plan sentence structure before writing.');
+  }
+
+  if (rtiImprovement) {
+    strategies.push('Continue current intervention strategies — progress is evident and should be monitored each term.');
+  }
+
+  // Always include at least 3
+  if (strategies.length < 3) {
+    strategies.push('Offer regular short writing sessions (10–15 minutes) with immediate positive feedback to build confidence.');
+    strategies.push('Collaborate with an occupational therapist for a formal fine motor and handwriting assessment.');
+  }
+
+  return strategies.slice(0, 5);
+}

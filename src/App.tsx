@@ -133,6 +133,7 @@ interface SavedReport {
   observations: string[];
   dataSources: string[];
   writingPrompt?: string;
+  wordCountInput?: string;
   paperType?: string;
   writingInstrument?: string;
   timeGiven?: string;
@@ -369,17 +370,17 @@ const RenderTranscription = ({ text, spellingErrors = [] }: { text: string, spel
     return parsed.raw.toLowerCase().trim();
   }).filter(Boolean);
 
-  // Split text by [cancelled: ...] blocks
-  const parts = text.split(/(\[cancelled:.*?\])/g);
+  // Split text by [cancelled: ...] or [CANCELLED: ...] blocks
+  const parts = text.split(/(\[(?:cancelled|CANCELLED):.*?\])/gi);
   
   return (
     <>
       {parts.map((part, idx) => {
-        if (part && part.startsWith('[cancelled:') && part.endsWith(']')) {
-          const content = part.substring(11, part.length - 1);
+        if (part && /^\[(?:cancelled|CANCELLED):/i.test(part) && part.endsWith(']')) {
+          const content = part.replace(/^\[(?:cancelled|CANCELLED):\s*/i, '').replace(/\]$/, '');
           return (
-            <span key={idx} className="text-gray-400 line-through mr-1 font-sans">
-              [CANCELLED: {content}]
+            <span key={idx} className="text-gray-400 line-through mr-1 font-sans italic">
+              {content}
             </span>
           );
         }
@@ -426,6 +427,23 @@ const getGradeSpeedNorm = (gradeStr: string): string => {
   if (num === 4) return "12-18";
   if (num === 5) return "15-20";
   return "20-30"; // 6-12
+};
+
+const getReportWpm = (summaryWpm: number | undefined, wordCount: number | undefined, timeTakenValue: string): number => {
+  if (typeof summaryWpm === 'number' && Number.isFinite(summaryWpm) && summaryWpm > 0) {
+    return Math.round(summaryWpm);
+  }
+
+  const minutes = parseFloat(timeTakenValue);
+  if (wordCount && Number.isFinite(minutes) && minutes > 0) {
+    return Math.round(wordCount / minutes);
+  }
+
+  return 0;
+};
+
+const reportValue = <T,>(value: T | null | undefined, fallback: T): T => {
+  return value ?? fallback;
 };
 
 const getActionableStrategies = (reportText: string): string[] => {
@@ -827,6 +845,7 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
       grade,
       age: chronologicalAge,
       studentName,
+      schoolName,
       cityName,
       countryName,
       uploadedBy,
@@ -843,6 +862,7 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
       observations: selectedObservations,
       dataSources: selectedDataSources,
       writingPrompt,
+      wordCountInput,
       paperType,
       writingInstrument,
       timeGiven,
@@ -894,6 +914,7 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
     setSelectedObservations(report.observations);
     setSelectedDataSources(report.dataSources);
     setWritingPrompt(report.writingPrompt || '');
+    setWordCountInput(report.wordCountInput || '');
     setPaperType(report.paperType || 'Blank / Unlined');
     setWritingInstrument(report.writingInstrument || '');
     setTimeGiven(report.timeGiven || '');
@@ -1101,6 +1122,7 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
   // we might have a result that contains the age or a state from a loaded report.
   // We'll prioritize the active DOB calculation, then fall back to the result's context if available.
   const chronologicalAge = dobAge || (result as any)?.summary?.age || (result as any)?.age || '';
+  const reportWpm = result ? getReportWpm(result.summary.wpm, result.summary.wordCount, timeTaken) : 0;
 
   const isAgeGradeValid = () => {
     if (!grade || !dob) return true;
@@ -1153,14 +1175,14 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         console.log('[processFile] PDF loaded, pages:', pdf.numPages);
         const page = await pdf.getPage(1);
-        const viewport = page.getViewport({ scale: 2.0 });
+        const viewport = page.getViewport({ scale: 3.0 });
         const canvas = document.createElement('canvas');
         canvas.width = viewport.width;
         canvas.height = viewport.height;
         const ctx = canvas.getContext('2d')!;
         await page.render({ canvasContext: ctx as any, canvas, viewport }).promise;
         console.log('[processFile] PDF rendered to canvas ✓');
-        setImage(canvas.toDataURL('image/jpeg', 0.92));
+        setImage(canvas.toDataURL('image/png'));
         setRotation(0);
       } catch (e) {
         console.error('[processFile] PDF render error:', e);
@@ -1379,7 +1401,6 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
         writingPrompt,
         paperType,
         writingInstrument,
-        wordCountInput,
         timeGiven ? parseFloat(timeGiven) : undefined,
         observationalNotes
       );
@@ -1426,9 +1447,9 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
 **Writing Instrument:** ${writingInstrument || "Not provided"}
 ${observationalNotes ? `**Assessor's Observational Notes:** ${observationalNotes}\n` : ""}==============================
 
-**Word Count (AI Calculated):** ${result.summary.wordCount}
+**Word Count:** ${result.summary.wordCount}
 **Time Taken:** ${timeTaken ? `${timeTaken} minutes` : "Not provided"}
-**Writing Speed:** ${timeTaken ? `${(result.summary.wordCount / parseFloat(timeTaken)).toFixed(2)} words per minute` : "N/A"}
+**Writing Speed:** ${reportWpm ? `${reportWpm} words per minute` : "N/A"}
 **Verbatim OCR Transcription:**
 *Note: [cancelled: text] indicates words crossed out by student.*
 ${result.summary.transcription}
@@ -1841,9 +1862,33 @@ ${result.report}
                 ],
               }),
               new Paragraph({
-                children: [
-                  new TextRun({ text: result.summary.transcription, font: "Times New Roman", size: 22, italics: true }),
-                ],
+                children: (() => {
+                  const transcription = result.summary.transcription || '';
+                  const errorWords = (result.summary.spellingErrors || []).map((err: string) => {
+                    const m = err.match(/^([^\s(]+)/);
+                    return m ? m[1].toLowerCase() : '';
+                  }).filter(Boolean);
+
+                  const runs: any[] = [];
+                  const parts = transcription.split(/(\[(?:cancelled|CANCELLED):.*?\])/gi);
+                  parts.forEach((part: string) => {
+                    if (/^\[(?:cancelled|CANCELLED):/i.test(part)) {
+                      const content = part.replace(/^\[(?:cancelled|CANCELLED):\s*/i, '').replace(/\]$/, '');
+                      runs.push(new TextRun({ text: content + ' ', font: "Times New Roman", size: 22, italics: true, strike: true, color: '888888' }));
+                    } else {
+                      const words = part.split(/(\s+)/);
+                      words.forEach((w: string) => {
+                        const clean = w.replace(/[.,!?;:'"()]/g, '').toLowerCase();
+                        if (errorWords.includes(clean) && clean.length > 0) {
+                          runs.push(new TextRun({ text: w, font: "Times New Roman", size: 22, italics: true, bold: true, color: 'CC0000' }));
+                        } else {
+                          runs.push(new TextRun({ text: w, font: "Times New Roman", size: 22, italics: true }));
+                        }
+                      });
+                    }
+                  });
+                  return runs;
+                })(),
               }),
               new Paragraph({ text: "" }),
 
@@ -3043,6 +3088,7 @@ ${result.report}
                         <option value="Marker" className="text-[#141414] bg-[#E4E3E0]">Marker</option>
                       </select>
                     </div>
+
                   </div>
 
                   <div>
@@ -3441,13 +3487,13 @@ ${result.report}
                                 <div className="border-t border-gray-150 pt-2">
                                   <div className="text-[8pt] text-gray-500 font-mono uppercase tracking-wider">Total words</div>
                                   <div className="text-[15pt] font-black text-[#0c2340] leading-none mt-0.5">
-                                    {result.summary.wordCount || 97} words
+                                    {reportValue(result.summary.wordCount, 97)} words
                                   </div>
                                 </div>
                                 <div className="border-t border-gray-150 pt-2">
                                   <div className="text-[8pt] text-gray-500 font-mono uppercase tracking-wider">Writing speed</div>
                                   <div className="text-[20pt] font-black text-red-600 leading-none mt-0.5">
-                                    {Math.round(result.summary.wordCount / (parseFloat(timeTaken) || 12)) || result.summary.wpm || 8} WPM
+                                    {reportWpm} WPM
                                   </div>
                                   <div className="text-[7.5pt] text-gray-400 italic mt-0.5 leading-normal font-mono">
                                     ({grade || 'Grade 9'} norm: {getGradeSpeedNorm(grade)} WPM)
@@ -3486,7 +3532,7 @@ ${result.report}
                           <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-2">
                             VERBATIM OCR TRANSCRIPTION
                           </h3>
-                          <div className="border border-gray-200 p-3.5 bg-[#FAFAFA] rounded-sm text-[9.5pt] leading-normal text-gray-800 italic block h-[120px] overflow-hidden">
+                          <div className="border border-gray-200 p-3.5 bg-[#FAFAFA] rounded-sm text-[9.5pt] leading-relaxed text-gray-800 italic block max-h-[180px] overflow-y-auto">
                             "<RenderTranscription text={result.summary.transcription} spellingErrors={result.summary.spellingErrors} />"
                           </div>
                         </div>
@@ -3498,13 +3544,13 @@ ${result.report}
                           </h3>
                           <div className="grid grid-cols-7 gap-1 text-center">
                             {[
-                              { label: "SENTENCE BOUND.", val: result.summary.scores.sentenceBoundaries || 50, d: "sentence" },
-                              { label: "GRAMMAR", val: result.summary.scores.grammar || 60, d: "grammar" },
-                              { label: "PAST TENSE", val: result.summary.scores.pastTenseUsage || 75, d: "past" },
-                              { label: "SPELLING", val: result.summary.scores.spelling || 35, d: "spelling" },
-                              { label: "FLUENCY", val: Math.round(result.summary.wordCount / (parseFloat(timeTaken) || 12)) || result.summary.wpm || 8, d: "fluency" },
-                              { label: "FORMATION", val: result.summary.scores.letterFormation || result.summary.scores.mechanics || 45, d: "formation" },
-                              { label: "ALIGNMENT", val: result.summary.scores.alignment || 50, d: "alignment" }
+                              { label: "SENTENCE BOUND.", val: result.summary.scores.sentenceBoundaries ?? 50, d: "sentence" },
+                              { label: "GRAMMAR", val: result.summary.scores.grammar ?? 60, d: "grammar" },
+                              { label: "PAST TENSE", val: result.summary.scores.pastTenseUsage ?? 75, d: "past" },
+                              { label: "SPELLING", val: result.summary.scores.spelling ?? 35, d: "spelling" },
+                              { label: "FLUENCY", val: reportWpm, d: "fluency" },
+                              { label: "FORMATION", val: result.summary.scores.letterFormation ?? result.summary.scores.mechanics ?? 45, d: "formation" },
+                              { label: "ALIGNMENT", val: result.summary.scores.alignment ?? 50, d: "alignment" }
                             ].map((card, idx) => {
                               const isFluency = card.d === "fluency";
                               const norm = parseInt(getGradeSpeedNorm(grade).split('-')[0]) || 20;
@@ -3553,19 +3599,19 @@ ${result.report}
 
                         {/* Recommendation and Probability columns */}
                         <div className="grid grid-cols-2 gap-4">
-                          <div className="border border-red-200 bg-[#FEF2F2]/45 p-3.5 rounded-sm flex flex-col h-[150px]">
-                            <h4 className="text-[#B91C1C] font-semibold text-[9pt] uppercase tracking-wider mb-1.5 font-sans border-b border-[#B91C1C]/15 pb-0.5">
+                          <div className="border-l-4 border-[#B91C1C] bg-[#FEF2F2]/60 p-3.5 rounded-sm flex flex-col">
+                            <h4 className="text-[#B91C1C] font-bold text-[9pt] uppercase tracking-wider mb-2 font-sans">
                               RECOMMENDATION
                             </h4>
-                            <p className="text-[9pt] leading-normal text-gray-800 font-sans overflow-y-auto">
+                            <p className="text-[9pt] leading-relaxed text-gray-800 font-sans">
                               {result.summary.assessmentRecommendation || "A formal Psycho-Educational Assessment is highly recommended because previous interventions have not resulted in improvement, indicating a need for specialized diagnostic insights."}
                             </p>
                           </div>
-                          <div className="border border-red-200 bg-[#FEF2F2]/45 p-3.5 rounded-sm flex flex-col h-[150px]">
-                            <h4 className="text-[#B91C1C] font-semibold text-[9pt] uppercase tracking-wider mb-1.5 font-sans border-b border-[#B91C1C]/15 pb-0.5">
+                          <div className="border-l-4 border-[#B91C1C] bg-[#FEF2F2]/60 p-3.5 rounded-sm flex flex-col">
+                            <h4 className="text-[#B91C1C] font-bold text-[9pt] uppercase tracking-wider mb-2 font-sans">
                               PROBABILITY
                             </h4>
-                            <p className="text-[9pt] leading-normal text-gray-800 font-sans overflow-y-auto">
+                            <p className="text-[9pt] leading-relaxed text-gray-800 font-sans">
                               {result.summary.probabilityEstimate || "High. The sample shows a cluster of dysgraphia indicators including poor form of letters, irregular sizing, difficulty with line orientation, and severely restricted fluency."}
                             </p>
                           </div>
@@ -3573,19 +3619,19 @@ ${result.report}
 
                         {/* Basal & Ceiling Level Cards */}
                         <div className="grid grid-cols-2 gap-4">
-                          <div className="border border-blue-200 bg-[#EFF6FF]/45 p-3.5 rounded-sm flex flex-col h-[110px]">
-                            <h4 className="text-blue-800 font-semibold text-[9pt] uppercase tracking-wider mb-1 font-sans border-b border-blue-800/15 pb-0.5">
+                          <div className="border-l-4 border-blue-600 bg-[#EFF6FF]/60 p-3.5 rounded-sm flex flex-col">
+                            <h4 className="text-blue-700 font-bold text-[9pt] uppercase tracking-wider mb-2 font-sans">
                               BASAL LEVEL
                             </h4>
-                            <p className="text-[9pt] leading-normal text-gray-800 font-sans overflow-y-auto italic">
+                            <p className="text-[9pt] leading-relaxed text-gray-800 font-sans italic">
                               {result.summary.basalLevel || "Student can generate relevant ideas, stay on topic, and form basic legible sight words."}
                             </p>
                           </div>
-                          <div className="border border-yellow-200 bg-[#FEFCE8]/45 p-3.5 rounded-sm flex flex-col h-[110px]">
-                            <h4 className="text-yellow-800 font-semibold text-[9pt] uppercase tracking-wider mb-1 font-sans border-b border-yellow-800/15 pb-0.5">
+                          <div className="border-l-4 border-yellow-500 bg-[#FEFCE8]/60 p-3.5 rounded-sm flex flex-col">
+                            <h4 className="text-yellow-700 font-bold text-[9pt] uppercase tracking-wider mb-2 font-sans">
                               CEILING LEVEL
                             </h4>
-                            <p className="text-[9pt] leading-normal text-gray-800 font-sans overflow-y-auto italic">
+                            <p className="text-[9pt] leading-relaxed text-gray-800 font-sans italic">
                               {result.summary.ceilingLevel || "Performance breaks down with spelling accuracy, sentence punctuation, handwriting automaticity, and writing speed — ceiling well below expected grade."}
                             </p>
                           </div>
@@ -3612,7 +3658,7 @@ ${result.report}
                                     <span className="text-[7pt] text-gray-400">Capitals, punctuation, periods</span>
                                   </td>
                                   <td className="p-2 py-1.5 text-center font-bold text-[11pt] text-red-600">
-                                    {result.summary.scores.sentenceBoundaries || 50}
+                                    {result.summary.scores.sentenceBoundaries ?? 50}
                                   </td>
                                   <td className="p-2 py-1.5 text-gray-700 italic text-[8pt] leading-normal">
                                     {result.summary.languageSkills.sentenceBoundaries || "Punctuation and capitalization rules are not yet automatic. Run-on sentences frequent."}
@@ -3624,7 +3670,7 @@ ${result.report}
                                     <span className="text-[7pt] text-gray-400">Structure, agreement, syntax</span>
                                   </td>
                                   <td className="p-2 py-1.5 text-center font-bold text-[11pt] text-red-600">
-                                    {result.summary.scores.grammar || 60}
+                                    {result.summary.scores.grammar ?? 60}
                                   </td>
                                   <td className="p-2 py-1.5 text-gray-700 italic text-[8pt] leading-normal">
                                     {result.summary.languageSkills.grammar || "Basic structures present, but complex syntax remains a challenge. Spacing issues noted."}
@@ -3636,7 +3682,7 @@ ${result.report}
                                     <span className="text-[7pt] text-gray-400">Regular and irregular past verbs</span>
                                   </td>
                                   <td className="p-2 py-1.5 text-center font-bold text-[11pt] text-green-700">
-                                    {result.summary.scores.pastTenseUsage || 75}
+                                    {result.summary.scores.pastTenseUsage ?? 75}
                                   </td>
                                   <td className="p-2 py-1.5 text-gray-700 italic text-[8pt] leading-normal">
                                     {result.summary.languageSkills.pastTenseUsage || "Good basic understanding of past tense verb construction. Slightly awkward phrasing in context."}
@@ -3648,11 +3694,11 @@ ${result.report}
                         </div>
 
                         {/* Academic Discrepancy analysis block */}
-                        <div className="bg-[#E2E8F0]/40 p-3 border-l-4 border-[#0C2340] rounded-sm h-[65px] overflow-hidden flex flex-col justify-center">
-                          <h4 className="font-bold text-[8.5pt] text-[#0C2340] uppercase tracking-wider mb-0.5 leading-none">
+                        <div className="bg-[#E2E8F0]/40 p-3 border-l-4 border-[#0C2340] rounded-sm flex flex-col">
+                          <h4 className="font-bold text-[8.5pt] text-[#0C2340] uppercase tracking-wider mb-1 leading-none">
                             ACADEMIC DISCREPANCY ANALYSIS
                           </h4>
-                          <p className="text-[8.5pt] text-[#0C2340] leading-normal font-sans">
+                          <p className="text-[8.5pt] text-[#0C2340] leading-relaxed font-sans">
                             {result.summary.academicDiscrepancy || "The sample is at least two grade levels below in spelling accuracy, writing fluency, and grammar/punctuation. Ideation is a relative strength."}
                           </p>
                         </div>
@@ -3662,16 +3708,16 @@ ${result.report}
                           <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider mb-1.5">
                             SPELLING PATTERNS & GRADE LEVEL DISCREPANCIES
                           </h3>
-                          <div className="grid grid-cols-2 gap-2 h-[100px] overflow-y-auto">
+                          <div className="grid grid-cols-2 gap-2">
                             {result.summary.spellingErrors.length > 0 ? (
                               result.summary.spellingErrors.slice(0, 6).map((err, i) => {
                                 const parsed = parseSpellingError(err);
                                 return (
-                                  <div key={i} className="flex border border-gray-150 rounded-sm bg-[#FFFDFD] overflow-hidden shadow-xs h-[28px] items-center text-[8.5pt]">
-                                    <div className="bg-[#FEF2F2] text-red-600 font-bold px-2 py-1 border-r border-[#FEE2E2] min-w-[90px] h-full flex items-center shrink-0">
+                                  <div key={i} className="flex border border-gray-150 rounded-sm bg-[#FFFDFD] overflow-hidden shadow-xs min-h-[28px] items-center text-[8.5pt]">
+                                    <div className="bg-[#FEF2F2] text-red-600 font-bold px-2 py-1 border-r border-[#FEE2E2] min-w-[90px] flex items-center shrink-0 self-stretch">
                                       {parsed.raw}
                                     </div>
-                                    <div className="px-2 text-gray-600 font-semibold h-full flex items-center truncate">
+                                    <div className="px-2 text-gray-600 font-semibold flex items-center flex-wrap gap-1 py-1">
                                       → &nbsp;{parsed.correct} &nbsp;<span className="text-gray-400 font-normal italic text-[7.5pt]">({parsed.discrepancy})</span>
                                     </div>
                                   </div>
@@ -3718,7 +3764,7 @@ ${result.report}
                               { label: "Letter Formation", val: result.summary.lineFormation || result.summary.mechanics },
                               { label: "Alignment", val: result.summary.alignment },
                               { label: "Spatial Organisation", val: result.summary.verticalAnalysis || result.summary.horizontalAnalysis },
-                              { label: "Writing Speed", val: result.summary.fluencyAnalysis || `Writing speed of ${Math.round(result.summary.wordCount / (parseFloat(timeTaken) || 12)) || result.summary.wpm || 8} words per minute, falls significantly below peers.` },
+                              { label: "Writing Speed", val: result.summary.fluencyAnalysis || `Writing speed of ${reportWpm} words per minute, falls significantly below peers.` },
                               { label: "Horizontal Spatial", val: result.summary.horizontalAnalysis },
                               { label: "Vertical Spatial", val: result.summary.verticalAnalysis },
                               { label: "Line Quality", val: result.summary.lineQuality },
@@ -3749,7 +3795,7 @@ ${result.report}
                               <span className="text-[6.5pt] text-gray-500 uppercase tracking-wide font-sans font-medium">MINUTES<br/>Duration</span>
                             </div>
                             <div className="border border-gray-200 py-1 px-1.5 bg-gray-50 flex flex-col justify-center rounded-sm">
-                              <span className="text-[14pt] font-black text-[#0c2340] leading-none mb-0.5">{Math.round(result.summary.wordCount / (parseFloat(timeTaken) || 12)) || result.summary.wpm || 8}</span>
+                              <span className="text-[14pt] font-black text-[#0c2340] leading-none mb-0.5">{reportWpm}</span>
                               <span className="text-[6.5pt] text-gray-500 uppercase tracking-wide font-sans font-medium">WPM<br/>Student speed</span>
                             </div>
                             <div className="border border-red-200 py-1 px-1.5 bg-[#FEF2F2] flex flex-col justify-center rounded-sm">
@@ -3758,7 +3804,7 @@ ${result.report}
                             </div>
                           </div>
                           <p className="text-[9pt] text-gray-800 leading-relaxed font-sans mb-1">
-                            {result.summary.wordCount} words / {timeTaken || 12} minutes = {(result.summary.wordCount / (parseFloat(timeTaken) || 12)).toFixed(2)} WPM. The physical act of writing is taking up so much mental energy that cognitive load is heavily disrupted. Qualitative assessment: <strong className="text-red-600 font-bold">{result.summary.fluencyAnalysis || 'Slow / Labored'}.</strong>
+                            {result.summary.wordCount} words / {timeTaken || 12} minutes = {reportWpm} WPM. The physical act of writing is taking up so much mental energy that cognitive load is heavily disrupted. Qualitative assessment: <strong className="text-red-600 font-bold">{result.summary.fluencyAnalysis || 'Slow / Labored'}.</strong>
                           </p>
                         </div>
 
@@ -3772,16 +3818,16 @@ ${result.report}
                               <div className="bg-[#0C2340] text-white px-3 py-1 font-bold uppercase tracking-wider text-[8pt]">
                                 ASSESSMENT RECOMMENDATION
                               </div>
-                              <div className="p-2.5 bg-white text-[8.5pt] text-gray-800 leading-normal max-h-[75px] overflow-y-auto">
+                              <div className="p-2.5 bg-white text-[8.5pt] text-gray-800 leading-relaxed">
                                 {result.summary.assessmentRecommendation || "A formal Psycho-Educational Assessment is highly recommended. Under the RTI model, because prior interventions have not resulted in improvement, standard classroom help is not sufficient."}
                               </div>
                             </div>
 
                             <div className="border border-red-350 rounded-sm overflow-hidden bg-[#FEF2F2]/30 shadow-xs">
                               <div className="bg-red-600 text-white px-3 py-1 font-bold uppercase tracking-wider text-[8pt]">
-                                PROBABILITY ESTIMATE: {result.summary.probabilityEstimate.toUpperCase().includes('HIGH') ? 'HIGH' : 'MODERATE'}
+                                PROBABILITY ESTIMATE: {result.summary.probabilityEstimate.toUpperCase().includes('HIGH') ? 'HIGH' : result.summary.probabilityEstimate.toUpperCase().includes('MODERATE') ? 'MODERATE' : 'LOW'}
                               </div>
-                              <div className="p-2.5 text-[8.5pt] text-gray-800 leading-normal max-h-[75px] overflow-y-auto">
+                              <div className="p-2.5 text-[8.5pt] text-gray-800 leading-relaxed">
                                 {result.summary.probabilityEstimate || "High probability of dysgraphia, based on spelling inaccuracies, downstream drift on unlined paper, and restrictive fluency."}
                               </div>
                             </div>
