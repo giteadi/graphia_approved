@@ -466,7 +466,14 @@ const getActionableStrategies = (reportText: string): string[] => {
   return DEFAULT_STRATEGIES;
 };
 
-export default function App() {
+import { AuthUser } from './services/authService';
+
+interface AppProps {
+  user: AuthUser;
+  onLogout: () => void;
+}
+
+export default function App({ user, onLogout }: AppProps) {
   const [tourStep, setTourStep] = useState<number | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(true);
   const [activeStep, setActiveStep] = useState<number>(1);
@@ -2602,6 +2609,17 @@ ${result.report}
           </button>
           <div className="hidden sm:block text-[11px] opacity-50 uppercase tracking-widest font-mono">
             Clinical Diagnostic Engine v1.0
+          </div>
+          <div className="flex items-center gap-3 border-l border-[#141414] pl-4">
+            <span className="font-mono text-[10px] uppercase tracking-widest opacity-60">
+              {user.name}
+            </span>
+            <button
+              onClick={onLogout}
+              className="font-mono text-[10px] uppercase tracking-widest border border-[#141414] px-2 py-1 hover:bg-[#141414] hover:text-[#E4E3E0] transition-all"
+            >
+              Logout
+            </button>
           </div>
         </div>
       </header>

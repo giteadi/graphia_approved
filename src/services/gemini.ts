@@ -243,9 +243,13 @@ export async function analyzeHandwriting(
   `;
 
   try {
+    const token = localStorage.getItem('token') || '';
     const response = await fetch(`${API_BASE}/analyze`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
       body: JSON.stringify({
         model,
         max_tokens: 4096,
