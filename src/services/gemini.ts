@@ -91,11 +91,25 @@ export async function analyzeHandwriting(
 
   try {
     const token = localStorage.getItem('token') || '';
+    const userRaw = localStorage.getItem('user');
+    const user = userRaw ? JSON.parse(userRaw) : null;
+
+    // ── DEBUG LOGS ──────────────────────────────────────────
+    console.log('[gemini.ts] analyzeHandwriting called');
+    console.log('[gemini.ts] API_BASE:', API_BASE);
+    console.log('[gemini.ts] token present:', !!token, '| length:', token.length);
+    console.log('[gemini.ts] token preview:', token ? token.slice(0, 20) + '...' : 'EMPTY');
+    console.log('[gemini.ts] grade:', grade, '| model:', model);
+    console.log('[gemini.ts] image size (chars):', imageBase64.length);
+    console.log('[gemini.ts] sending POST to', `${API_BASE}/analyze`);
+    // ────────────────────────────────────────────────────────
+
     const response = await fetch(`${API_BASE}/analyze`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        'x-user-id': user?.id ? String(user.id) : '',
+        'x-user-email': user?.email || '',
       },
       body: JSON.stringify({
         model,
@@ -121,11 +135,15 @@ export async function analyzeHandwriting(
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
       const errorMessage = (errData as any)?.error || `HTTP ${response.status}`;
+      console.error('[gemini.ts] Response NOT OK:', response.status, response.statusText);
+      console.error('[gemini.ts] Error body:', errData);
       if (response.status === 429) {
         throw new Error("API_QUOTA_EXCEEDED: The AI service is currently busy or the rate limit has been reached. Please wait a minute and try again.");
       }
       throw new Error(errorMessage);
     }
+
+    console.log('[gemini.ts] Response OK:', response.status);
 
     const data = await response.json() as { choices: { message: { content: string } }[] };
     const text = data.choices[0]?.message?.content || "";

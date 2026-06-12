@@ -1,14 +1,12 @@
 import mysql, { PoolConnection } from 'mysql2/promise';
-import dotenv from 'dotenv';
 
-dotenv.config();
-
+// Hardcoded production DB config — env override not used on server
 const DB_CONFIG = {
-  host: process.env.DB_HOST || 'localhost',
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'graphia',
+  host: '127.0.0.1',
+  port: 3306,
+  user: 'root',
+  password: 'Tiger@123',
+  database: 'graphia',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
@@ -48,7 +46,7 @@ export async function initDB() {
   while (true) {
     let conn: PoolConnection | undefined;
     try {
-      // Connect without database first to ensure DB exists
+      // Connect without selecting DB first — ensures DB gets created if missing
       const tempConn = await mysql.createConnection({
         host: DB_CONFIG.host,
         port: DB_CONFIG.port,

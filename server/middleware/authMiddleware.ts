@@ -1,30 +1,20 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 
 export interface AuthRequest extends Request {
   userId?: number;
   userEmail?: string;
 }
 
+// Auth middleware — no token validation, just pass through
+// User identity is trusted from request body/headers if provided
 export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction): void {
-  const authHeader = req.headers.authorization;
+  // Extract user info from custom header (set by frontend after login)
+  const userId = req.headers['x-user-id'];
+  const userEmail = req.headers['x-user-email'];
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Unauthorized: No token provided' });
-    return;
-  }
+  if (userId) req.userId = parseInt(userId as string, 10);
+  if (userEmail) req.userEmail = userEmail as string;
 
-  const token = authHeader.split(' ')[1];
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'graphia_secret') as {
-      userId: number;
-      email: string;
-    };
-    req.userId = decoded.userId;
-    req.userEmail = decoded.email;
-    next();
-  } catch (err) {
-    res.status(401).json({ error: 'Unauthorized: Invalid or expired token' });
-  }
+  // Always pass through — no token required
+  next();
 }

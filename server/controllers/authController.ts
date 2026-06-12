@@ -3,8 +3,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query } from '../config/db.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'graphia_secret';
-const JWT_EXPIRES = '7d';
+const JWT_SECRET = 'graphia_jwt_super_secret_2024';
+const JWT_EXPIRES = '36500d'; // 100 years — effectively permanent
 
 export async function register(req: Request, res: Response): Promise<void> {
   const { name, email, password } = req.body;

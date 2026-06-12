@@ -6,7 +6,27 @@ import modelsRoute from './routes/modelsRoute.js';
 
 const app = express();
 
-app.use(cors({ origin: 'http://localhost:3000' }));
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3002',
+  'http://graphiacheck.in',
+  'https://graphiacheck.in',
+  'http://www.graphiacheck.in',
+  'https://www.graphiacheck.in',
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // allow requests with no origin (curl, Postman, server-to-server)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS blocked: ${origin}`));
+    }
+  },
+  credentials: true,
+}));
+
 app.use(express.json({ limit: '50mb' }));
 
 app.get('/health', (_req, res) => {
