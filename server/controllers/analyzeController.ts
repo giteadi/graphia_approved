@@ -50,13 +50,33 @@ looks like a normal word was intended.
    - If a word is ambiguous, write your best read and add it to uncertainWords.
    - Use \\n for line breaks in transcription.
 
-5. SPELLING DETECTION — CONTEXTUAL (not dictionary-only):
-   - Flag every visibly misspelled word that you are 80%+ confident is genuinely misspelled.
-   - Valid English words used correctly in context are NOT errors ("met", "had", "get", "we", "family").
-   - Provide confidence (0-100) and reason for each candidate.
-   - Do not omit repeated spelling errors. If the student writes the same misspelling more than once, include each occurrence.
+5. SPELLING DETECTION — EXHAUSTIVE (flag everything suspicious):
+   - Flag EVERY word that does not match standard spelling. Be aggressive, not conservative.
+   - Confidence threshold: flag anything 70%+ confident as a misspelling.
+   - Valid English words used correctly in context are NOT errors ("met", "had", "get", "we", "family", "fun", "talk").
+   - BUT: wrong plural forms ("lifes"), missing letters ("ad" for "and"), phonetic spellings ("togther"), merged words ("alot"), wrong tense forms — ALL must be flagged.
+   - Count EACH occurrence separately — if "ad" appears twice, list it twice.
+   - Do NOT omit repeated spelling errors under any circumstances.
+   - Provide confidence (0-100) and reason for each.
 
 Grade context: ${grade}
+
+GRAMMAR COUNTING RULES:
+- Count subject-verb disagreement as "agreement" (e.g. "their are", "I get to met")
+- Count wrong plural forms as "plural" (e.g. "lifes" instead of "lives")
+- Count tense mixing or verb form errors as "syntax"
+- Count missing/wrong prepositions, articles as "other"
+- Count EVERY mistake — do not merge or summarise
+
+PAST TENSE COUNTING RULES:
+- Count each instance where past tense is incorrectly formed or missing
+- "I get to met" = 1 error, "I use to go" = 1 error
+- Be thorough — this directly affects scoring
+
+PUNCTUATION/CAPITALS COUNTING RULES:
+- missingCapitals: count sentences not starting with capital letter
+- missingPunctuation: count sentences missing ending punctuation (period/question mark)
+- Count each instance separately
 
 RETURN ONLY THIS JSON (no markdown fences, no extra text):
 {
@@ -70,7 +90,7 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
   ],
 
   "grammarMistakes": [
-    { "type": "agreement|plural|syntax|other", "example": "exact phrase" }
+    { "type": "agreement|plural|syntax|other", "example": "exact phrase from transcription" }
   ],
   "runOnSentences": 0,
   "missingCapitals": 0,
@@ -453,9 +473,9 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     const norm      = getWpmNorm(grade_p);
     const wpm       = (timeTaken && wordCount > 0) ? Math.round(wordCount / timeTaken) : 0;
 
-    // Filter spelling by confidence >= 80
+    // Filter spelling by confidence >= 70
     const spellingErrors = (extracted.spellingErrors || [])
-      .filter((e: any) => (e.confidence ?? 100) >= 80)
+      .filter((e: any) => (e.confidence ?? 100) >= 70)
       .map((e: any) => ({ written: e.written, intended: e.intended, gradeLevel: e.gradeLevel || 'unknown' }));
 
     // Strip placeholder strings AI sometimes echoes from the prompt template
