@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { openaiClient, withFallback } from '../config/openai.js';
+import { withFallback } from '../config/openai.js';
 import { query } from '../config/db.js';
 import { AuthRequest } from '../middleware/authMiddleware.js';
 import OpenAI from 'openai';
@@ -79,20 +79,20 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
   "pastTenseErrors": 0,
 
   "letterFormationObservations": [
-    "specific visual observation e.g. poorly closed loops on a and o"
+    "write actual observations only, no examples here"
   ],
   "alignmentObservations": [
-    "specific visual observation e.g. mild drift below baseline in lines 3-4"
+    "write actual observations only, no examples here"
   ],
   "spacingObservations": [
-    "specific visual observation e.g. irregular word spacing"
+    "write actual observations only, no examples here"
   ],
   "lineQualityObservations": [
-    "specific visual observation e.g. heavy pen pressure"
+    "write actual observations only, no examples here"
   ],
 
   "dsm5Traits": [
-    "specific observable trait e.g. inconsistent letter sizing"
+    "write actual observable traits only, no examples here"
   ],
 
   "features": {
@@ -458,6 +458,11 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       .filter((e: any) => (e.confidence ?? 100) >= 80)
       .map((e: any) => ({ written: e.written, intended: e.intended, gradeLevel: e.gradeLevel || 'unknown' }));
 
+    // Strip placeholder strings AI sometimes echoes from the prompt template
+    const isPlaceholder = (s: string) =>
+      /^(write actual|specific visual|specific observable|e\.g\.|no examples)/i.test(s.trim());
+    const cleanObs = (arr: string[]) => (arr || []).filter(s => !isPlaceholder(s));
+
     const evidenceData: EvidenceData = {
       transcription:              extracted.transcription,
       wordCount,
@@ -468,16 +473,16 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       missingCapitals:            extracted.missingCapitals || 0,
       missingPunctuation:         extracted.missingPunctuation || 0,
       pastTenseErrors:            extracted.pastTenseErrors || 0,
-      letterFormationObservations: extracted.letterFormationObservations || [],
-      alignmentObservations:      extracted.alignmentObservations || [],
-      spacingObservations:        extracted.spacingObservations || [],
-      lineQualityObservations:    extracted.lineQualityObservations || [],
+      letterFormationObservations: cleanObs(extracted.letterFormationObservations),
+      alignmentObservations:      cleanObs(extracted.alignmentObservations),
+      spacingObservations:        cleanObs(extracted.spacingObservations),
+      lineQualityObservations:    cleanObs(extracted.lineQualityObservations),
       wpm,
       rtiImprovement,
-      dsm5Traits:                 extracted.dsm5Traits || [],
+      dsm5Traits:                 cleanObs(extracted.dsm5Traits),
       features:                   extracted.features || {},
       ocrConfidence:              extracted.ocrConfidence || 80,
-      dysgraphiaIndicators:       extracted.dsm5Traits || [],
+      dysgraphiaIndicators:       cleanObs(extracted.dsm5Traits),
     };
 
     const scores = calculateScoresWithNorm(evidenceData, grade_p);
