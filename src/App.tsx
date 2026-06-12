@@ -489,9 +489,10 @@ import { AuthUser } from './services/authService';
 interface AppProps {
   user: AuthUser;
   onLogout: () => void;
+  reportTabMode?: boolean;
 }
 
-export default function App({ user, onLogout }: AppProps) {
+export default function App({ user, onLogout, reportTabMode = false }: AppProps) {
   const [tourStep, setTourStep] = useState<number | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(true);
   const [activeStep, setActiveStep] = useState<number>(1);
@@ -567,6 +568,43 @@ export default function App({ user, onLogout }: AppProps) {
 
   // Load saved reports on mount
   useEffect(() => {
+    // If report tab — load from sessionStorage and jump to report view
+    if (reportTabMode) {
+      try {
+        const savedResult = sessionStorage.getItem('graphia_report_result');
+        const savedMeta = sessionStorage.getItem('graphia_report_meta');
+        if (savedResult) {
+          setResult(JSON.parse(savedResult));
+          setActiveStep(4);
+        }
+        if (savedMeta) {
+          const m = JSON.parse(savedMeta);
+          if (m.studentName) setStudentName(m.studentName);
+          if (m.schoolName) setSchoolName(m.schoolName);
+          if (m.cityName) setCityName(m.cityName);
+          if (m.countryName) setCountryName(m.countryName);
+          if (m.uploadedBy) setUploadedBy(m.uploadedBy);
+          if (m.contactEmail) setContactEmail(m.contactEmail);
+          if (m.contactPhone) setContactPhone(m.contactPhone);
+          if (m.grade) setGrade(m.grade);
+          if (m.dob) setDob(m.dob);
+          if (m.timeTaken) setTimeTaken(m.timeTaken);
+          if (m.timeGiven) setTimeGiven(m.timeGiven);
+          if (m.writingPrompt) setWritingPrompt(m.writingPrompt);
+          if (m.paperType) setPaperType(m.paperType);
+          if (m.writingInstrument) setWritingInstrument(m.writingInstrument);
+          if (m.observationalNotes) setObservationalNotes(m.observationalNotes);
+          if (m.interventionTried !== undefined) setInterventionTried(m.interventionTried);
+          if (m.interventionImproved) setInterventionImproved(m.interventionImproved);
+          if (m.interventionDetails) setInterventionDetails(m.interventionDetails);
+          if (m.selectedObservations) setSelectedObservations(m.selectedObservations);
+          if (m.selectedDataSources) setSelectedDataSources(m.selectedDataSources);
+          if (m.knownDiagnoses) setKnownDiagnoses(m.knownDiagnoses);
+        }
+      } catch (_e) {}
+      return;
+    }
+
     const saved = localStorage.getItem('graphiacheck_reports');
     if (saved) {
       try {
@@ -1057,22 +1095,16 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
       const video = videoRef.current;
       const canvas = canvasRef.current;
       
-      // Use the video's actual resolution
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        // Draw the current frame from the video onto the canvas
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        // Convert canvas to data URL
         const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
         setImage(dataUrl);
-        // We no longer clear the report here, allowing it to persist until the next analysis
-        if (isVirtualSession) {
-          stopCamera();
-        }
+        // Always stop camera after capture — user gets clear feedback that photo was taken
+        stopCamera();
       }
     }
   };
@@ -1404,7 +1436,42 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
         timeGiven ? parseFloat(timeGiven) : undefined,
         observationalNotes
       );
-      setResult({ ...analysis, image });
+      const analysisResult = { ...analysis, image };
+      setResult(analysisResult);
+      // Save to sessionStorage and open report in new tab
+      try {
+        sessionStorage.setItem('graphia_report_result', JSON.stringify(analysisResult));
+        sessionStorage.setItem('graphia_report_meta', JSON.stringify({
+          studentName, schoolName, cityName, countryName, uploadedBy,
+          contactEmail, contactPhone, grade, dob, timeTaken, timeGiven,
+          writingPrompt, paperType, writingInstrument, observationalNotes,
+          interventionTried, interventionImproved, interventionDetails,
+          selectedObservations, selectedDataSources, knownDiagnoses,
+        }));
+        window.open(window.location.origin + window.location.pathname + '?report=1', '_blank');
+      } catch (_e) {
+        // sessionStorage full or blocked — fallback: show in same tab
+      }
+      // Open report in new tab
+      setTimeout(() => {
+        const reportWin = window.open('', '_blank');
+        if (reportWin) {
+          reportWin.document.write(`
+            <html>
+              <head>
+                <title>GraphiaCheck Report</title>
+                <script>
+                  window.opener && window.opener.__graphiaReportReady && window.opener.__graphiaReportReady();
+                </script>
+              </head>
+              <body style="margin:0;background:#f5f5f5;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
+                <p>Loading report...</p>
+              </body>
+            </html>
+          `);
+          reportWin.close();
+        }
+      }, 0);
     } catch (err: any) {
       console.error(err);
       const errorMessage = err?.message || '';
