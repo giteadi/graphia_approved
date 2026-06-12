@@ -3422,32 +3422,32 @@ ${result.report}
                     <div className="report-page bg-white p-10 flex flex-col justify-between print:p-0 print:m-0 shadow-lg border border-gray-200 print:border-none print:shadow-none" style={{ width: '210mm', height: '297mm', minHeight: '297mm', maxHeight: '297mm', boxSizing: 'border-box', pageBreakAfter: 'always' }}>
                       <div className="space-y-5">
                         {/* Header Box (navy banner) */}
-                        <div className="bg-[#0C2340] text-white p-6 rounded-sm relative text-center">
-                          <div className="absolute top-4 left-4 text-[7.5pt] text-gray-300 font-mono tracking-widest uppercase">
+                        <div className="bg-[#0C2340] text-white pt-3 pb-4 px-6 rounded-sm">
+                          {/* MINDSAID LEARNING — top left, small gray mono */}
+                          <div className="text-[7pt] text-gray-400 font-mono tracking-[0.25em] uppercase mb-1">
                             MINDSAID LEARNING
                           </div>
-                          <h1 className="text-[17pt] font-sans font-bold tracking-normal uppercase mt-5 mb-4 text-white text-center animate-pulse-slow">
+                          {/* Main title — centered, white, bold */}
+                          <h1 className="text-[16pt] font-bold tracking-widest uppercase text-white text-center leading-tight mb-3">
                             GRAPHIACHECK ASSESSMENT REPORT
                           </h1>
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-center justify-center text-[9.5pt] border-t border-white/20 pt-3">
-                            <div className="text-left text-gray-200">
-                              Student: <strong className="text-white font-bold">{studentName || 'Lyes Difle'}</strong>
+                          {/* Detail lines — centered, thin top border */}
+                          <div className="border-t border-white/20 pt-2 text-center space-y-[4px]">
+                            <div className="text-[8.5pt] text-gray-300">
+                              Student:&nbsp;<strong className="text-white font-semibold">{studentName || '—'}</strong>
+                              &emsp;School:&nbsp;<strong className="text-white font-semibold">{[schoolName, cityName].filter(Boolean).join(', ') || '—'}</strong>
                             </div>
-                            <div className="text-right text-gray-200">
-                              School: <strong className="text-white font-bold">{schoolName || 'Wellington International'}{cityName ? `, ${cityName}` : ''}</strong>
+                            <div className="text-[8.5pt] text-gray-300">
+                              Grade:&nbsp;<strong className="text-white font-semibold">{grade || '—'}</strong>
+                              &emsp;Age:&nbsp;<strong className="text-white font-semibold">{chronologicalAge ? chronologicalAge.toUpperCase() : '—'}</strong>
+                              &emsp;Date:&nbsp;<strong className="text-white font-semibold">{new Date().toLocaleDateString('en-GB')}</strong>
                             </div>
-                            <div className="text-left text-gray-200 mt-1">
-                              Grade: <strong className="text-white font-bold">{grade || 'Grade 9'}</strong> &nbsp;|&nbsp; Age: <strong className="text-white font-bold">{chronologicalAge ? chronologicalAge.toUpperCase() : '14Y 9M 17D'}</strong>
-                            </div>
-                            <div className="text-right text-gray-200 mt-1">
-                              Date: <strong className="text-white font-bold">{new Date().toLocaleDateString('en-GB')}</strong>
+                            <div className="text-[8pt] text-gray-400">
+                              Uploaded by:&nbsp;<span className="text-gray-200">{uploadedBy || '—'}</span>
+                              {contactEmail ? <>&nbsp;&nbsp;|&nbsp;&nbsp;<span className="text-gray-200">{contactEmail}</span></> : null}
+                              {contactPhone ? <>&nbsp;&nbsp;|&nbsp;&nbsp;<span className="text-gray-200">{contactPhone}</span></> : null}
                             </div>
                           </div>
-                          {(uploadedBy || contactEmail || contactPhone) && (
-                            <div className="text-[7.5pt] text-gray-300 tracking-wider text-center border-t border-white/10 pt-2 mt-2 font-mono">
-                              Uploaded By: {uploadedBy || 'MSL-Krutika Jaggi'} &nbsp;|&nbsp; {contactEmail || 'familledifle@gmail.com'} &nbsp;|&nbsp; {contactPhone || '8767048973'}
-                            </div>
-                          )}
                         </div>
 
                         {/* Handwriting and Timing Record Grid */}
@@ -3542,7 +3542,7 @@ ${result.report}
                           <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-2">
                             DOMAIN SCORES
                           </h3>
-                          <div className="grid grid-cols-7 gap-1 text-center">
+                          <div className="grid grid-cols-7 border border-gray-300 text-center divide-x divide-gray-300">
                             {[
                               { label: "SENTENCE BOUND.", val: result.summary.scores.sentenceBoundaries ?? 50, d: "sentence" },
                               { label: "GRAMMAR", val: result.summary.scores.grammar ?? 60, d: "grammar" },
@@ -3556,8 +3556,8 @@ ${result.report}
                               const norm = parseInt(getGradeSpeedNorm(grade).split('-')[0]) || 20;
                               const passes = isFluency ? card.val >= norm : card.val >= 70;
                               return (
-                                <div key={idx} className="border border-gray-200 p-1.5 bg-[#F8FAFC] flex flex-col justify-between h-20 rounded-sm">
-                                  <div className="text-[6.5pt] font-medium leading-normal text-gray-500 font-sans tracking-tight uppercase">
+                                <div key={idx} className="p-1.5 bg-white flex flex-col items-center justify-between h-20">
+                                  <div className="text-[6.5pt] font-medium leading-normal text-gray-500 font-sans tracking-tight uppercase text-center">
                                     {card.label}
                                   </div>
                                   <div className="text-[15pt] font-black text-[#0c2340] leading-none my-0.5">
@@ -3597,136 +3597,153 @@ ${result.report}
                           </div>
                         </div>
 
-                        {/* Recommendation and Probability columns */}
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="border-l-4 border-[#B91C1C] bg-[#FEF2F2]/60 p-3.5 rounded-sm flex flex-col">
-                            <h4 className="text-[#B91C1C] font-bold text-[9pt] uppercase tracking-wider mb-2 font-sans">
+                        {/* Recommendation and Probability — table style, no gap */}
+                        <div className="border border-gray-300 grid grid-cols-2 divide-x divide-gray-300">
+                          <div className="p-3 flex flex-col">
+                            <h4 className="text-[#B91C1C] font-bold text-[8pt] uppercase tracking-wider mb-1.5 font-sans border-b border-gray-200 pb-1">
                               RECOMMENDATION
                             </h4>
-                            <p className="text-[9pt] leading-relaxed text-gray-800 font-sans">
+                            <p className="text-[8.5pt] leading-relaxed text-gray-800 font-sans">
                               {result.summary.assessmentRecommendation || "A formal Psycho-Educational Assessment is highly recommended because previous interventions have not resulted in improvement, indicating a need for specialized diagnostic insights."}
                             </p>
                           </div>
-                          <div className="border-l-4 border-[#B91C1C] bg-[#FEF2F2]/60 p-3.5 rounded-sm flex flex-col">
-                            <h4 className="text-[#B91C1C] font-bold text-[9pt] uppercase tracking-wider mb-2 font-sans">
+                          <div className="p-3 flex flex-col">
+                            <h4 className="text-[#B91C1C] font-bold text-[8pt] uppercase tracking-wider mb-1.5 font-sans border-b border-gray-200 pb-1">
                               PROBABILITY
                             </h4>
-                            <p className="text-[9pt] leading-relaxed text-gray-800 font-sans">
+                            <p className="text-[8.5pt] leading-relaxed text-gray-800 font-sans">
                               {result.summary.probabilityEstimate || "High. The sample shows a cluster of dysgraphia indicators including poor form of letters, irregular sizing, difficulty with line orientation, and severely restricted fluency."}
                             </p>
                           </div>
                         </div>
 
-                        {/* Basal & Ceiling Level Cards */}
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="border-l-4 border-blue-600 bg-[#EFF6FF]/60 p-3.5 rounded-sm flex flex-col">
-                            <h4 className="text-blue-700 font-bold text-[9pt] uppercase tracking-wider mb-2 font-sans">
+                        {/* Basal & Ceiling Level — table style, no gap, joined to above */}
+                        <div className="border border-t-0 border-gray-300 grid grid-cols-2 divide-x divide-gray-300">
+                          <div className="p-3 flex flex-col">
+                            <h4 className="text-blue-700 font-bold text-[8pt] uppercase tracking-wider mb-1.5 font-sans border-b border-gray-200 pb-1">
                               BASAL LEVEL
                             </h4>
-                            <p className="text-[9pt] leading-relaxed text-gray-800 font-sans italic">
+                            <p className="text-[8.5pt] leading-relaxed text-gray-800 font-sans italic">
                               {result.summary.basalLevel || "Student can generate relevant ideas, stay on topic, and form basic legible sight words."}
                             </p>
                           </div>
-                          <div className="border-l-4 border-yellow-500 bg-[#FEFCE8]/60 p-3.5 rounded-sm flex flex-col">
-                            <h4 className="text-yellow-700 font-bold text-[9pt] uppercase tracking-wider mb-2 font-sans">
+                          <div className="p-3 flex flex-col">
+                            <h4 className="text-yellow-700 font-bold text-[8pt] uppercase tracking-wider mb-1.5 font-sans border-b border-gray-200 pb-1">
                               CEILING LEVEL
                             </h4>
-                            <p className="text-[9pt] leading-relaxed text-gray-800 font-sans italic">
+                            <p className="text-[8.5pt] leading-relaxed text-gray-800 font-sans italic">
                               {result.summary.ceilingLevel || "Performance breaks down with spelling accuracy, sentence punctuation, handwriting automaticity, and writing speed — ceiling well below expected grade."}
                             </p>
                           </div>
                         </div>
 
                         {/* Written Language table */}
+                        {/* Written Language Skills Diagnostic — full table, no gaps */}
                         <div>
-                          <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider mb-1.5">
+                          <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider mb-0 border-b border-[#0C2340]/20 pb-0.5">
                             WRITTEN LANGUAGE SKILLS DIAGNOSTIC
                           </h3>
-                          <div className="border border-gray-200 rounded-sm overflow-hidden text-[8.5pt]">
-                            <table className="w-full text-left border-collapse">
-                              <thead>
-                                <tr className="bg-[#0C2340] text-white">
-                                  <th className="p-2 py-1.5 font-bold uppercase tracking-wider w-1/3 text-[8pt]">DOMAIN & INDICATORS</th>
-                                  <th className="p-2 py-1.5 font-bold uppercase tracking-wider text-center w-[15%] text-[8pt]">SCORE</th>
-                                  <th className="p-2 py-1.5 font-bold uppercase tracking-wider w-[51%] text-[8pt]">CLINICAL COMMENTS</th>
+                          <table className="w-full text-left border-collapse border border-gray-300 text-[8.5pt]">
+                            <thead>
+                              <tr className="bg-[#0C2340] text-white">
+                                <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider w-[32%] text-[7.5pt]">DOMAIN & INDICATORS</th>
+                                <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-center w-[12%] text-[7.5pt]">SCORE</th>
+                                <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt]">CLINICAL COMMENTS</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {[
+                                {
+                                  label: "Sentence Boundaries",
+                                  sub: "Capitals, punctuation, periods",
+                                  score: result.summary.scores.sentenceBoundaries ?? 50,
+                                  comment: result.summary.languageSkills.sentenceBoundaries || "Punctuation and capitalization rules are not yet automatic. Run-on sentences frequent."
+                                },
+                                {
+                                  label: "Grammar",
+                                  sub: "Structure, agreement, syntax",
+                                  score: result.summary.scores.grammar ?? 60,
+                                  comment: result.summary.languageSkills.grammar || "Basic structures present, but complex syntax remains a challenge. Spacing issues noted."
+                                },
+                                {
+                                  label: "Past Tense Usage",
+                                  sub: "Regular and irregular past verbs",
+                                  score: result.summary.scores.pastTenseUsage ?? 75,
+                                  comment: result.summary.languageSkills.pastTenseUsage || "Good basic understanding of past tense verb construction."
+                                },
+                                {
+                                  label: "Academic Discrepancy",
+                                  sub: "Grade-level gap analysis",
+                                  score: null,
+                                  comment: result.summary.academicDiscrepancy || "The sample is at least two grade levels below in spelling accuracy, writing fluency, and grammar/punctuation. Ideation is a relative strength."
+                                }
+                              ].map((row, idx) => (
+                                <tr key={idx} className="border-b border-gray-300">
+                                  <td className="border border-gray-300 px-2 py-1.5 align-top">
+                                    <strong className="text-gray-900 font-bold block leading-tight">{row.label}</strong>
+                                    <span className="text-[7pt] text-gray-400">{row.sub}</span>
+                                  </td>
+                                  <td className="border border-gray-300 px-2 py-1.5 text-center font-black text-[11pt] align-middle">
+                                    {row.score !== null ? (
+                                      <span className={row.score >= 70 ? 'text-green-700' : 'text-red-600'}>
+                                        {row.score}
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-400 text-[7pt]">—</span>
+                                    )}
+                                  </td>
+                                  <td className="border border-gray-300 px-2 py-1.5 text-gray-700 italic text-[8pt] leading-normal align-top">
+                                    {row.comment}
+                                  </td>
                                 </tr>
-                              </thead>
-                              <tbody>
-                                <tr className="border-b border-gray-200">
-                                  <td className="p-2 py-1.5">
-                                    <strong className="text-gray-900 font-bold block leading-none">Sentence Boundaries</strong>
-                                    <span className="text-[7pt] text-gray-400">Capitals, punctuation, periods</span>
-                                  </td>
-                                  <td className="p-2 py-1.5 text-center font-bold text-[11pt] text-red-600">
-                                    {result.summary.scores.sentenceBoundaries ?? 50}
-                                  </td>
-                                  <td className="p-2 py-1.5 text-gray-700 italic text-[8pt] leading-normal">
-                                    {result.summary.languageSkills.sentenceBoundaries || "Punctuation and capitalization rules are not yet automatic. Run-on sentences frequent."}
-                                  </td>
-                                </tr>
-                                <tr className="border-b border-gray-200">
-                                  <td className="p-2 py-1.5">
-                                    <strong className="text-gray-900 font-bold block leading-none">Grammar</strong>
-                                    <span className="text-[7pt] text-gray-400">Structure, agreement, syntax</span>
-                                  </td>
-                                  <td className="p-2 py-1.5 text-center font-bold text-[11pt] text-red-600">
-                                    {result.summary.scores.grammar ?? 60}
-                                  </td>
-                                  <td className="p-2 py-1.5 text-gray-700 italic text-[8pt] leading-normal">
-                                    {result.summary.languageSkills.grammar || "Basic structures present, but complex syntax remains a challenge. Spacing issues noted."}
-                                  </td>
-                                </tr>
-                                <tr>
-                                  <td className="p-2 py-1.5">
-                                    <strong className="text-gray-900 font-bold block leading-none">Past Tense Usage</strong>
-                                    <span className="text-[7pt] text-gray-400">Regular and irregular past verbs</span>
-                                  </td>
-                                  <td className="p-2 py-1.5 text-center font-bold text-[11pt] text-green-700">
-                                    {result.summary.scores.pastTenseUsage ?? 75}
-                                  </td>
-                                  <td className="p-2 py-1.5 text-gray-700 italic text-[8pt] leading-normal">
-                                    {result.summary.languageSkills.pastTenseUsage || "Good basic understanding of past tense verb construction. Slightly awkward phrasing in context."}
-                                  </td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-
-                        {/* Academic Discrepancy analysis block */}
-                        <div className="bg-[#E2E8F0]/40 p-3 border-l-4 border-[#0C2340] rounded-sm flex flex-col">
-                          <h4 className="font-bold text-[8.5pt] text-[#0C2340] uppercase tracking-wider mb-1 leading-none">
-                            ACADEMIC DISCREPANCY ANALYSIS
-                          </h4>
-                          <p className="text-[8.5pt] text-[#0C2340] leading-relaxed font-sans">
-                            {result.summary.academicDiscrepancy || "The sample is at least two grade levels below in spelling accuracy, writing fluency, and grammar/punctuation. Ideation is a relative strength."}
-                          </p>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
 
                         {/* Spelling grade level differences */}
                         <div>
-                          <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider mb-1.5">
+                          <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider mb-0 border-b border-[#0C2340]/20 pb-0.5">
                             SPELLING PATTERNS & GRADE LEVEL DISCREPANCIES
                           </h3>
-                          <div className="grid grid-cols-2 gap-2">
-                            {result.summary.spellingErrors.length > 0 ? (
-                              result.summary.spellingErrors.slice(0, 6).map((err, i) => {
-                                const parsed = parseSpellingError(err);
-                                return (
-                                  <div key={i} className="flex border border-gray-150 rounded-sm bg-[#FFFDFD] overflow-hidden shadow-xs min-h-[28px] items-center text-[8.5pt]">
-                                    <div className="bg-[#FEF2F2] text-red-600 font-bold px-2 py-1 border-r border-[#FEE2E2] min-w-[90px] flex items-center shrink-0 self-stretch">
-                                      {parsed.raw}
-                                    </div>
-                                    <div className="px-2 text-gray-600 font-semibold flex items-center flex-wrap gap-1 py-1">
-                                      → &nbsp;{parsed.correct} &nbsp;<span className="text-gray-400 font-normal italic text-[7.5pt]">({parsed.discrepancy})</span>
-                                    </div>
-                                  </div>
-                                );
-                              })
-                            ) : (
-                              <p className="text-[8.5pt] italic text-gray-400 font-sans col-span-2">No significant spelling errors found.</p>
-                            )}
-                          </div>
+                          {result.summary.spellingErrors.length > 0 ? (
+                            <table className="w-full text-left border-collapse border border-gray-300 text-[8.5pt]">
+                              <thead>
+                                <tr className="bg-[#0C2340] text-white">
+                                  <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt] w-[28%]">WRITTEN (ERROR)</th>
+                                  <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt] w-[28%]">CORRECT FORM</th>
+                                  <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt]">GRADE DISCREPANCY</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {result.summary.spellingErrors.slice(0, 6).map((err, i) => {
+                                  const parsed = parseSpellingError(err);
+                                  return (
+                                    <tr key={i} className="border-b border-gray-300">
+                                      <td className="border border-gray-300 px-2 py-1.5 text-red-600 font-bold">{parsed.raw}</td>
+                                      <td className="border border-gray-300 px-2 py-1.5 text-gray-800 font-semibold">{parsed.correct}</td>
+                                      <td className="border border-gray-300 px-2 py-1.5 text-gray-500 italic text-[7.5pt]">{parsed.discrepancy}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          ) : (
+                            <table className="w-full text-left border-collapse border border-gray-300 text-[8.5pt]">
+                              <thead>
+                                <tr className="bg-[#0C2340] text-white">
+                                  <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt] w-[28%]">WRITTEN (ERROR)</th>
+                                  <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt] w-[28%]">CORRECT FORM</th>
+                                  <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt]">GRADE DISCREPANCY</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr>
+                                  <td colSpan={3} className="border border-gray-300 px-2 py-2 text-gray-400 italic text-center">No significant spelling errors found.</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          )}
                         </div>
                       </div>
 
@@ -3780,32 +3797,46 @@ ${result.report}
                           </ul>
                         </div>
 
-                        {/* Fluency Analysis section */}
+                        {/* Fluency Analysis section — table style */}
                         <div>
-                          <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-2.5">
+                          <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-0">
                             FLUENCY ANALYSIS (WORDS PER MINUTE)
                           </h3>
-                          <div className="grid grid-cols-4 gap-2 text-center mb-2">
-                            <div className="border border-gray-200 py-1 px-1.5 bg-gray-50 flex flex-col justify-center rounded-sm">
-                              <span className="text-[14pt] font-black text-[#0c2340] leading-none mb-0.5">{result.summary.wordCount}</span>
-                              <span className="text-[6.5pt] text-gray-500 uppercase tracking-wide font-sans font-medium">WORDS<br/>Total produced</span>
-                            </div>
-                            <div className="border border-gray-200 py-1 px-1.5 bg-gray-50 flex flex-col justify-center rounded-sm">
-                              <span className="text-[14pt] font-black text-[#0c2340] leading-none mb-0.5">{timeTaken || 12}</span>
-                              <span className="text-[6.5pt] text-gray-500 uppercase tracking-wide font-sans font-medium">MINUTES<br/>Duration</span>
-                            </div>
-                            <div className="border border-gray-200 py-1 px-1.5 bg-gray-50 flex flex-col justify-center rounded-sm">
-                              <span className="text-[14pt] font-black text-[#0c2340] leading-none mb-0.5">{reportWpm}</span>
-                              <span className="text-[6.5pt] text-gray-500 uppercase tracking-wide font-sans font-medium">WPM<br/>Student speed</span>
-                            </div>
-                            <div className="border border-red-200 py-1 px-1.5 bg-[#FEF2F2] flex flex-col justify-center rounded-sm">
-                              <span className="text-[14pt] font-black text-red-600 leading-none mb-0.5">{getGradeSpeedNorm(grade)}</span>
-                              <span className="text-[6.5pt] text-red-600 uppercase tracking-wide font-sans font-medium">WPM<br/>{grade || 'Grade 9'} norm</span>
-                            </div>
-                          </div>
-                          <p className="text-[9pt] text-gray-800 leading-relaxed font-sans mb-1">
-                            {result.summary.wordCount} words / {timeTaken || 12} minutes = {reportWpm} WPM. The physical act of writing is taking up so much mental energy that cognitive load is heavily disrupted. Qualitative assessment: <strong className="text-red-600 font-bold">{result.summary.fluencyAnalysis || 'Slow / Labored'}.</strong>
-                          </p>
+                          <table className="w-full text-left border-collapse border border-gray-300 text-[8.5pt]">
+                            <thead>
+                              <tr className="bg-[#0C2340] text-white">
+                                <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt] text-center">TOTAL WORDS</th>
+                                <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt] text-center">DURATION</th>
+                                <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt] text-center">STUDENT WPM</th>
+                                <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt] text-center">{grade || 'GRADE'} NORM</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr className="border-b border-gray-300 text-center">
+                                <td className="border border-gray-300 px-2 py-2">
+                                  <div className="text-[14pt] font-black text-[#0c2340] leading-none">{result.summary.wordCount}</div>
+                                  <div className="text-[6.5pt] text-gray-400 uppercase tracking-wide mt-0.5">words</div>
+                                </td>
+                                <td className="border border-gray-300 px-2 py-2">
+                                  <div className="text-[14pt] font-black text-[#0c2340] leading-none">{timeTaken || 12}</div>
+                                  <div className="text-[6.5pt] text-gray-400 uppercase tracking-wide mt-0.5">minutes</div>
+                                </td>
+                                <td className="border border-gray-300 px-2 py-2">
+                                  <div className="text-[14pt] font-black text-[#0c2340] leading-none">{reportWpm}</div>
+                                  <div className="text-[6.5pt] text-gray-400 uppercase tracking-wide mt-0.5">wpm</div>
+                                </td>
+                                <td className="border border-gray-300 px-2 py-2">
+                                  <div className="text-[14pt] font-black text-red-600 leading-none">{getGradeSpeedNorm(grade)}</div>
+                                  <div className="text-[6.5pt] text-red-400 uppercase tracking-wide mt-0.5">wpm norm</div>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td colSpan={4} className="border border-gray-300 px-2 py-1.5 text-[8pt] text-gray-800 italic">
+                                  {result.summary.wordCount} words / {timeTaken || 12} minutes = <strong>{reportWpm} WPM.</strong> {result.summary.fluencyAnalysis || 'Slow / Labored — the physical act of writing is consuming significant cognitive load.'}
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
                         </div>
 
                         {/* Clinical Interpretation & Next Steps */}
