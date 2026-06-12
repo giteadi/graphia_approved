@@ -305,7 +305,7 @@ const TOUR_STEPS = [
   }
 ];
 
-const DEFAULT_DISCLAIMER = "This report was generated using an AI-powered tool that analyzes handwriting samples for characteristics associated with dysgraphia. Before being shared, the AI-generated findings in this report were carefully reviewed and vetted by a Special Educator-(Learning Disabilities specialist) to ensure accuracy, clinical relevance, and appropriateness.";
+const DEFAULT_DISCLAIMER = "THIS REPORT WAS GENERATED USING AN AI-POWERED TOOL THAT ANALYZES HANDWRITING SAMPLES FOR CHARACTERISTICS ASSOCIATED WITH DYSGRAPHIA. PLEASE NOTE THAT THE HANDWRITING SAMPLES SUBMITTED FOR ANALYSIS MUST BE SUFFICIENTLY LEGIBLE FOR THE AI-POWERED TOOL TO PROCESS AND GENERATE AN ACCURATE REPORT. ILLEGIBLE OR UNCLEAR SAMPLES MAY AFFECT THE QUALITY AND RELIABILITY OF THE FINDINGS. BEFORE BEING SHARED, THE AI-GENERATED FINDINGS IN THIS REPORT WERE CAREFULLY REVIEWED AND VETTED BY A SPECIAL EDUCATOR-(LEARNING DISABILITIES SPECIALIST) TO ENSURE ACCURACY, CLINICAL RELEVANCE, AND APPROPRIATENESS.";
 
 const parseSpellingError = (errorStr: string) => {
   let raw = errorStr;
@@ -4096,16 +4096,70 @@ ${result.report}
       {/* Footer */}
       <footer 
         style={{ backgroundColor: 'rgba(255, 255, 255, 0.3)' }}
-        className="mt-12 border-t border-[#141414] p-12 text-center print:hidden"
+        className="mt-12 border-t-2 border-[#141414] print:hidden"
       >
-        <div className="max-w-2xl mx-auto space-y-4">
-          <p className="font-mono text-[10px] opacity-40 uppercase tracking-widest leading-relaxed">
-            Disclaimer: {disclaimer}
-          </p>
-          <div className="flex justify-center gap-8 opacity-20">
-            <div className="w-12 h-1 bg-[#141414]" />
-            <div className="w-12 h-1 bg-[#141414]" />
-            <div className="w-12 h-1 bg-[#141414]" />
+        <div className="max-w-7xl mx-auto px-6 py-12">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-[#141414] flex items-center justify-center">
+                  <Activity className="w-6 h-6 text-[#E4E3E0]" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg">GraphiaCheck</h3>
+                  <p className="text-xs font-mono uppercase tracking-wider opacity-60">Clinical Analysis</p>
+                </div>
+              </div>
+              <p className="text-sm opacity-70 leading-relaxed">
+                AI-powered handwriting analysis for clinical-grade dysgraphia and dyslexia screening.
+              </p>
+            </div>
+
+            <div>
+              <h4 className="font-bold mb-4 uppercase tracking-wider text-sm">Product</h4>
+              <ul className="space-y-2 text-sm opacity-70">
+                <li><a href="#" className="hover:opacity-100 transition-opacity">Features</a></li>
+                <li><a href="#" className="hover:opacity-100 transition-opacity">Pricing</a></li>
+                <li><a href="#" className="hover:opacity-100 transition-opacity">Demo</a></li>
+                <li><button onClick={() => {}} className="hover:opacity-100 transition-opacity text-left">Documentation</button></li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="font-bold mb-4 uppercase tracking-wider text-sm">Support</h4>
+              <ul className="space-y-2 text-sm opacity-70">
+                <li><a href="#" className="hover:opacity-100 transition-opacity">Help Center</a></li>
+                <li><a href="mailto:support@graphiacheck.in" className="hover:opacity-100 transition-opacity">Contact Us</a></li>
+                <li><a href="#" className="hover:opacity-100 transition-opacity">FAQs</a></li>
+                <li><button onClick={onLogout} className="hover:opacity-100 transition-opacity text-left">Logout</button></li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="font-bold mb-4 uppercase tracking-wider text-sm">Legal</h4>
+              <ul className="space-y-2 text-sm opacity-70">
+                <li><a href="/?page=privacy" target="_blank" className="hover:opacity-100 transition-opacity">Privacy Policy</a></li>
+                <li><a href="/?page=terms" target="_blank" className="hover:opacity-100 transition-opacity">Terms of Service</a></li>
+                <li><a href="/?page=refund" target="_blank" className="hover:opacity-100 transition-opacity">Refund Policy</a></li>
+                <li><a href="#" className="hover:opacity-100 transition-opacity">Data Security</a></li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="border-t border-[#141414]/20 pt-6">
+            <p className="text-xs opacity-40 font-mono uppercase tracking-widest text-center mb-4">
+              Disclaimer: {disclaimer}
+            </p>
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+              <p className="text-sm opacity-60 font-mono">
+                © 2026 GraphiaCheck. All rights reserved.
+              </p>
+              <div className="flex items-center gap-6">
+                <a href="mailto:support@graphiacheck.in" className="text-sm opacity-60 hover:opacity-100 transition-opacity font-mono">
+                  support@graphiacheck.in
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       </footer>
