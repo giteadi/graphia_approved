@@ -85,15 +85,34 @@ function scoreSpelling(spellingErrors: number): number {
   return Math.max(0, Math.min(100, 100 - spellingErrors * 10));
 }
 
-/** SENTENCE BOUNDARIES: 100 - runOn×15 - missingCapital×10 - missingPunct×10 */
+/** SENTENCE BOUNDARIES: 100 - runOn×15 - missingCapital×5 - missingPunct×5 (grade-adjusted) */
 function scoreSentenceBoundaries(
   runOnSentences: number,
   missingCapitals: number,
-  missingPunctuation: number
+  missingPunctuation: number,
+  grade: string
 ): number {
-  return Math.max(0, Math.min(100,
-    100 - (runOnSentences * 15) - (missingCapitals * 10) - (missingPunctuation * 10)
-  ));
+  // Grade-based penalty multiplier
+  // Higher grades = stricter penalties, lower grades = more lenient
+  const gradeNum = parseInt(grade.toLowerCase().replace(/[^0-9]/g, '')) || 6;
+  let penaltyMultiplier = 1.0;
+  
+  if (gradeNum <= 2) {
+    penaltyMultiplier = 0.5; // Very lenient for early elementary
+  } else if (gradeNum <= 5) {
+    penaltyMultiplier = 0.7; // Lenient for elementary
+  } else if (gradeNum <= 8) {
+    penaltyMultiplier = 0.85; // Lenient for middle school
+  } else if (gradeNum <= 11) {
+    penaltyMultiplier = 1.0; // Standard for high school
+  } else {
+    penaltyMultiplier = 1.1; // Slightly strict for upper high school/college
+  }
+
+  const baseScore = 100 - (runOnSentences * 15) - (missingCapitals * 5) - (missingPunctuation * 5);
+  const adjustedScore = 100 - ((100 - baseScore) * penaltyMultiplier);
+  
+  return Math.max(0, Math.min(100, adjustedScore));
 }
 
 /** GRAMMAR: 100 - agreement×15 - plural×15 - syntax×20 - other×10 */
@@ -172,12 +191,12 @@ function scoreWritingSpeed(wpm: number, normMin: number, normMax: number): numbe
 }
 
 // ─── Main calculator ──────────────────────────────────────────────────────────
-export function calculateScores(e: EvidenceData): Scores {
+export function calculateScores(e: EvidenceData, grade: string): Scores {
   const norm = getWpmNorm(''); // fallback — caller should set wpm against norm separately
 
   const spelling           = scoreSpelling(e.spellingErrors.length);
   const grammar            = scoreGrammar(e.grammarMistakes);
-  const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation);
+  const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation, grade);
   const pastTenseUsage     = scorePastTense(e.pastTenseErrors);
   const letterFormation    = scoreLetterFormation(e.letterFormationObservations);
   const alignment          = scoreAlignment(e.alignmentObservations);
@@ -208,7 +227,7 @@ export function calculateScoresWithNorm(e: EvidenceData, grade: string): Scores 
 
   const spelling           = scoreSpelling(e.spellingErrors.length);
   const grammar            = scoreGrammar(e.grammarMistakes);
-  const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation);
+  const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation, grade);
   const pastTenseUsage     = scorePastTense(e.pastTenseErrors);
   const letterFormation    = scoreLetterFormation(e.letterFormationObservations);
   const alignment          = scoreAlignment(e.alignmentObservations);

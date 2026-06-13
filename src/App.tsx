@@ -2735,7 +2735,8 @@ ${result.report}
       </header>
 
       <main className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-8 print:block print:p-0">
-        {/* Left Column: Input & Preview */}
+        {/* Left Column: Input & Preview - Hide in report tab mode */}
+        {!reportTabMode && (
         <div className="lg:col-span-5 space-y-8 print:hidden">
           <section 
             id="tour-sample-input"
@@ -3410,9 +3411,10 @@ ${result.report}
             </ul>
           </div>
         </div>
+        )}
 
         {/* Right Column: Results & Report */}
-        <div className="lg:col-span-7 print:block relative">
+        <div className={`${reportTabMode ? 'lg:col-span-12' : 'lg:col-span-7'} print:block relative`}>
           <AnimatePresence>
             {!result && !isAnalyzing && (
               <motion.div 

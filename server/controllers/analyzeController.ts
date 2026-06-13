@@ -27,7 +27,9 @@ looks like a normal word was intended.
 ═══ STRICT OCR RULES (follow exactly) ═══
 
 1. CANCELLED/CROSSED-OUT WORDS:
-   - Every word that is crossed out, struck through, or cancelled MUST be wrapped: [CANCELLED: word]
+   - Only mark words as CANCELLED if the strikethrough is clearly visible in the handwriting.
+   - If uncertain about whether a word is cancelled, place it in uncertainWords instead.
+   - Do NOT infer or guess hidden cancelled text that is not clearly visible.
    - Do NOT skip cancelled words. Do NOT include them in the main transcription flow.
    - Example: "I went [CANCELLED: to the] store" — not "I went store"
 
@@ -36,8 +38,8 @@ looks like a normal word was intended.
    - Even if written as two words with a space (e.g., "get together"), count as written — do NOT merge or split differently than what is on the page.
 
 3. WORD COUNT:
-   - Count EVERY visible handwritten token (including repeated words, partial words).
-   - Do NOT count [CANCELLED: ...] words in wordCount.
+   - Count EVERY visible handwritten token (including repeated words, partial words, AND cancelled words).
+   - INCLUDE [CANCELLED: ...] words in wordCount.
    - Count hyphenated words as 1 word each.
    - Be thorough — count line by line if needed.
 
@@ -51,13 +53,15 @@ looks like a normal word was intended.
    - Use \\n for line breaks in transcription.
 
 5. SPELLING DETECTION — EXHAUSTIVE (flag everything suspicious):
-   - Flag EVERY word that does not match standard spelling. Be aggressive, not conservative.
-   - Confidence threshold: flag anything 70%+ confident as a misspelling.
-   - Valid English words used correctly in context are NOT errors ("met", "had", "get", "we", "family", "fun", "talk").
-   - BUT: wrong plural forms ("lifes"), missing letters ("ad" for "and"), phonetic spellings ("togther"), merged words ("alot"), wrong tense forms — ALL must be flagged.
-   - Count EACH occurrence separately — if "ad" appears twice, list it twice.
-   - Do NOT omit repeated spelling errors under any circumstances.
-   - Provide confidence (0-100) and reason for each.
+- Flag only words that clearly deviate from standard spelling
+- Do NOT flag correctly spelled English words used in context
+- Confidence threshold: flag anything 70%+ confident as a misspelling
+- Valid English words used correctly are NOT errors ("met", "had", "get", "we", "family", "fun", "talk")
+- BUT: wrong plural forms ("lifes"), missing letters ("ad" for "and"), phonetic spellings ("togther"), merged words ("alot"), wrong tense forms — ALL must be flagged
+- Count EACH occurrence separately — if "ad" appears twice, list it twice
+- If uncertain about a word, add to uncertainWords instead of spellingErrors
+- Provide confidence (0-100) and reason for each.
+- IMPORTANT: Do NOT flag words that appear in cancelledWords as spelling errors. Cancelled words should only appear in the cancelledWords list, not in spellingErrors.
 
 Grade context: ${grade}
 
@@ -73,10 +77,31 @@ PAST TENSE COUNTING RULES:
 - "I get to met" = 1 error, "I use to go" = 1 error
 - Be thorough — this directly affects scoring
 
-PUNCTUATION/CAPITALS COUNTING RULES:
-- missingCapitals: count sentences not starting with capital letter
-- missingPunctuation: count sentences missing ending punctuation (period/question mark)
-- Count each instance separately
+SENTENCE BOUNDARY ANALYSIS RULES:
+Sentence boundaries define where one sentence ends and another begins, ensuring clarity and grammatical correctness.
+
+IDENTIFYING SENTENCE BOUNDARIES IN HANDWRITING:
+1. Look for ending punctuation marks: periods (.), question marks (?), exclamation points (!)
+2. Look for capital letters that indicate start of new sentences
+3. Identify run-on sentences: multiple independent clauses joined without proper punctuation or conjunctions
+4. Check for sentence fragments: incomplete thoughts that don't express a complete idea
+
+COUNTING RULES:
+- missingCapitals: Count sentences that do NOT start with a capital letter (first letter should be uppercase)
+  - Example: "the dog is hungry." = 1 missing capital (should be "The")
+  - Example: "i went to the store." = 1 missing capital (should be "I")
+- missingPunctuation: Count sentences that do NOT have ending punctuation (period, question mark, exclamation)
+  - Example: "The dog is hungry" = 1 missing punctuation (should be "The dog is hungry.")
+  - Example: "I went to the store" = 1 missing punctuation (should be "I went to the store.")
+- runOnSentences: Count instances where multiple independent clauses are joined without proper punctuation
+  - Example: "The dog is hungry he wants food" = 1 run-on (should be "The dog is hungry. He wants food.")
+  - Example: "I went to the store I bought milk" = 1 run-on (should be "I went to the store. I bought milk.")
+
+IMPORTANT:
+- Count EACH instance separately
+- A sentence is defined as a complete thought with a subject and verb
+- Be thorough — this directly affects scoring
+- If handwriting is unclear, make your best judgment based on visible punctuation and capitalization
 
 RETURN ONLY THIS JSON (no markdown fences, no extra text):
 {
@@ -86,7 +111,7 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
   "uncertainWords": [{ "word": "ambiguous", "confidence": 45, "possibleAlternatives": ["alt1"] }],
 
   "spellingErrors": [
-    { "written": "gettogether", "intended": "get-together", "gradeLevel": "3rd grade", "confidence": 95, "reason": "written as one word without hyphen" }
+    { "written": "gettogether", "intended": "get-together", "confidence": 95, "reason": "written as one word without hyphen" }
   ],
 
   "grammarMistakes": [
@@ -223,7 +248,7 @@ After the report, append:
   "assessmentRecommendation": "${rtiImprovement ? 'A formal evaluation is NOT recommended at this time because the student has shown positive improvement with current interventions. Continued monitoring and support is recommended.' : 'Based on the evidence, a formal psycho-educational assessment is recommended.'}",
   "probabilityEstimate": "${probability} — cite domains impaired and evidence",
   "spellingScore": "${spellingLabel} — 2-sentence justification",
-  "academicDiscrepancy": "2-3 sentences on areas 2+ grade levels below",
+  "academicDiscrepancy": "The student's spelling performance appears below expected grade level based on this writing sample; however, comprehensive assessment across multiple tasks is recommended before determining the extent of academic discrepancy.",
   "horizontalAnalysis": "2-sentence horizontal spacing observation",
   "verticalAnalysis": "2-sentence vertical organisation observation",
   "wordCount": ${evidence.wordCount},
@@ -236,8 +261,8 @@ After the report, append:
   "uncertainWords": [],
   "features": ${JSON.stringify(evidence.features || {})},
   "languageSkills": {
-    "sentenceBoundaries": "2-3 sentence comment. ${evidence.missingCapitals} missing capitals, ${evidence.missingPunctuation} missing punctuation, ${evidence.runOnSentences} run-on sentences",
-    "grammar": "2-3 sentence comment. ${evidence.grammarMistakes.length} grammar issues",
+    "sentenceBoundaries": "2-3 sentence comment. Focus on observed issues: ${evidence.runOnSentences} run-on sentences${evidence.missingPunctuation > 0 ? `, ${evidence.missingPunctuation} missing punctuation` : ''}${evidence.missingCapitals > 0 ? `, ${evidence.missingCapitals} missing capitals` : ''}. Only mention missing capitals/punctuation if clearly visible in sample.",
+    "grammar": "2-3 sentence comment. Focus on verb form errors, syntax issues, and sentence structure. ${evidence.grammarMistakes.length} grammar issues observed. Do NOT include spelling errors in grammar analysis.",
     "pastTenseUsage": "2-3 sentence comment. ${evidence.pastTenseErrors} errors observed"
   },
   "scores": {
@@ -321,7 +346,7 @@ function buildDeterministicSummary(params: {
       : (existingSummary.assessmentRecommendation || 'Based on the evidence, a formal psycho-educational assessment is recommended.'),
     probabilityEstimate: `${probability} — ${impairedDomains.length ? `impaired domains include ${impairedDomains.join(', ')}` : 'few impaired domains were detected'}; WPM ${evidence.wpm} vs norm ${norm.min}-${norm.max}.`,
     spellingScore: `${spellingLabel} — ${spellingErrors.length} spelling error${spellingErrors.length === 1 ? '' : 's'} detected.`,
-    academicDiscrepancy: existingSummary.academicDiscrepancy || `${impairedDomains.length ? `Concern areas include ${impairedDomains.join(', ')}.` : 'No broad academic discrepancy was calculated from the extracted scores.'}`,
+    academicDiscrepancy: existingSummary.academicDiscrepancy || 'The student\'s spelling performance appears below expected grade level based on this writing sample; however, comprehensive assessment across multiple tasks is recommended before determining the extent of academic discrepancy.',
     horizontalAnalysis: existingSummary.horizontalAnalysis || evidence.spacingObservations.join(' ') || 'Horizontal spacing observations were limited in the extracted evidence.',
     verticalAnalysis: existingSummary.verticalAnalysis || evidence.alignmentObservations.join(' ') || 'Vertical organisation observations were limited in the extracted evidence.',
     wordCount: evidence.wordCount,
@@ -334,8 +359,8 @@ function buildDeterministicSummary(params: {
     uncertainWords: evidence.uncertainWords || [],
     features: evidence.features || {},
     languageSkills: {
-      sentenceBoundaries: languageSkills.sentenceBoundaries || `${evidence.missingCapitals} missing capitals, ${evidence.missingPunctuation} missing punctuation, ${evidence.runOnSentences} run-on sentences observed.`,
-      grammar: languageSkills.grammar || `${evidence.grammarMistakes.length} grammar issue${evidence.grammarMistakes.length === 1 ? '' : 's'} observed.`,
+      sentenceBoundaries: languageSkills.sentenceBoundaries || `Focus on observed issues: ${evidence.runOnSentences} run-on sentences${evidence.missingPunctuation > 0 ? `, ${evidence.missingPunctuation} missing punctuation` : ''}${evidence.missingCapitals > 0 ? `, ${evidence.missingCapitals} missing capitals` : ''}. Only mention missing capitals/punctuation if clearly visible in sample.`,
+      grammar: languageSkills.grammar || `Focus on verb form errors, syntax issues, and sentence structure. ${evidence.grammarMistakes.length} grammar issue${evidence.grammarMistakes.length === 1 ? '' : 's'} observed. Do NOT include spelling errors in grammar analysis.`,
       pastTenseUsage: languageSkills.pastTenseUsage || `${evidence.pastTenseErrors} past-tense error${evidence.pastTenseErrors === 1 ? '' : 's'} observed.`,
     },
     scores: {
@@ -466,16 +491,16 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // ── STEP 2: Node.js Scoring ───────────────────────────────────────────────
     console.log('\n[Step 2] Calculating scores...');
 
-    // Use AI OCR word count directly
-    const wordCount = extracted.wordCount && extracted.wordCount > 0
-      ? extracted.wordCount
-      : countWords(extracted.transcription);
     const norm      = getWpmNorm(grade_p);
-    const wpm       = (timeTaken && wordCount > 0) ? Math.round(wordCount / timeTaken) : 0;
 
-    // Filter spelling by confidence >= 70
+    // Filter spelling by confidence >= 70 and remove cancelled words
+    const cancelledWordsLower = (extracted.cancelledWords || []).map((w: string) => w.toLowerCase());
     const spellingErrors = (extracted.spellingErrors || [])
       .filter((e: any) => (e.confidence ?? 100) >= 70)
+      .filter((err: any) => {
+        const writtenLower = err.written?.toLowerCase();
+        return !cancelledWordsLower.includes(writtenLower);
+      })
       .map((e: any) => ({ written: e.written, intended: e.intended, gradeLevel: e.gradeLevel || 'unknown' }));
 
     // Strip placeholder strings AI sometimes echoes from the prompt template
@@ -483,15 +508,66 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       /^(write actual|specific visual|specific observable|e\.g\.|no examples)/i.test(s.trim());
     const cleanObs = (arr: string[]) => (arr || []).filter(s => !isPlaceholder(s));
 
+    // Validate missing capitals against actual transcription
+    const missingCapitals = extracted.missingCapitals > 0 &&
+      extracted.transcription
+        .split(/[.!?]+/)
+        .some((s: string) => /^[a-z]/.test(s.trim()))
+      ? extracted.missingCapitals
+      : 0;
+
+    // Validate missing punctuation against actual transcription
+    const visiblePunctuation = (extracted.transcription.match(/[.!?]/g) || []).length;
+    const sentenceStarts = extracted.transcription
+      .split(/[.!?]+/)
+      .filter((s: string) => s.trim().length > 0)
+      .length;
+    const missingPunctuation = visiblePunctuation < sentenceStarts - 1
+      ? Math.min(
+          extracted.missingPunctuation || 0,
+          sentenceStarts - visiblePunctuation - 1
+        )
+      : 0;
+
+    // Validate run-on sentences against estimated sentence count
+    const estimatedSentences = extracted.transcription
+      .split(/[.!?]+/)
+      .filter(Boolean).length;
+    const runOnSentences = Math.min(
+      extracted.runOnSentences || 0,
+      Math.max(0, estimatedSentences - 1)
+    );
+
+    // Deduplicate grammar mistakes
+    const grammarMistakes = Array.from(
+      new Map(
+        (extracted.grammarMistakes || []).map((g: any) =>
+          [`${g.type}-${g.example}`, g]
+        )
+      ).values()
+    ) as { type: "agreement" | "plural" | "syntax" | "other"; example: string }[];
+
+    // Validate word count - separate final words, cancelled words, visible tokens
+    const finalWordCount = countWords(
+      extracted.transcription.replace(/\[CANCELLED:[^\]]+\]/g, '')
+    );
+    const cancelledCount = (extracted.cancelledWords?.length || 0);
+    const totalVisibleWords = finalWordCount + cancelledCount;
+    const wordCount = totalVisibleWords;
+
+    // Safe time calculation for WPM
+    const safeTime = timeTaken && timeTaken > 0 ? timeTaken : undefined;
+    const wpm = safeTime && wordCount > 0 ? Math.round(wordCount / safeTime) : 0;
+
     const evidenceData: EvidenceData = {
       transcription:              extracted.transcription,
       wordCount,
       cancelledWords:             extracted.cancelledWords || [],
       spellingErrors,
-      grammarMistakes:            extracted.grammarMistakes || [],
-      runOnSentences:             extracted.runOnSentences || 0,
-      missingCapitals:            extracted.missingCapitals || 0,
-      missingPunctuation:         extracted.missingPunctuation || 0,
+      grammarMistakes,
+      runOnSentences,
+      missingCapitals,
+      missingPunctuation,
       pastTenseErrors:            extracted.pastTenseErrors || 0,
       letterFormationObservations: cleanObs(extracted.letterFormationObservations),
       alignmentObservations:      cleanObs(extracted.alignmentObservations),
