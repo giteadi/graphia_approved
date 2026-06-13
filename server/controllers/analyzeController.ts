@@ -38,8 +38,9 @@ looks like a normal word was intended.
    - Even if written as two words with a space (e.g., "get together"), count as written — do NOT merge or split differently than what is on the page.
 
 3. WORD COUNT:
-   - Count EVERY visible handwritten token (including repeated words, partial words, AND cancelled words).
-   - INCLUDE [CANCELLED: ...] words in wordCount.
+   - Count ONLY the actual handwritten writing sample text.
+   - EXCLUDE date/time headers (e.g., "Date:", "2/18/2026", "2:45", "3pm").
+   - EXCLUDE [CANCELLED: ...] words from wordCount.
    - Count hyphenated words as 1 word each.
    - Be thorough — count line by line if needed.
 
@@ -62,6 +63,7 @@ looks like a normal word was intended.
 - If uncertain about a word, add to uncertainWords instead of spellingErrors
 - Provide confidence (0-100) and reason for each.
 - IMPORTANT: Do NOT flag words that appear in cancelledWords as spelling errors. Cancelled words should only appear in the cancelledWords list, not in spellingErrors.
+- IMPORTANT: "met" is a correctly spelled word - if used incorrectly as tense, flag as grammar/syntax error, NOT spelling error.
 
 Grade context: ${grade}
 
@@ -76,6 +78,7 @@ PAST TENSE COUNTING RULES:
 - Count each instance where past tense is incorrectly formed or missing
 - "I get to met" = 1 error, "I use to go" = 1 error
 - Be thorough — this directly affects scoring
+- Count ALL tense/verb-form errors separately, even if they appear multiple times
 
 SENTENCE BOUNDARY ANALYSIS RULES:
 Sentence boundaries define where one sentence ends and another begins, ensuring clarity and grammatical correctness.
@@ -86,7 +89,7 @@ IDENTIFYING SENTENCE BOUNDARIES IN HANDWRITING:
 3. Identify run-on sentences: multiple independent clauses joined without proper punctuation or conjunctions
 4. Check for sentence fragments: incomplete thoughts that don't express a complete idea
 
-COUNTING RULES:
+COUNTING RULES (BE STRICT):
 - missingCapitals: Count sentences that do NOT start with a capital letter (first letter should be uppercase)
   - Example: "the dog is hungry." = 1 missing capital (should be "The")
   - Example: "i went to the store." = 1 missing capital (should be "I")
@@ -102,6 +105,7 @@ IMPORTANT:
 - A sentence is defined as a complete thought with a subject and verb
 - Be thorough — this directly affects scoring
 - If handwriting is unclear, make your best judgment based on visible punctuation and capitalization
+- BE STRICT: If there are multiple clauses without punctuation, count each as a potential run-on
 
 RETURN ONLY THIS JSON (no markdown fences, no extra text):
 {
@@ -124,7 +128,7 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
   "pastTenseErrors": 0,
 
   "letterFormationObservations": [
-    "write actual observations only, no examples here"
+    "write at least 3 specific observations if issues exist (e.g., inconsistent letter size, irregular joins, unclear letter closure, variable formation of t/g/r, overwriting/cross-outs affecting legibility)"
   ],
   "alignmentObservations": [
     "write actual observations only, no examples here"
@@ -547,13 +551,16 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       ).values()
     ) as { type: "agreement" | "plural" | "syntax" | "other"; example: string }[];
 
-    // Validate word count - separate final words, cancelled words, visible tokens
-    const finalWordCount = countWords(
-      extracted.transcription.replace(/\[CANCELLED:[^\]]+\]/g, '')
-    );
-    const cancelledCount = (extracted.cancelledWords?.length || 0);
-    const totalVisibleWords = finalWordCount + cancelledCount;
-    const wordCount = totalVisibleWords;
+    // Validate word count - exclude date/time headers and cancelled words
+    // Remove cancelled words from transcription
+    const transcriptionWithoutCancelled = extracted.transcription.replace(/\[CANCELLED:[^\]]+\]/g, '');
+    // Remove date/time headers (patterns like "Date:", "2/18/2026", "2:45", "3pm", etc.)
+    const transcriptionWithoutHeaders = transcriptionWithoutCancelled
+      .replace(/Date:\s*\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
+      .replace(/\d{1,2}:\d{2}\s*(?:am|pm)?/gi, '')
+      .replace(/\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
+      .replace(/Date:/gi, '');
+    const wordCount = countWords(transcriptionWithoutHeaders);
 
     // Safe time calculation for WPM
     const safeTime = timeTaken && timeTaken > 0 ? timeTaken : undefined;
