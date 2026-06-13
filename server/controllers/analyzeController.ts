@@ -248,7 +248,7 @@ After the report, append:
   "lineQuality": "2-sentence line quality observation",
   "lineFormation": "2-sentence letter formation observation",
   "mechanics": "2-sentence overall mechanics summary",
-  "spellingErrors": ${JSON.stringify(evidence.spellingErrors.map(e => `${e.written} (${e.intended}) - grade level: ${e.gradeLevel}`))},
+  "spellingErrors": ${JSON.stringify(evidence.spellingErrors.map(e => `${e.written} (${e.intended}) - ${e.gradeLevel || spellingGradeLevelLabel(scores.spelling, grade)}`))},
   "dysgraphiaIndicators": ${JSON.stringify(evidence.dsm5Traits || [])},
   "assessmentRecommendation": "${rtiImprovement ? 'A formal evaluation is NOT recommended at this time because the student has shown positive improvement with current interventions. Continued monitoring and support is recommended.' : 'Based on the evidence, a formal psycho-educational assessment is recommended.'}",
   "probabilityEstimate": "${probability} — cite domains impaired and evidence",
@@ -303,7 +303,16 @@ function stripSummaryBlock(reportText: string): string {
   return reportText.replace(/```json\s*[\s\S]*?\s*```/g, '').trim();
 }
 
+function spellingGradeLevelLabel(score: number, grade: string): string {
+  const gradeLabel = grade?.trim() || 'submitted grade';
+  if (score < 50) return `significantly below ${gradeLabel} expectation`;
+  if (score < 70) return `below ${gradeLabel} expectation`;
+  if (score < 85) return `near ${gradeLabel} expectation`;
+  return `at or above ${gradeLabel} expectation`;
+}
+
 function buildDeterministicSummary(params: {
+  grade: string;
   existingSummary: Record<string, any>;
   evidence: EvidenceData;
   scores: ReturnType<typeof calculateScoresWithNorm>;
@@ -314,12 +323,13 @@ function buildDeterministicSummary(params: {
   norm: { min: number; max: number };
 }): Record<string, any> {
   const {
-    existingSummary, evidence, scores, probability, rtiImprovement,
+    grade, existingSummary, evidence, scores, probability, rtiImprovement,
     spellingLabel, fluencyLabel, norm,
   } = params;
 
+  const fallbackGradeLevel = spellingGradeLevelLabel(scores.spelling, grade);
   const spellingErrors = evidence.spellingErrors.map(e =>
-    `${e.written} (${e.intended}) - grade level: ${e.gradeLevel}`
+    `${e.written} (${e.intended}) - ${e.gradeLevel && e.gradeLevel !== 'unknown' ? e.gradeLevel : fallbackGradeLevel}`
   );
 
   const impairedDomains = [
@@ -506,7 +516,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         const writtenLower = err.written?.toLowerCase();
         return !cancelledWordsLower.includes(writtenLower);
       })
-      .map((e: any) => ({ written: e.written, intended: e.intended, gradeLevel: e.gradeLevel || 'unknown' }));
+      .map((e: any) => ({ written: e.written, intended: e.intended, gradeLevel: e.gradeLevel || '' }));
 
     // Strip placeholder strings AI sometimes echoes from the prompt template
     const isPlaceholder = (s: string) =>
@@ -634,6 +644,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
 
     const rawReportText = step3.choices[0]?.message?.content || '';
     const deterministicSummary = buildDeterministicSummary({
+      grade: grade_p,
       existingSummary: parseSummaryBlock(rawReportText),
       evidence: evidenceData,
       scores,

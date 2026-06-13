@@ -78,6 +78,16 @@ import {
   VolumeX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+
+const getProbabilityDisplayLabel = (probabilityEstimate = '') => {
+  const label = probabilityEstimate.toUpperCase();
+  if (label.includes('MILD-MODERATE') || label.includes('NEEDS MONITORING')) {
+    return 'MILD-MODERATE';
+  }
+  if (label.includes('HIGH')) return 'HIGH';
+  if (label.includes('MODERATE')) return 'MODERATE';
+  return 'LOW';
+};
 import ReactMarkdown from 'react-markdown';
 import { analyzeHandwriting, AnalysisResult, InterventionHistory } from './services/gemini';
 
@@ -3906,7 +3916,7 @@ ${result.report}
                           <div className="space-y-3">
                             <div className="border border-red-350 rounded-sm overflow-hidden bg-[#FEF2F2]/30 shadow-xs">
                               <div className="bg-red-600 text-white px-3 py-1 font-bold uppercase tracking-wider text-[8pt]">
-                                PROBABILITY ESTIMATE: {result.summary.probabilityEstimate.toUpperCase().includes('HIGH') ? 'HIGH' : result.summary.probabilityEstimate.toUpperCase().includes('MODERATE') ? 'MODERATE' : 'LOW'}
+                                PROBABILITY ESTIMATE: {getProbabilityDisplayLabel(result.summary.probabilityEstimate)}
                               </div>
                               <div className="p-2.5 text-[8.5pt] text-gray-800 leading-relaxed">
                                 {result.summary.probabilityEstimate || "High probability of dysgraphia, based on spelling inaccuracies, downstream drift on unlined paper, and restrictive fluency."}

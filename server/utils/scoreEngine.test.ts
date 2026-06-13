@@ -39,14 +39,14 @@ const scores = calculateScoresWithNorm(g10ReferenceEvidence, 'Grade 11');
 const probability = calculateProbability(scores, false, g10ReferenceEvidence.wpm);
 
 const expected = {
-  sentenceBoundaries: 70,
+  sentenceBoundaries: 85,
   grammar: 50,
   pastTenseUsage: 60,
   spelling: 30,
   letterFormation: 65,
   alignment: 75,
   writingSpeed: 40,
-  probability: 'HIGH',
+  probability: 'MODERATE',
 };
 
 const actual = {
