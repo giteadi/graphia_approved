@@ -2,9 +2,7 @@ import React, { useState } from 'react';
 import { registerUser, loginUser, saveSession, AuthUser } from '../services/authService';
 import Navbar from "./Navbar";
 import { ArrowLeft } from "lucide-react";
-import ForgetPassword from './ForgetPassword';
-import VerifyOTP from './VerifyOTP';
-import ResetPassword from './ResetPassword';
+import { useNavigate } from 'react-router-dom';
 
 interface AuthPageProps {
   onAuth: (user: AuthUser, token: string) => void;
@@ -12,10 +10,8 @@ interface AuthPageProps {
 }
 
 export default function AuthPage({ onAuth, onBack }: AuthPageProps) {
+  const navigate = useNavigate();
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [passwordFlow, setPasswordFlow] = useState<'none' | 'forget' | 'verify' | 'reset'>('none');
-  const [resetEmail, setResetEmail] = useState('');
-  const [resetOtp, setResetOtp] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -166,7 +162,7 @@ export default function AuthPage({ onAuth, onBack }: AuthPageProps) {
           {mode === 'login' && (
             <p className="font-mono text-[10px] uppercase tracking-wider text-center mt-4 text-[#141414] opacity-60">
               <button
-                onClick={() => { setPasswordFlow('forget'); setError(null); }}
+                onClick={() => { navigate('/forget-password'); }}
                 className="underline opacity-100"
               >
                 Forget Password?
@@ -176,41 +172,6 @@ export default function AuthPage({ onAuth, onBack }: AuthPageProps) {
         </div>
         </div>
       </div>
-
-      {/* Password Reset Flow */}
-      {passwordFlow === 'forget' && (
-        <ForgetPassword
-          onBack={() => setPasswordFlow('none')}
-          onSuccess={(email) => {
-            setResetEmail(email);
-            setPasswordFlow('verify');
-          }}
-        />
-      )}
-
-      {passwordFlow === 'verify' && (
-        <VerifyOTP
-          email={resetEmail}
-          onBack={() => setPasswordFlow('forget')}
-          onSuccess={(otp) => {
-            setResetOtp(otp);
-            setPasswordFlow('reset');
-          }}
-        />
-      )}
-
-      {passwordFlow === 'reset' && (
-        <ResetPassword
-          email={resetEmail}
-          otp={resetOtp}
-          onBack={() => setPasswordFlow('verify')}
-          onSuccess={() => {
-            setPasswordFlow('none');
-            setMode('login');
-            setError(null);
-          }}
-        />
-      )}
     </div>
   );
 }

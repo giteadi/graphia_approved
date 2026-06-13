@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Calendar, Filter, ChevronDown, User, Mail, DollarSign, Clock, X, Loader2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { getUser } from '../services/authService';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Search, Calendar, Filter, ChevronDown, User, Mail, DollarSign, Clock, X, Loader2, LogOut, Shield } from 'lucide-react';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { getUser, clearSession } from '../services/authService';
 
 interface Payment {
   id: string;
@@ -16,29 +16,22 @@ interface Payment {
 }
 
 export default function AdminPanel() {
+  const user = getUser();
   const navigate = useNavigate();
+  
+  // Check if user is admin - redirect if not
+  if (!user || user.email !== 'admin@graphiacheck.in') {
+    return <Navigate to="/auth" replace />;
+  }
+
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [authChecking, setAuthChecking] = useState(true);
 
-  // Check if user is admin
-  useEffect(() => {
-    const user = getUser();
-    if (!user || user.email !== 'admin@graphiacheck.in') {
-      navigate('/auth');
-      return;
-    }
-    setAuthChecking(false);
+  const handleLogout = useCallback(() => {
+    clearSession();
+    navigate('/auth');
   }, [navigate]);
-
-  if (authChecking) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-      </div>
-    );
-  }
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -54,7 +47,7 @@ export default function AdminPanel() {
     fetchPayments();
   }, [debouncedSearch, selectedDate]);
 
-  const fetchPayments = async () => {
+  const fetchPayments = useCallback(async () => {
     setLoading(true);
     setError(null);
     
@@ -79,7 +72,7 @@ export default function AdminPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [debouncedSearch, selectedDate]);
 
   // Debounce search
   useEffect(() => {
@@ -102,16 +95,16 @@ export default function AdminPanel() {
     ).slice(0, 5);
   }, [searchTerm, userNames]);
 
-  const handleSuggestionClick = (name: string) => {
+  const handleSuggestionClick = useCallback((name: string) => {
     setSearchTerm(name);
     setShowSuggestions(false);
-  };
+  }, []);
 
-  const clearDateFilter = () => {
+  const clearDateFilter = useCallback(() => {
     setSelectedDate({ day: '', month: '', year: '' });
-  };
+  }, []);
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = useCallback((status: string) => {
     switch (status) {
       case 'completed':
         return 'bg-green-100 text-green-800';
@@ -122,15 +115,42 @@ export default function AdminPanel() {
       default:
         return 'bg-gray-100 text-gray-800';
     }
-  };
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Panel</h1>
-          <p className="text-gray-600">Manage payments and user data</p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Navbar */}
+      <nav className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                <Shield className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">Admin Panel</h1>
+                <p className="text-sm text-gray-500">Manage payments and user data</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-sm font-medium text-gray-900">{user.name}</p>
+                <p className="text-xs text-gray-500">{user.email}</p>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">Logout</span>
+              </button>
+            </div>
+          </div>
         </div>
+      </nav>
+
+      <div className="p-6">
+        <div className="max-w-7xl mx-auto">
 
         {/* Search and Filters */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
@@ -369,6 +389,7 @@ export default function AdminPanel() {
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

@@ -1,18 +1,24 @@
 import nodemailer from 'nodemailer';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD || 'lgbtnnfvbupkfssd';
 const EMAIL_USER = process.env.EMAIL_USER || 'graphiacheck@gmail.com';
 
-// Create transporter
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: EMAIL_USER,
-    pass: EMAIL_PASSWORD,
-  },
-});
+// Create transporter function (recreated each time to ensure fresh connection)
+function createTransporter() {
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: EMAIL_USER,
+      pass: EMAIL_PASSWORD,
+    },
+  });
+}
 
 export async function sendOTPEmail(email: string, otp: string): Promise<void> {
+  const transporter = createTransporter();
   const mailOptions = {
     from: EMAIL_USER,
     to: email,
@@ -36,6 +42,7 @@ export async function sendOTPEmail(email: string, otp: string): Promise<void> {
 }
 
 export async function sendWelcomeEmail(email: string, name: string): Promise<void> {
+  const transporter = createTransporter();
   const mailOptions = {
     from: EMAIL_USER,
     to: email,

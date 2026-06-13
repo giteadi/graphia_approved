@@ -4,7 +4,7 @@ import { Shield, ArrowLeft, Loader2 } from 'lucide-react';
 interface VerifyOTPProps {
   email: string;
   onBack: () => void;
-  onSuccess: () => void;
+  onSuccess: (otp: string) => void;
 }
 
 export default function VerifyOTP({ email, onBack, onSuccess }: VerifyOTPProps) {
@@ -38,7 +38,7 @@ export default function VerifyOTP({ email, onBack, onSuccess }: VerifyOTPProps) 
         throw new Error(data.error || 'Failed to verify OTP');
       }
 
-      onSuccess();
+      onSuccess(otp);
     } catch (err: any) {
       setError(err.message || 'Failed to verify OTP. Please try again.');
     } finally {

@@ -8,6 +8,7 @@ import TermsPage from './components/TermsPage.tsx';
 import PrivacyPage from './components/PrivacyPage.tsx';
 import RefundPage from './components/RefundPage.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
+import PasswordResetFlow from './components/PasswordResetFlow.tsx';
 import { getToken, getUser, clearSession, AuthUser } from './services/authService.ts';
 
 type Page = 'home' | 'about' | 'terms' | 'privacy' | 'refund' | 'auth' | 'app';
@@ -32,7 +33,12 @@ function RootContent() {
 
   function handleAuth(authUser: AuthUser, _token: string) {
     setUser(authUser);
-    navigate('/app');
+    // Redirect admin to admin panel, others to app
+    if (authUser.email === 'admin@graphiacheck.in') {
+      navigate('/admin');
+    } else {
+      navigate('/app');
+    }
   }
 
   function handleLogout() {
@@ -57,6 +63,7 @@ function RootContent() {
       <Route path="/privacy" element={<PrivacyPage onBack={() => navigate('/')} />} />
       <Route path="/refund" element={<RefundPage onBack={() => navigate('/')} />} />
       <Route path="/auth" element={<AuthPage onAuth={handleAuth} onBack={() => navigate('/')} />} />
+      <Route path="/forget-password" element={<PasswordResetFlow />} />
       <Route path="/app" element={user ? <App user={user} onLogout={handleLogout} /> : <Navigate to="/auth" />} />
       <Route path="/admin" element={<AdminPanel />} />
     </Routes>
