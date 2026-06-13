@@ -188,7 +188,7 @@ Write a clinical handwriting assessment report. Use ONLY the data supplied. You 
 
 ⚠ MANDATORY RULES:
 1. USE SUPPLIED SCORES EXACTLY — do not modify any score.
-2. PROBABILITY IS FIXED AT "${probability}" — do not change it.
+2. PROBABILITY IS FIXED AT "${probability}" — DO NOT change it. Use EXACTLY this string: "${probability}". Do NOT abbreviate, do NOT modify, do NOT add "NEEDS MONITORING" or any other text.
 3. RECOMMENDATION: ${rtiImprovement ? 'RTI improvement noted — do NOT recommend formal evaluation. Say monitoring is recommended.' : 'Base recommendation on evidence.'}
 4. Title: "Writing Assessment Report"
 5. Bold ONLY headings (**Heading**). No bullet symbols (* or -). Numbered lists or plain paragraphs.
@@ -349,7 +349,7 @@ function buildDeterministicSummary(params: {
     assessmentRecommendation: rtiImprovement
       ? 'A formal evaluation is NOT recommended at this time because the student has shown positive improvement with current interventions. Continued monitoring and support is recommended.'
       : (existingSummary.assessmentRecommendation || 'Based on the evidence, a formal psycho-educational assessment is recommended.'),
-    probabilityEstimate: `${probability} — ${impairedDomains.length ? `impaired domains include ${impairedDomains.join(', ')}` : 'few impaired domains were detected'}; WPM ${evidence.wpm} vs norm ${norm.min}-${norm.max}.`,
+    probabilityEstimate: probability,
     spellingScore: `${spellingLabel} — ${spellingErrors.length} spelling error${spellingErrors.length === 1 ? '' : 's'} detected.`,
     academicDiscrepancy: existingSummary.academicDiscrepancy || 'The student\'s spelling performance appears below expected grade level based on this writing sample; however, comprehensive assessment across multiple tasks is recommended before determining the extent of academic discrepancy.',
     horizontalAnalysis: existingSummary.horizontalAnalysis || evidence.spacingObservations.join(' ') || 'Horizontal spacing observations were limited in the extracted evidence.',
@@ -559,7 +559,8 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       .replace(/\d{1,2}:\d{2}\s*(?:am|pm)?/gi, '')
       .replace(/\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
       .replace(/Date:/gi, '');
-    const wordCount = countWords(transcriptionWithoutHeaders);
+    // Use AI extracted wordCount if available, otherwise calculate
+    const wordCount = extracted.wordCount > 0 ? extracted.wordCount : countWords(transcriptionWithoutHeaders);
 
     // Safe time calculation for WPM
     const safeTime = timeTaken && timeTaken > 0 ? timeTaken : undefined;
