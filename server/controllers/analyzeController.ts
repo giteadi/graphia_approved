@@ -60,7 +60,7 @@ looks like a normal word was intended.
 - BUT: wrong plural forms ("lifes"), missing letters, phonetic spellings, merged words, wrong tense forms — ALL must be flagged
 - Count EACH occurrence separately
 - If uncertain about a word, add to uncertainWords instead of spellingErrors
-- Provide confidence (0-100) and reason for each.
+- Provide confidence (0-100), reason for each, AND approximate grade level (e.g., "approx 2nd grade", "approx 4th grade", "approx 6th grade")
 - IMPORTANT: Do NOT flag words that appear in cancelledWords as spelling errors. Cancelled words should only appear in the cancelledWords list, not in spellingErrors.
 - IMPORTANT: "met" is a correctly spelled word - if used incorrectly as tense, flag as grammar/syntax error, NOT spelling error.
 
@@ -116,7 +116,7 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
   "uncertainWords": [{ "word": "ambiguous", "confidence": 45, "possibleAlternatives": ["alt1"] }],
 
   "spellingErrors": [
-    { "written": "gettogether", "intended": "get-together", "confidence": 95, "reason": "written as one word without hyphen" }
+    { "written": "gettogether", "intended": "get-together", "confidence": 95, "reason": "written as one word without hyphen", "gradeLevel": "approx 2nd grade" }
   ],
 
   "grammarMistakes": [
@@ -305,10 +305,17 @@ function stripSummaryBlock(reportText: string): string {
 
 function spellingGradeLevelLabel(score: number, grade: string): string {
   const gradeLabel = grade?.trim() || 'submitted grade';
-  if (score < 50) return `significantly below ${gradeLabel} expectation`;
-  if (score < 70) return `below ${gradeLabel} expectation`;
-  if (score < 85) return `near ${gradeLabel} expectation`;
-  return `at or above ${gradeLabel} expectation`;
+  if (score < 20) return `approx 1st grade`;
+  if (score < 30) return `approx 2nd grade`;
+  if (score < 40) return `approx 3rd grade`;
+  if (score < 50) return `approx 4th grade`;
+  if (score < 60) return `approx 5th grade`;
+  if (score < 70) return `approx 6th grade`;
+  if (score < 80) return `approx 7th grade`;
+  if (score < 85) return `approx 8th grade`;
+  if (score < 90) return `approx 9th grade`;
+  if (score < 95) return `approx 10th grade`;
+  return `approx 11th+ grade`;
 }
 
 function buildDeterministicSummary(params: {
