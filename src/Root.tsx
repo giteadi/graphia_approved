@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams, useNavigate } from 'react-router-dom';
 import App from './App.tsx';
 import AuthPage from './components/AuthPage.tsx';
 import HomePage from './components/HomePage.tsx';
@@ -6,42 +7,38 @@ import AboutPage from './components/AboutPage.tsx';
 import TermsPage from './components/TermsPage.tsx';
 import PrivacyPage from './components/PrivacyPage.tsx';
 import RefundPage from './components/RefundPage.tsx';
+import AdminPanel from './components/AdminPanel.tsx';
 import { getToken, getUser, clearSession, AuthUser } from './services/authService.ts';
 
 type Page = 'home' | 'about' | 'terms' | 'privacy' | 'refund' | 'auth' | 'app';
 
-export default function Root() {
+function RootContent() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [checked, setChecked] = useState(false);
-  const [currentPage, setCurrentPage] = useState<Page>('home');
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   // Check if this is a report-only tab
-  const isReportTab = new URLSearchParams(window.location.search).get('report') === '1';
-  
-  // Check if direct page access via URL parameter
-  const urlPage = new URLSearchParams(window.location.search).get('page');
+  const isReportTab = searchParams.get('report') === '1';
 
   useEffect(() => {
     const token = getToken();
     const savedUser = getUser();
     if (token && savedUser) {
       setUser(savedUser);
-      setCurrentPage('app');
-    } else if (urlPage && ['terms', 'privacy', 'refund', 'about'].includes(urlPage)) {
-      setCurrentPage(urlPage as Page);
     }
     setChecked(true);
   }, []);
 
   function handleAuth(authUser: AuthUser, _token: string) {
     setUser(authUser);
-    setCurrentPage('app');
+    navigate('/app');
   }
 
   function handleLogout() {
     clearSession();
     setUser(null);
-    setCurrentPage('home');
+    navigate('/');
   }
 
   if (!checked) return null;
@@ -52,61 +49,24 @@ export default function Root() {
     return <App user={fakeUser} onLogout={() => window.close()} reportTabMode={true} />;
   }
 
-  // Home page
-  if (currentPage === 'home') {
-    return (
-      <HomePage 
-        onGetStarted={() => setCurrentPage('auth')} 
-        onAbout={() => setCurrentPage('about')}
-        onTerms={() => setCurrentPage('terms')}
-        onPrivacy={() => setCurrentPage('privacy')}
-        onRefund={() => setCurrentPage('refund')}
-      />
-    );
-  }
-
-  // About page
-  if (currentPage === 'about') {
-    return (
-      <AboutPage 
-        onBack={() => setCurrentPage('home')}
-        onTerms={() => setCurrentPage('terms')}
-        onPrivacy={() => setCurrentPage('privacy')}
-        onRefund={() => setCurrentPage('refund')}
-      />
-    );
-  }
-
-  // Terms & Conditions page
-  if (currentPage === 'terms') {
-    return <TermsPage onBack={() => setCurrentPage('home')} />;
-  }
-
-  // Privacy Policy page
-  if (currentPage === 'privacy') {
-    return <PrivacyPage onBack={() => setCurrentPage('home')} />;
-  }
-
-  // Refund & Cancellation Policy page
-  if (currentPage === 'refund') {
-    return <RefundPage onBack={() => setCurrentPage('home')} />;
-  }
-
-  // Auth page
-  if (currentPage === 'auth' && !user) {
-    return <AuthPage onAuth={handleAuth} />;
-  }
-
-  // Main app
-  if (user) {
-    return <App user={user} onLogout={handleLogout} />;
-  }
-
-  // Fallback to home
   return (
-    <HomePage 
-      onGetStarted={() => setCurrentPage('auth')} 
-      onAbout={() => setCurrentPage('about')}
-    />
+    <Routes>
+      <Route path="/" element={<HomePage onGetStarted={() => navigate('/auth')} onAbout={() => navigate('/about')} onTerms={() => navigate('/terms')} onPrivacy={() => navigate('/privacy')} onRefund={() => navigate('/refund')} />} />
+      <Route path="/about" element={<AboutPage onBack={() => navigate('/')} onTerms={() => navigate('/terms')} onPrivacy={() => navigate('/privacy')} onRefund={() => navigate('/refund')} />} />
+      <Route path="/terms" element={<TermsPage onBack={() => navigate('/')} />} />
+      <Route path="/privacy" element={<PrivacyPage onBack={() => navigate('/')} />} />
+      <Route path="/refund" element={<RefundPage onBack={() => navigate('/')} />} />
+      <Route path="/auth" element={<AuthPage onAuth={handleAuth} onBack={() => navigate('/')} />} />
+      <Route path="/app" element={user ? <App user={user} onLogout={handleLogout} /> : <Navigate to="/auth" />} />
+      <Route path="/admin" element={<AdminPanel />} />
+    </Routes>
+  );
+}
+
+export default function Root() {
+  return (
+    <BrowserRouter>
+      <RootContent />
+    </BrowserRouter>
   );
 }

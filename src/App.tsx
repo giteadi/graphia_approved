@@ -55,6 +55,7 @@ import {
   FolderOpen,
   Trash2,
   ArrowRight,
+  ArrowLeft,
   Calendar,
   Mic,
   Video,
@@ -2691,6 +2692,13 @@ ${result.report}
           </h1>
         </div>
         <div className="flex items-center gap-4">
+          <button
+            onClick={onLogout}
+            className="flex items-center gap-2 px-3 py-1.5 text-[11px] font-mono uppercase tracking-widest border border-[#141414] hover:bg-[#141414] hover:text-[#E4E3E0] transition-all"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </button>
           <button
             onClick={() => setShowSavedReports(true)}
             className="flex items-center gap-2 px-3 py-1.5 text-[11px] font-mono uppercase tracking-widest border border-[#141414] hover:bg-[#141414] hover:text-[#E4E3E0] transition-all"

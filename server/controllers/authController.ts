@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query } from '../config/db.js';
+import { sendWelcomeEmail } from '../config/email.js';
 
 const JWT_SECRET = 'graphia_jwt_super_secret_2024';
 const JWT_EXPIRES = '36500d'; // 100 years — effectively permanent
@@ -34,6 +35,15 @@ export async function register(req: Request, res: Response): Promise<void> {
 
     const userId = (result as any).insertId;
     const token = jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+
+    // Send welcome email
+    try {
+      await sendWelcomeEmail(email, name);
+      console.log(`[Auth] Welcome email sent to: ${email}`);
+    } catch (emailError) {
+      console.error('[Auth] Failed to send welcome email:', emailError);
+      // Don't fail registration if email fails
+    }
 
     console.log(`[Auth] Registered: ${email}`);
     res.status(201).json({

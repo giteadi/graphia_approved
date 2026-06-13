@@ -10,22 +10,22 @@ export default function PrivacyPage({ onBack }: PrivacyPageProps) {
     <div className="min-h-screen bg-[#E4E3E0] text-[#141414]">
       {/* Header */}
       <header className="border-b-2 border-[#141414] bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#141414] flex items-center justify-center">
-              <Activity className="w-6 h-6 text-[#E4E3E0]" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-shrink">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-[#141414] flex items-center justify-center flex-shrink-0">
+              <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-[#E4E3E0]" />
             </div>
-            <div>
-              <h1 className="font-bold text-xl tracking-tight">GraphiaCheck</h1>
-              <p className="text-[8px] font-mono uppercase tracking-widest opacity-60">Privacy Policy</p>
+            <div className="min-w-0">
+              <h1 className="font-bold text-base sm:text-xl tracking-tight truncate">GraphiaCheck</h1>
+              <p className="text-[7px] sm:text-[8px] font-mono uppercase tracking-widest opacity-60 truncate">Privacy Policy</p>
             </div>
           </div>
           
           <button 
             onClick={onBack}
-            className="border-2 border-[#141414] px-6 py-2 font-mono text-xs uppercase tracking-widest hover:bg-[#141414] hover:text-[#E4E3E0] transition-all flex items-center gap-2"
+            className="border-2 border-[#141414] px-3 py-1.5 sm:px-6 sm:py-2 font-mono text-[10px] sm:text-xs uppercase tracking-widest hover:bg-[#141414] hover:text-[#E4E3E0] transition-all flex items-center gap-1 sm:gap-2 whitespace-nowrap flex-shrink-0"
           >
-            <ArrowLeft className="w-4 h-4" /> Back
+            <ArrowLeft className="w-3 h-3 sm:w-4 sm:h-4" /> Back
           </button>
         </div>
       </header>

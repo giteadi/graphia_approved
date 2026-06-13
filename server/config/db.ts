@@ -1,4 +1,5 @@
 import mysql, { PoolConnection } from 'mysql2/promise';
+import bcrypt from 'bcryptjs';
 
 // Hardcoded production DB config — env override not used on server
 const DB_CONFIG = {
@@ -84,6 +85,32 @@ export async function initDB() {
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )
       `);
+
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS payments (
+          id              INT AUTO_INCREMENT PRIMARY KEY,
+          user_id         INT NOT NULL,
+          amount          DECIMAL(10, 2) NOT NULL,
+          currency        VARCHAR(10) DEFAULT 'USD',
+          status          ENUM('completed', 'pending', 'failed') DEFAULT 'pending',
+          payment_method  VARCHAR(50),
+          description     TEXT,
+          payment_date    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+      `);
+
+      // Create admin user if not exists
+      const adminExists = await query('SELECT id FROM users WHERE email = ?', ['admin@graphiacheck.in']);
+      if (adminExists.length === 0) {
+        const adminPassword = await bcrypt.hash('Admin@123', 10);
+        await conn.execute(
+          'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
+          ['Admin', 'admin@graphiacheck.in', adminPassword]
+        );
+        console.log('[DB] Admin user created ✓');
+      }
 
       console.log('[DB] Tables ready ✓');
       break;

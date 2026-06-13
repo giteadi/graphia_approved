@@ -1,367 +1,190 @@
-import { motion } from 'motion/react';
-import { 
-  Activity, 
-  Brain, 
-  Heart, 
-  Target, 
-  Users,
-  Award,
-  Zap,
-  Shield,
-  BookOpen,
-  TrendingUp,
-  ArrowLeft,
-  Mail,
-  Globe
-} from 'lucide-react';
+import Navbar from "./Navbar";
 
 interface AboutPageProps {
   onBack: () => void;
+  onAbout?: () => void;
   onTerms?: () => void;
   onPrivacy?: () => void;
   onRefund?: () => void;
 }
 
-export default function AboutPage({ onBack, onTerms, onPrivacy, onRefund }: AboutPageProps) {
+export default function AboutPage({ onBack, onAbout, onTerms, onPrivacy, onRefund }: AboutPageProps) {
   return (
-    <div className="min-h-screen bg-[#E4E3E0] text-[#141414]">
-      {/* Header/Navbar */}
-      <header className="border-b-2 border-[#141414] bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#141414] flex items-center justify-center">
-              <Activity className="w-6 h-6 text-[#E4E3E0]" />
+    <div style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }} className="min-h-screen bg-[#F5F0E8] text-[#1a1a2e]">
+
+      {/* ── NAVBAR ── */}
+      <Navbar
+        showBack
+        onGetStarted={onBack}
+        onAbout={onAbout}
+      />
+
+      {/* ── HERO ── */}
+      <section className="max-w-6xl mx-auto px-6 py-20">
+        <p className="text-xs uppercase tracking-widest text-[#777] mb-4 font-semibold" style={{ fontFamily: "system-ui, sans-serif" }}>
+          About
+        </p>
+        <h1 className="text-5xl lg:text-6xl font-bold leading-tight text-[#1a1a2e] mb-6 max-w-3xl">
+          Handwriting is the earliest visible signal of how a learner thinks.
+        </h1>
+        <p className="text-lg text-[#555] leading-relaxed max-w-2xl" style={{ fontFamily: "system-ui, sans-serif" }}>
+          GraphiaCheck was built to give educators, clinicians, and learning specialists a structural, repeatable way to read that signal — without subjectivity, and across the full span of school years.
+        </p>
+      </section>
+
+      {/* ── OUR MISSION ── */}
+      <section className="bg-[#ece7dd] py-20">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div className="rounded-2xl overflow-hidden h-72 bg-[#d8d0c4]">
+              <img
+                src="https://images.unsplash.com/photo-1452421822248-d4c2b47f0c81?w=800&q=80"
+                alt="Handwriting close-up"
+                className="w-full h-full object-cover"
+              />
             </div>
             <div>
-              <h1 className="font-bold text-xl tracking-tight">GraphiaCheck</h1>
-              <p className="text-[8px] font-mono uppercase tracking-widest opacity-60">Clinical Handwriting Analysis</p>
+              <p className="text-xs uppercase tracking-widest text-[#e07a3a] mb-3 font-semibold" style={{ fontFamily: "system-ui, sans-serif" }}>
+                Our Mission
+              </p>
+              <h2 className="text-4xl font-bold text-[#1a1a2e] mb-5">Earlier signal. Better support.</h2>
+              <p className="text-[#555] leading-relaxed mb-4 text-sm" style={{ fontFamily: "system-ui, sans-serif" }}>
+                Dyslexia and dysgraphia are often identified late — sometimes years after a child has begun to compensate, hide, or disengage.
+                GraphiaCheck shortens that gap by turning a single handwriting sample into a structured screening that can be reviewed, repeated, and tracked over time.
+              </p>
+              <p className="text-[#555] text-sm" style={{ fontFamily: "system-ui, sans-serif" }}>
+                We don't replace specialists. We help them see more, sooner.
+              </p>
             </div>
           </div>
-          
-          <button 
-            onClick={onBack}
-            className="border-2 border-[#141414] px-6 py-2 font-mono text-xs uppercase tracking-widest hover:bg-[#141414] hover:text-[#E4E3E0] transition-all flex items-center gap-2"
-          >
-            <ArrowLeft className="w-4 h-4" /> Back to Home
-          </button>
         </div>
-      </header>
+      </section>
 
-      {/* Hero Section */}
-      <section className="max-w-7xl mx-auto px-6 py-20">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="text-center max-w-4xl mx-auto mb-20"
-        >
-          <div className="inline-block bg-blue-100 border border-blue-600 px-4 py-1 mb-6">
-            <span className="text-blue-600 font-mono text-xs uppercase tracking-widest">
-              About GraphiaCheck
-            </span>
-          </div>
-          
-          <h1 className="text-5xl lg:text-6xl font-bold leading-tight mb-6">
-            Empowering Educators with AI-Driven Clinical Assessment
-          </h1>
-          
-          <p className="text-xl text-gray-600 leading-relaxed">
-            GraphiaCheck is a cutting-edge AI-powered platform designed to help educators, therapists, 
-            and specialists quickly and accurately screen for dysgraphia and dyslexia through handwriting analysis.
+      {/* ── WHAT GRAPHIACHECK MEASURES ── */}
+      <section className="py-20">
+        <div className="max-w-6xl mx-auto px-6">
+          <p className="text-xs uppercase tracking-widest text-[#777] mb-3 font-semibold" style={{ fontFamily: "system-ui, sans-serif" }}>
+            What GraphiaCheck Measures
           </p>
-        </motion.div>
+          <h2 className="text-4xl font-bold text-[#1a1a2e] mb-12">Five structural dimensions, one calibrated model.</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {[
+              { title: 'Letter formation', desc: 'Closure, proportion, reversals, and stroke order — modeled against age-typical baselines.' },
+              { title: 'Spacing & alignment', desc: 'Inter-letter and inter-word spacing, baseline drift, and margin behavior across the page.' },
+              { title: 'Slant consistency', desc: 'Angular variance per letter and across the sample — a signal of motor control and planning.' },
+              { title: 'Pressure & weight', desc: 'Stroke darkness and stroke width inferred from a high-clarity capture.' },
+              { title: 'Fluency & cadence', desc: 'Connected vs. broken strokes, hesitations, retraces, and corrective marks.' },
+              { title: 'Grade-normed scoring', desc: "Every dimension is interpreted against the calibrated range for the student's grade — from Grade 1 to the 15th Year." },
+            ].map(({ title, desc }) => (
+              <div key={title} className="bg-white rounded-xl p-6 border border-[#e8e0d0] shadow-sm">
+                <h3 className="font-bold text-[#1a1a2e] mb-3">{title}</h3>
+                <p className="text-sm text-[#666] leading-relaxed" style={{ fontFamily: "system-ui, sans-serif" }}>{desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
-        {/* Mission & Vision */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-20">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="border-2 border-[#141414] p-8 bg-white"
-          >
-            <Target className="w-12 h-12 mb-4 text-blue-600" />
-            <h2 className="text-3xl font-bold mb-4">Our Mission</h2>
-            <p className="text-gray-600 leading-relaxed">
-              To make professional-grade dysgraphia and dyslexia screening accessible to every educator, 
-              therapist, and specialist worldwide. We believe early identification and intervention can 
-              transform a student's educational journey.
+      {/* ── HOW THE MODEL WORKS ── */}
+      <section className="bg-[#ece7dd] py-20">
+        <div className="max-w-6xl mx-auto px-6">
+          <p className="text-xs uppercase tracking-widest text-[#777] mb-3 font-semibold" style={{ fontFamily: "system-ui, sans-serif" }}>
+            The Model
+          </p>
+          <h2 className="text-4xl font-bold text-[#1a1a2e] mb-6">Built on structure, not style.</h2>
+          <p className="text-[#555] max-w-2xl leading-relaxed mb-12 text-sm" style={{ fontFamily: "system-ui, sans-serif" }}>
+            GraphiaCheck doesn't compare handwriting samples to a "good" or "bad" standard. It measures structural features against calibrated norms for each grade band — separating developmental variation from indicators that warrant closer review.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {[
+              { step: '01', title: 'Structural extraction', desc: 'The model identifies strokes, spacing units, and letterforms from the raw image.' },
+              { step: '02', title: 'Norm comparison', desc: 'Each dimension is measured against grade-band norms, not a universal ideal.' },
+              { step: '03', title: 'Indicator output', desc: 'The screening returns a structured breakdown — not a diagnosis, but a readable signal.' },
+            ].map(({ step, title, desc }) => (
+              <div key={step} className="bg-white rounded-xl p-6 border border-[#e8e0d0] shadow-sm">
+                <p className="text-3xl font-bold text-[#e0d9ce] mb-4">{step}</p>
+                <h3 className="font-bold text-[#1a1a2e] mb-3">{title}</h3>
+                <p className="text-sm text-[#666] leading-relaxed" style={{ fontFamily: "system-ui, sans-serif" }}>{desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── IMPORTANT LIMITS ── */}
+      <section className="py-20">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="bg-white border border-[#e8e0d0] rounded-2xl p-12 shadow-sm">
+            <p className="text-xs uppercase tracking-widest text-[#e07a3a] mb-3 font-semibold" style={{ fontFamily: "system-ui, sans-serif" }}>
+              Important Limits
             </p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-            className="border-2 border-[#141414] p-8 bg-white"
-          >
-            <Heart className="w-12 h-12 mb-4 text-red-600" />
-            <h2 className="text-3xl font-bold mb-4">Our Vision</h2>
-            <p className="text-gray-600 leading-relaxed">
-              A world where every student with learning differences is identified early, supported 
-              comprehensively, and empowered to reach their full potential through evidence-based 
-              interventions and assistive technologies.
+            <h2 className="text-3xl font-bold text-[#1a1a2e] mb-5">A screening is not a diagnosis.</h2>
+            <p className="text-[#555] leading-relaxed max-w-2xl text-sm mb-6" style={{ fontFamily: "system-ui, sans-serif" }}>
+              GraphiaCheck identifies patterns that are structurally consistent with dysgraphia or dyslexia. It does not diagnose either condition.
+              A positive screening should lead to conversation with a qualified specialist — an educational psychologist, occupational therapist, or speech-language pathologist.
             </p>
-          </motion.div>
-        </div>
-
-        {/* The Story */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-          className="bg-white border-2 border-[#141414] p-12 mb-20"
-        >
-          <div className="max-w-3xl mx-auto">
-            <h2 className="text-4xl font-bold mb-6 text-center">Our Story</h2>
-            <div className="space-y-4 text-gray-600 leading-relaxed text-lg">
-              <p>
-                GraphiaCheck was born from a simple observation: while learning specialists and educational 
-                psychologists have deep expertise in identifying dysgraphia and dyslexia, the traditional 
-                assessment process is time-consuming, expensive, and often inaccessible to families who need it most.
-              </p>
-              <p>
-                Our founding team—comprising special educators, machine learning engineers, and clinical 
-                psychologists—spent years studying handwriting patterns, spelling error profiles, and motor 
-                coordination indicators across thousands of student samples from Grade 1 through college.
-              </p>
-              <p>
-                The result is GraphiaCheck: an AI engine that can analyze handwriting with clinical accuracy, 
-                generate comprehensive diagnostic reports in minutes, and provide actionable intervention 
-                strategies—all while remaining accessible to educators and specialists worldwide.
-              </p>
-              <p className="font-semibold text-[#141414] pt-4">
-                Today, GraphiaCheck is trusted by educators, occupational therapists, and learning specialists 
-                across multiple countries to help identify students who may benefit from targeted support and intervention.
-              </p>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* What Makes Us Different */}
-        <div className="mb-20">
-          <h2 className="text-4xl font-bold text-center mb-12">What Makes Us Different</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="border-2 border-[#141414] p-6 bg-white">
-              <Brain className="w-10 h-10 mb-4 text-purple-600" />
-              <h3 className="text-xl font-bold mb-3">Clinical-Grade AI</h3>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                Our AI models are trained on real clinical data and validated against established 
-                diagnostic criteria. Not just pattern recognition—true clinical assessment.
-              </p>
-            </div>
-
-            <div className="border-2 border-[#141414] p-6 bg-white">
-              <BookOpen className="w-10 h-10 mb-4 text-green-600" />
-              <h3 className="text-xl font-bold mb-3">Comprehensive Reports</h3>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                4-page clinical reports with visual analytics, spelling error analysis, benchmark 
-                comparisons, and specific intervention recommendations for parents and educators.
-              </p>
-            </div>
-
-            <div className="border-2 border-[#141414] p-6 bg-white">
-              <Zap className="w-10 h-10 mb-4 text-yellow-600" />
-              <h3 className="text-xl font-bold mb-3">Lightning Fast</h3>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                What used to take hours of manual analysis now takes less than 2 minutes. 
-                Spend less time on assessment, more time on intervention.
-              </p>
-            </div>
-
-            <div className="border-2 border-[#141414] p-6 bg-white">
-              <Shield className="w-10 h-10 mb-4 text-blue-600" />
-              <h3 className="text-xl font-bold mb-3">Privacy First</h3>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                Student data is encrypted, never shared with third parties, and can be permanently 
-                deleted at any time. FERPA and COPPA compliant.
-              </p>
-            </div>
-
-            <div className="border-2 border-[#141414] p-6 bg-white">
-              <Users className="w-10 h-10 mb-4 text-indigo-600" />
-              <h3 className="text-xl font-bold mb-3">Multi-Stakeholder</h3>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                Reports designed for teachers, parents, OTs, educational psychologists, and 
-                pediatricians—clear, actionable, and jargon-free.
-              </p>
-            </div>
-
-            <div className="border-2 border-[#141414] p-6 bg-white">
-              <TrendingUp className="w-10 h-10 mb-4 text-red-600" />
-              <h3 className="text-xl font-bold mb-3">Progress Tracking</h3>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                Save reports, track interventions, and monitor improvement over time. 
-                Data-driven decision making for better student outcomes.
-              </p>
-            </div>
+            <p className="text-[#555] leading-relaxed max-w-2xl text-sm" style={{ fontFamily: "system-ui, sans-serif" }}>
+              GraphiaCheck is a tool for professionals. Results should always be interpreted in context, with knowledge of the student and their history.
+            </p>
           </div>
         </div>
+      </section>
 
-        {/* Core Values */}
-        <div className="bg-[#141414] text-[#E4E3E0] border-4 border-[#141414] p-12 mb-20">
-          <h2 className="text-4xl font-bold text-center mb-12">Our Core Values</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-[#E4E3E0] text-[#141414] rounded-full flex items-center justify-center mx-auto mb-4">
-                <Award className="w-8 h-8" />
-              </div>
-              <h3 className="font-bold text-lg mb-2 uppercase tracking-wider">Excellence</h3>
-              <p className="text-sm opacity-80">
-                Clinical accuracy and research-backed methodology in everything we build.
-              </p>
-            </div>
-
-            <div className="text-center">
-              <div className="w-16 h-16 bg-[#E4E3E0] text-[#141414] rounded-full flex items-center justify-center mx-auto mb-4">
-                <Heart className="w-8 h-8" />
-              </div>
-              <h3 className="font-bold text-lg mb-2 uppercase tracking-wider">Compassion</h3>
-              <p className="text-sm opacity-80">
-                Every student deserves support, understanding, and the tools to succeed.
-              </p>
-            </div>
-
-            <div className="text-center">
-              <div className="w-16 h-16 bg-[#E4E3E0] text-[#141414] rounded-full flex items-center justify-center mx-auto mb-4">
-                <Globe className="w-8 h-8" />
-              </div>
-              <h3 className="font-bold text-lg mb-2 uppercase tracking-wider">Accessibility</h3>
-              <p className="text-sm opacity-80">
-                Professional-grade assessment should be available to everyone, everywhere.
-              </p>
-            </div>
-
-            <div className="text-center">
-              <div className="w-16 h-16 bg-[#E4E3E0] text-[#141414] rounded-full flex items-center justify-center mx-auto mb-4">
-                <Shield className="w-8 h-8" />
-              </div>
-              <h3 className="font-bold text-lg mb-2 uppercase tracking-wider">Integrity</h3>
-              <p className="text-sm opacity-80">
-                Transparent methodology, ethical AI, and unwavering commitment to privacy.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Team Section */}
-        <div className="text-center mb-20">
-          <h2 className="text-4xl font-bold mb-6">Built by Experts</h2>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-12">
-            Our multidisciplinary team combines expertise in special education, clinical psychology, 
-            machine learning, and user experience design to create the most comprehensive handwriting 
-            assessment platform available.
+      {/* ── CTA ── */}
+      <section className="bg-[#ece7dd] py-20">
+        <div className="max-w-6xl mx-auto px-6 text-center">
+          <h2 className="text-4xl font-bold text-[#1a1a2e] mb-4">Ready to run a screening?</h2>
+          <p className="text-[#666] mb-8 max-w-xl mx-auto text-sm" style={{ fontFamily: "system-ui, sans-serif" }}>
+            Upload a handwriting sample and receive a full structural breakdown in under a minute.
           </p>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            <div className="border-2 border-[#141414] p-6 bg-white">
-              <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <BookOpen className="w-10 h-10 text-blue-600" />
-              </div>
-              <h3 className="font-bold text-lg mb-2">Special Educators</h3>
-              <p className="text-sm text-gray-600">
-                M.Ed., Learning Disabilities specialists with 10+ years clinical experience
-              </p>
-            </div>
-
-            <div className="border-2 border-[#141414] p-6 bg-white">
-              <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Brain className="w-10 h-10 text-purple-600" />
-              </div>
-              <h3 className="font-bold text-lg mb-2">AI Engineers</h3>
-              <p className="text-sm text-gray-600">
-                Ph.D. researchers in computer vision, NLP, and clinical machine learning
-              </p>
-            </div>
-
-            <div className="border-2 border-[#141414] p-6 bg-white">
-              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Users className="w-10 h-10 text-green-600" />
-              </div>
-              <h3 className="font-bold text-lg mb-2">Clinical Psychologists</h3>
-              <p className="text-sm text-gray-600">
-                Licensed psychologists specializing in educational assessment and intervention
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* CTA Section */}
-        <div className="bg-blue-600 text-white border-4 border-[#141414] p-12 text-center">
-          <h2 className="text-4xl font-bold mb-6">Ready to Get Started?</h2>
-          <p className="text-xl mb-8 opacity-90 max-w-2xl mx-auto">
-            Join educators and specialists worldwide who trust GraphiaCheck for clinical-grade 
-            handwriting assessment. Start your first analysis today—completely free.
-          </p>
-          <button 
+          <button
             onClick={onBack}
-            className="bg-[#141414] text-[#E4E3E0] px-10 py-5 font-bold text-lg uppercase tracking-widest hover:bg-[#2a2a2a] transition-all inline-flex items-center gap-3"
+            className="bg-[#1a5c6b] text-white px-8 py-3.5 rounded-sm font-semibold hover:bg-[#154f5c] transition-colors text-sm"
+            style={{ fontFamily: "system-ui, sans-serif" }}
           >
-            Start Free Analysis
+            Go to GraphiaCheck
           </button>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-[#141414] text-[#E4E3E0] border-t-4 border-[#E4E3E0]">
-        <div className="max-w-7xl mx-auto px-6 py-12">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
-            <div>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-[#E4E3E0] flex items-center justify-center">
-                  <Activity className="w-6 h-6 text-[#141414]" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg">GraphiaCheck</h3>
-                  <p className="text-xs font-mono uppercase tracking-wider opacity-60">Clinical Analysis</p>
-                </div>
+      {/* ── DISCLAIMER ── */}
+      <section className="py-12">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="border border-[#c8b89a] bg-[#fdf8f0] rounded-xl p-8">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 mt-0.5">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M10 2L2 17h16L10 2z" stroke="#b45309" strokeWidth="1.5" strokeLinejoin="round" fill="none"/>
+                  <path d="M10 8v4M10 14.5v.5" stroke="#b45309" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
               </div>
-              <p className="text-sm opacity-80 leading-relaxed">
-                AI-powered handwriting analysis for clinical-grade dysgraphia and dyslexia screening.
-              </p>
-            </div>
-
-            <div>
-              <h4 className="font-bold mb-4 uppercase tracking-wider text-sm">Product</h4>
-              <ul className="space-y-2 text-sm opacity-80">
-                <li><button onClick={onBack} className="hover:opacity-100 transition-opacity">Start Analysis</button></li>
-                <li><a href="#" className="hover:opacity-100 transition-opacity">Features</a></li>
-                <li><a href="#" className="hover:opacity-100 transition-opacity">Pricing</a></li>
-                <li><a href="#" className="hover:opacity-100 transition-opacity">Demo</a></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-bold mb-4 uppercase tracking-wider text-sm">Support</h4>
-              <ul className="space-y-2 text-sm opacity-80">
-                <li><a href="#" className="hover:opacity-100 transition-opacity">Documentation</a></li>
-                <li><a href="#" className="hover:opacity-100 transition-opacity">Help Center</a></li>
-                <li><a href="mailto:support@graphiacheck.in" className="hover:opacity-100 transition-opacity">Contact Us</a></li>
-                <li><a href="#" className="hover:opacity-100 transition-opacity">FAQs</a></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-bold mb-4 uppercase tracking-wider text-sm">Legal</h4>
-              <ul className="space-y-2 text-sm opacity-80">
-                <li><button onClick={onPrivacy} className="hover:opacity-100 transition-opacity text-left">Privacy Policy</button></li>
-                <li><button onClick={onTerms} className="hover:opacity-100 transition-opacity text-left">Terms of Service</button></li>
-                <li><button onClick={onRefund} className="hover:opacity-100 transition-opacity text-left">Refund Policy</button></li>
-                <li><a href="#" className="hover:opacity-100 transition-opacity">Data Security</a></li>
-              </ul>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-[#b45309] mb-3" style={{ fontFamily: "system-ui, sans-serif" }}>
+                  Disclaimer
+                </p>
+                <p className="text-xs text-[#6b5c45] leading-relaxed" style={{ fontFamily: "system-ui, sans-serif" }}>
+                  This report was generated using an AI-powered tool that analyzes handwriting samples for characteristics associated with dysgraphia.
+                  Please note that the handwriting samples submitted for analysis must be sufficiently legible for the AI-powered tool to process and generate an accurate report.
+                  Illegible or unclear samples may affect the quality and reliability of the findings.
+                  Before being shared, the AI-generated findings in this report were carefully reviewed and vetted by a Special Educator (Learning Disabilities Specialist)
+                  to ensure accuracy, clinical relevance, and appropriateness.
+                </p>
+              </div>
             </div>
           </div>
+        </div>
+      </section>
 
-          <div className="border-t border-[#E4E3E0]/20 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-sm opacity-60 font-mono">
-              © 2026 GraphiaCheck. All rights reserved.
-            </p>
-            <div className="flex items-center gap-6">
-              <a href="mailto:support@graphiacheck.in" className="flex items-center gap-2 text-sm opacity-60 hover:opacity-100 transition-opacity">
-                <Mail className="w-4 h-4" /> support@graphiacheck.in
-              </a>
-            </div>
+      {/* ── FOOTER ── */}
+      <footer className="bg-[#ece7dd] border-t border-[#d8d0c4] py-8">
+        <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
+          <p className="text-xs text-[#888]" style={{ fontFamily: "system-ui, sans-serif" }}>
+            © 2026 GraphiaCheck Demo. A clinical handwriting screening tool for educators and specialists.
+          </p>
+          <div className="flex gap-6 text-xs text-[#888]" style={{ fontFamily: "system-ui, sans-serif" }}>
+            <button onClick={onPrivacy} className="hover:text-[#1a3a4a] transition-colors">Privacy</button>
+            <button onClick={onTerms} className="hover:text-[#1a3a4a] transition-colors">Terms</button>
+            <button onClick={onRefund} className="hover:text-[#1a3a4a] transition-colors">Refund</button>
           </div>
         </div>
       </footer>

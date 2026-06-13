@@ -3,6 +3,8 @@ import cors from 'cors';
 import authRoutes from './routes/authRoutes.js';
 import analyzeRoutes from './routes/analyzeRoutes.js';
 import modelsRoute from './routes/modelsRoute.js';
+import adminRoutes from './routes/adminRoutes.js';
+import passwordRoutes from './routes/passwordRoutes.js';
 
 const app = express();
 
@@ -36,5 +38,7 @@ app.get('/health', (_req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api', analyzeRoutes);
 app.use('/api', modelsRoute);
+app.use('/api/admin', adminRoutes);
+app.use('/api/password', passwordRoutes);
 
 export default app;
