@@ -3,13 +3,14 @@ import Navbar from "./Navbar";
 
 interface HomePageProps {
   onGetStarted: () => void;
+  onHome: () => void;
   onAbout: () => void;
   onTerms?: () => void;
   onPrivacy?: () => void;
   onRefund?: () => void;
 }
 
-export default function HomePage({ onGetStarted, onAbout, onTerms, onPrivacy, onRefund }: HomePageProps) {
+export default function HomePage({ onGetStarted, onHome, onAbout, onTerms, onPrivacy, onRefund }: HomePageProps) {
   return (
     <div style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }} className="min-h-screen bg-[#F5F0E8] text-[#1a1a2e]">
 
@@ -17,6 +18,7 @@ export default function HomePage({ onGetStarted, onAbout, onTerms, onPrivacy, on
       <Navbar
         showBack={false}
         onGetStarted={onGetStarted}
+        onHome={onHome}
         onAbout={onAbout}
       />
 
@@ -50,7 +52,7 @@ export default function HomePage({ onGetStarted, onAbout, onTerms, onPrivacy, on
                 className="bg-[#1a5c6b] text-white px-8 py-3.5 rounded-sm font-semibold hover:bg-[#154f5c] transition-colors text-sm"
                 style={{ fontFamily: "system-ui, sans-serif" }}
               >
-                See how it works
+                Sign in to GraphiaCheck
               </button>
               <button
                 onClick={onAbout}

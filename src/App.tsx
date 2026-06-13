@@ -1556,9 +1556,6 @@ ${result.summary.spellingErrors.length > 0 ? result.summary.spellingErrors.map(e
 ---
 
 ## 3. CLINICAL INTERPRETATION
-### Assessment Recommendation
-${result.summary.assessmentRecommendation}
-
 ### SLD Probability Estimate
 ${result.summary.probabilityEstimate}
 
@@ -1662,7 +1659,6 @@ Age: ${chronologicalAge || 'Not specified'}
 Date: ${new Date().toLocaleDateString()}
 
 ASSESSMENT SUMMARY:
-Recommendation: ${result.summary.assessmentRecommendation}
 Probability Estimate: ${result.summary.probabilityEstimate}
 Basal Level: ${result.summary.basalLevel}
 Ceiling Level: ${result.summary.ceilingLevel}
@@ -1843,12 +1839,6 @@ ${result.report}
                     size: 24,
                     bold: true,
                   }),
-                ],
-              }),
-              new Paragraph({
-                children: [
-                  new TextRun({ text: `Recommendation: `, font: "Times New Roman", size: 22, bold: true }),
-                  new TextRun({ text: result.summary.assessmentRecommendation, font: "Times New Roman", size: 22 }),
                 ],
               }),
               new Paragraph({
@@ -3672,16 +3662,8 @@ ${result.report}
                           </div>
                         </div>
 
-                        {/* Recommendation and Probability — table style, no gap */}
-                        <div className="border border-gray-300 grid grid-cols-2 divide-x divide-gray-300">
-                          <div className="p-3 flex flex-col">
-                            <h4 className="text-[#B91C1C] font-bold text-[8pt] uppercase tracking-wider mb-1.5 font-sans border-b border-gray-200 pb-1">
-                              RECOMMENDATION
-                            </h4>
-                            <p className="text-[8.5pt] leading-relaxed text-gray-800 font-sans">
-                              {result.summary.assessmentRecommendation || "A formal Psycho-Educational Assessment is highly recommended because previous interventions have not resulted in improvement, indicating a need for specialized diagnostic insights."}
-                            </p>
-                          </div>
+                        {/* Probability — single column */}
+                        <div className="border border-gray-300">
                           <div className="p-3 flex flex-col">
                             <h4 className="text-[#B91C1C] font-bold text-[8pt] uppercase tracking-wider mb-1.5 font-sans border-b border-gray-200 pb-1">
                               PROBABILITY
@@ -3920,15 +3902,6 @@ ${result.report}
                             CLINICAL INTERPRETATION & NEXT STEPS
                           </h3>
                           <div className="space-y-3">
-                            <div className="border border-slate-300 rounded-sm overflow-hidden shadow-xs">
-                              <div className="bg-[#0C2340] text-white px-3 py-1 font-bold uppercase tracking-wider text-[8pt]">
-                                ASSESSMENT RECOMMENDATION
-                              </div>
-                              <div className="p-2.5 bg-white text-[8.5pt] text-gray-800 leading-relaxed">
-                                {result.summary.assessmentRecommendation || "A formal Psycho-Educational Assessment is highly recommended. Under the RTI model, because prior interventions have not resulted in improvement, standard classroom help is not sufficient."}
-                              </div>
-                            </div>
-
                             <div className="border border-red-350 rounded-sm overflow-hidden bg-[#FEF2F2]/30 shadow-xs">
                               <div className="bg-red-600 text-white px-3 py-1 font-bold uppercase tracking-wider text-[8pt]">
                                 PROBABILITY ESTIMATE: {result.summary.probabilityEstimate.toUpperCase().includes('HIGH') ? 'HIGH' : result.summary.probabilityEstimate.toUpperCase().includes('MODERATE') ? 'MODERATE' : 'LOW'}

@@ -57,6 +57,140 @@ export default function RefundPage({ onBack }: RefundPageProps) {
               <section>
                 <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
                   <CreditCard className="w-6 h-6" />
+                  1.1 Razorpay Payment Processing
+                </h2>
+                <p className="text-gray-700 leading-relaxed mb-3">
+                  GraphiaCheck uses Razorpay as its primary payment gateway for all transactions. Below is our Razorpay-specific refund policy:
+                </p>
+
+                <div className="bg-blue-50 border-l-4 border-blue-600 p-4 my-4">
+                  <p className="flex items-start gap-2 text-sm text-blue-900">
+                    <CheckCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                    <span><strong>Razorpay Refund Policy:</strong> All refunds are processed through Razorpay's secure payment gateway. Refund timelines depend on your payment method and bank processing times.</span>
+                  </p>
+                </div>
+
+                <h3 className="text-lg font-semibold mb-2 mt-4">1.1.1 Razorpay Refund Eligibility</h3>
+                <ul className="list-disc pl-6 text-gray-700 space-y-2">
+                  <li><strong>Successful Transactions:</strong> Refunds only for eligible cases as outlined in Sections 2 & 3</li>
+                  <li><strong>Failed Transactions:</strong> Amount automatically refunded by Razorpay within 5-7 business days</li>
+                  <li><strong>Pending Transactions:</strong> If payment is pending, no refund needed - transaction will expire</li>
+                  <li><strong>Duplicate Charges:</strong> Razorpay automatically flags duplicates for refund</li>
+                </ul>
+
+                <h3 className="text-lg font-semibold mb-2 mt-4">1.1.2 Razorpay Refund Process</h3>
+                <div className="bg-gray-50 border border-gray-300 p-6 rounded space-y-4">
+                  <div className="flex gap-4">
+                    <div className="w-8 h-8 bg-[#141414] text-[#E4E3E0] rounded-full flex items-center justify-center font-bold shrink-0">1</div>
+                    <div>
+                      <h4 className="font-semibold mb-1">Refund Initiation</h4>
+                      <p className="text-sm text-gray-700">GraphiaCheck initiates refund request through Razorpay dashboard upon approval</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4">
+                    <div className="w-8 h-8 bg-[#141414] text-[#E4E3E0] rounded-full flex items-center justify-center font-bold shrink-0">2</div>
+                    <div>
+                      <h4 className="font-semibold mb-1">Razorpay Processing</h4>
+                      <p className="text-sm text-gray-700">Razorpay processes refund and sends confirmation to your email</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4">
+                    <div className="w-8 h-8 bg-[#141414] text-[#E4E3E0] rounded-full flex items-center justify-center font-bold shrink-0">3</div>
+                    <div>
+                      <h4 className="font-semibold mb-1">Bank Settlement</h4>
+                      <p className="text-sm text-gray-700">Your bank processes the refund to your original payment method</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4">
+                    <div className="w-8 h-8 bg-[#141414] text-[#E4E3E0] rounded-full flex items-center justify-center font-bold shrink-0">4</div>
+                    <div>
+                      <h4 className="font-semibold mb-1">Credit to Account</h4>
+                      <p className="text-sm text-gray-700">Refund amount credited to your account (timeline varies by payment method)</p>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 className="text-lg font-semibold mb-2 mt-4">1.1.3 Razorpay Payment Method Refund Timelines</h3>
+                <table className="w-full border border-gray-300 text-sm mt-3">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="border border-gray-300 p-3 text-left font-semibold">Payment Method</th>
+                      <th className="border border-gray-300 p-3 text-left font-semibold">Razorpay Processing</th>
+                      <th className="border border-gray-300 p-3 text-left font-semibold">Bank Settlement</th>
+                      <th className="border border-gray-300 p-3 text-left font-semibold">Total Timeline</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="border border-gray-300 p-3">Credit Card (Visa/Mastercard)</td>
+                      <td className="border border-gray-300 p-3">1-2 business days</td>
+                      <td className="border border-gray-300 p-3">5-7 business days</td>
+                      <td className="border border-gray-300 p-3">6-9 business days</td>
+                    </tr>
+                    <tr>
+                      <td className="border border-gray-300 p-3">Debit Card</td>
+                      <td className="border border-gray-300 p-3">1-2 business days</td>
+                      <td className="border border-gray-300 p-3">5-10 business days</td>
+                      <td className="border border-gray-300 p-3">6-12 business days</td>
+                    </tr>
+                    <tr>
+                      <td className="border border-gray-300 p-3">Net Banking</td>
+                      <td className="border border-gray-300 p-3">2-3 business days</td>
+                      <td className="border border-gray-300 p-3">5-7 business days</td>
+                      <td className="border border-gray-300 p-3">7-10 business days</td>
+                    </tr>
+                    <tr>
+                      <td className="border border-gray-300 p-3">UPI</td>
+                      <td className="border border-gray-300 p-3">Instant-24 hours</td>
+                      <td className="border border-gray-300 p-3">1-3 business days</td>
+                      <td className="border border-gray-300 p-3">1-4 business days</td>
+                    </tr>
+                    <tr>
+                      <td className="border border-gray-300 p-3">Paytm Wallet</td>
+                      <td className="border border-gray-300 p-3">Instant</td>
+                      <td className="border border-gray-300 p-3">Instant-24 hours</td>
+                      <td className="border border-gray-300 p-3">Instant-24 hours</td>
+                    </tr>
+                    <tr>
+                      <td className="border border-gray-300 p-3">PhonePe Wallet</td>
+                      <td className="border border-gray-300 p-3">Instant</td>
+                      <td className="border border-gray-300 p-3">Instant-24 hours</td>
+                      <td className="border border-gray-300 p-3">Instant-24 hours</td>
+                    </tr>
+                    <tr>
+                      <td className="border border-gray-300 p-3">Amazon Pay</td>
+                      <td className="border border-gray-300 p-3">Instant-24 hours</td>
+                      <td className="border border-gray-300 p-3">1-2 business days</td>
+                      <td className="border border-gray-300 p-3">1-3 business days</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <h3 className="text-lg font-semibold mb-2 mt-4">1.1.4 Razorpay Transaction ID Tracking</h3>
+                <p className="text-gray-700 leading-relaxed mb-3">
+                  Every payment through Razorpay generates a unique Transaction ID. For refund requests, you must provide:
+                </p>
+                <ul className="list-disc pl-6 text-gray-700 space-y-2">
+                  <li><strong>Razorpay Payment ID:</strong> Found in your payment confirmation email</li>
+                  <li><strong>Order ID:</strong> Internal GraphiaCheck order reference</li>
+                  <li><strong>Amount:</strong> Exact amount charged</li>
+                  <li><strong>Date:</strong> Date of transaction</li>
+                </ul>
+
+                <div className="bg-yellow-50 border-l-4 border-yellow-600 p-4 my-4">
+                  <p className="flex items-start gap-2 text-sm text-yellow-900">
+                    <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                    <span><strong>Note:</strong> Without the Razorpay Payment ID, refund processing may be delayed. Always save your payment confirmation email.</span>
+                  </p>
+                </div>
+              </section>
+
+              <section>
+                <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                  <CreditCard className="w-6 h-6" />
                   2. Subscription Plans
                 </h2>
                 
