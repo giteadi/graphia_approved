@@ -260,13 +260,23 @@ export function calculateProbability(
 ): string {
   const { spelling, writingSpeed, letterFormation, alignment } = scores;
 
-  // HIGH if spelling AND fluency both bad AND at least one visual domain bad
+  // For single writing sample, soften probability - max MILD-MODERATE unless multiple domains severely impaired
+  // HIGH only if spelling AND fluency both very bad AND multiple visual domains bad
   if (
-    spelling <= 40 &&
-    wpm < 10 &&
-    (letterFormation <= 70 || alignment <= 75)
+    spelling <= 30 &&
+    wpm < 8 &&
+    (letterFormation <= 60 || alignment <= 65)
   ) {
     return rtiImprovement ? 'MODERATE' : 'HIGH';
+  }
+
+  // MILD-MODERATE if spelling moderate + slow speed + mild visual concerns
+  if (
+    spelling >= 50 && spelling < 70 &&
+    wpm < 10 &&
+    (letterFormation >= 65 || alignment >= 70)
+  ) {
+    return 'MILD-MODERATE / NEEDS MONITORING';
   }
 
   // Count impaired domains (score < 60)
@@ -280,7 +290,8 @@ export function calculateProbability(
     scores.writingSpeed < 60,
   ].filter(Boolean).length;
 
-  if (impaired >= 2) return 'MODERATE';
+  if (impaired >= 3) return 'MODERATE';
+  if (impaired >= 2) return 'MILD-MODERATE / NEEDS MONITORING';
   return 'LOW';
 }
 

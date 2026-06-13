@@ -40,26 +40,25 @@ looks like a normal word was intended.
 3. WORD COUNT:
    - Count ONLY the actual handwritten writing sample text.
    - EXCLUDE date/time headers (e.g., "Date:", "2/18/2026", "2:45", "3pm").
-   - EXCLUDE [CANCELLED: ...] words from wordCount.
+   - INCLUDE [CANCELLED: ...] words in wordCount.
    - Count hyphenated words as 1 word each.
    - Be thorough — count line by line if needed.
 
 4. TRANSCRIPTION ACCURACY:
    - Transcribe character-by-character. NEVER autocorrect.
-   - Preserve ALL misspellings exactly: "gettogther" stays "gettogther"
+   - Preserve ALL misspellings exactly as written.
    - NEVER normalize spelling, punctuation, tense, plurals, hyphens, apostrophes, or capitalization.
-   - If the page says "theire", "lifes", "alot", "ad", "get-togethir", or "gettogther", those exact forms MUST appear in transcription and spellingErrors.
-   - Preserve dates/times/headings if handwritten or part of the writing sample.
+   - Only transcribe what is clearly visible in the handwriting.
    - If a word is ambiguous, write your best read and add it to uncertainWords.
    - Use \\n for line breaks in transcription.
 
 5. SPELLING DETECTION — EXHAUSTIVE (flag everything suspicious):
 - Flag only words that clearly deviate from standard spelling
 - Do NOT flag correctly spelled English words used in context
-- Confidence threshold: flag anything 70%+ confident as a misspelling
+- Confidence threshold: flag anything 85%+ confident as a misspelling (stricter to avoid false positives)
 - Valid English words used correctly are NOT errors ("met", "had", "get", "we", "family", "fun", "talk")
-- BUT: wrong plural forms ("lifes"), missing letters ("ad" for "and"), phonetic spellings ("togther"), merged words ("alot"), wrong tense forms — ALL must be flagged
-- Count EACH occurrence separately — if "ad" appears twice, list it twice
+- BUT: wrong plural forms ("lifes"), missing letters, phonetic spellings, merged words, wrong tense forms — ALL must be flagged
+- Count EACH occurrence separately
 - If uncertain about a word, add to uncertainWords instead of spellingErrors
 - Provide confidence (0-100) and reason for each.
 - IMPORTANT: Do NOT flag words that appear in cancelledWords as spelling errors. Cancelled words should only appear in the cancelledWords list, not in spellingErrors.
@@ -69,10 +68,11 @@ Grade context: ${grade}
 
 GRAMMAR COUNTING RULES:
 - Count subject-verb disagreement as "agreement" (e.g. "their are", "I get to met")
-- Count wrong plural forms as "plural" (e.g. "lifes" instead of "lives")
+- Count wrong plural forms as "plural" ONLY if not already counted as spelling error
 - Count tense mixing or verb form errors as "syntax"
 - Count missing/wrong prepositions, articles as "other"
 - Count EVERY mistake — do not merge or summarise
+- IMPORTANT: Avoid double counting - if "lifes" is already in spellingErrors, do NOT count it again in grammarMistakes
 
 PAST TENSE COUNTING RULES:
 - Count each instance where past tense is incorrectly formed or missing
@@ -99,6 +99,7 @@ COUNTING RULES (BE STRICT):
 - runOnSentences: Count instances where multiple independent clauses are joined without proper punctuation
   - Example: "The dog is hungry he wants food" = 1 run-on (should be "The dog is hungry. He wants food.")
   - Example: "I went to the store I bought milk" = 1 run-on (should be "I went to the store. I bought milk.")
+  - IMPORTANT: Long sentences (25-30+ words) with multiple clauses (and, as, cause, that) should be counted as mild run-on candidates
 
 IMPORTANT:
 - Count EACH instance separately
@@ -497,10 +498,10 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
 
     const norm      = getWpmNorm(grade_p);
 
-    // Filter spelling by confidence >= 70 and remove cancelled words
+    // Filter spelling by confidence >= 85 and remove cancelled words
     const cancelledWordsLower = (extracted.cancelledWords || []).map((w: string) => w.toLowerCase());
     const spellingErrors = (extracted.spellingErrors || [])
-      .filter((e: any) => (e.confidence ?? 100) >= 70)
+      .filter((e: any) => (e.confidence ?? 100) >= 85)
       .filter((err: any) => {
         const writtenLower = err.written?.toLowerCase();
         return !cancelledWordsLower.includes(writtenLower);
@@ -551,11 +552,9 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       ).values()
     ) as { type: "agreement" | "plural" | "syntax" | "other"; example: string }[];
 
-    // Validate word count - exclude date/time headers and cancelled words
-    // Remove cancelled words from transcription
-    const transcriptionWithoutCancelled = extracted.transcription.replace(/\[CANCELLED:[^\]]+\]/g, '');
+    // Validate word count - exclude date/time headers but include cancelled words
     // Remove date/time headers (patterns like "Date:", "2/18/2026", "2:45", "3pm", etc.)
-    const transcriptionWithoutHeaders = transcriptionWithoutCancelled
+    const transcriptionWithoutHeaders = extracted.transcription
       .replace(/Date:\s*\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
       .replace(/\d{1,2}:\d{2}\s*(?:am|pm)?/gi, '')
       .replace(/\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
