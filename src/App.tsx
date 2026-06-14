@@ -81,11 +81,7 @@ import { motion, AnimatePresence } from 'motion/react';
 
 const getProbabilityDisplayLabel = (probabilityEstimate = '') => {
   const label = probabilityEstimate.toUpperCase();
-  if (label.includes('MILD-MODERATE') || label.includes('NEEDS MONITORING')) {
-    return 'MILD-MODERATE';
-  }
   if (label.includes('HIGH')) return 'HIGH';
-  if (label.includes('MODERATE')) return 'MODERATE';
   return 'LOW';
 };
 import ReactMarkdown from 'react-markdown';
@@ -801,7 +797,7 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
         spellingErrors: ["thouse (those) - Grade 4 level", "ciezens (citizens) - Grade 5 level", "plaiing (playing) - Grade 3 level"],
         dysgraphiaIndicators: ["Wildly varying letter sizes", "Frequent line drifting", "Heavy pencil pressure", "Extremely slow WPM output"],
         assessmentRecommendation: "A formal Psycho-Educational Assessment is highly recommended as previous classroom-level interventions have not resulted in progress.",
-        probabilityEstimate: "High. The sample demonstrates a persistent cluster of classic dysgraphia characteristics.",
+        probabilityEstimate: "HIGH",
         spellingScore: "35 (Needs Support - falls significantly below Grade 9 expectations)",
         academicDiscrepancy: "The student's writing fluency and spelling accuracy are at least two to three grade levels below expected grade placement.",
         horizontalAnalysis: "Inconsistent horizontal letter spacing.",

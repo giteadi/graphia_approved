@@ -69,36 +69,25 @@ export function countWords(transcription: string): number {
 }
 
 // ─── Deterministic word counter (handles inline [CANCELLED: ...] tags) ─────
-export function countWordsDeterministic(
-  transcription: string
-): number {
-  // Step 1: Keep cancelled words in count by replacing tags with content
-  // This includes cancelled words in total written words count
-  const transcriptionWithCancelled = transcription
-    .replace(/\[CANCELLED:\s*([^\]]+)\]/gi, ' $1 ') // keep cancelled content
-    .replace(/\n/g, ' ')                      // normalize line breaks
+export function countWordsDeterministic(transcription: string): number {
+  let t = transcription
+    // include cancelled words in total written words
+    .replace(/\[CANCELLED:\s*([^\]]+)\]/gi, ' $1 ')
+    .replace(/\n/g, ' ')
     .trim();
 
-  // Step 2: Normalize hyphens for consistent counting
-  // Convert common spaced compounds to hyphenated form: "get together" → "get-together"
-  // This ensures consistent 1-word count regardless of GPT's formatting choice
-  const normalizedTranscription = transcriptionWithCancelled
-    .replace(/\bget together\b/gi, 'get-together')
-    .replace(/\bcheck up\b/gi, 'check-up')
-    .replace(/\bwalk through\b/gi, 'walk-through')
-    .replace(/\bfollow up\b/gi, 'follow-up')
-    .replace(/\bset up\b/gi, 'set-up')
-    .replace(/\bbreak down\b/gi, 'break-down')
-    .replace(/\bwrite up\b/gi, 'write-up')
-    .trim();
-  
-  // Step 3: Final word count (includes cancelled words)
-  const finalCount = normalizedTranscription
-    .split(/\s+/)
-    .filter(w => w.length > 0)
-    .length;
+  // Counting-only normalization (do NOT use this for display text)
+  t = t
+    // hyphen as separator for counting ("get-together" => "get together")
+    .replace(/-/g, ' ')
+    // OCR splits/merges around together
+    .replace(/\bget\s+to\s+gether\b/gi, 'get together')
+    .replace(/\bgettogther\b/gi, 'get together')
+    .replace(/\bget\s*togther\b/gi, 'get together')
+    .replace(/\btogther\b/gi, 'together')
+    .replace(/\bgether\b/gi, 'together');
 
-  return finalCount;
+  return t.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean).length;
 }
 
 // ─── WPM grade norms ──────────────────────────────────────────────────────────
@@ -116,11 +105,12 @@ export function getWpmNorm(grade: string): { min: number; max: number } {
 
 // ─── Individual scorers (exact client formulas) ───────────────────────────────
 
-/** SPELLING: 100 - (errors × 10), clamped 0-100 (stricter rubric for clinical accuracy) */
+/** SPELLING: (correctly spelled words / total words) × 100, clamped 0-100 */
 function scoreSpelling(spellingErrors: number, totalWords: number): number {
   if (totalWords <= 0) return 0;
-  const score = 100 - (spellingErrors * 10);
-  return Math.max(0, Math.min(100, score));
+  const correctlySpelled = totalWords - spellingErrors;
+  const percentage = Math.round((correctlySpelled / totalWords) * 100);
+  return Math.max(0, Math.min(100, percentage));
 }
 
 /** SENTENCE BOUNDARIES: 100 - runOn×15 - missingCapital×5 - missingPunct×5 (grade-adjusted) */
@@ -290,7 +280,7 @@ export function calculateScoresWithNorm(e: EvidenceData, grade: string): Scores 
   };
 }
 
-// ─── Probability engine (exact client logic) ──────────────────────────────────
+// ─── Probability engine (2-level: LOW / HIGH) ──────────────────────────────────
 export function calculateProbability(
   scores: Scores,
   rtiImprovement: boolean,
@@ -317,26 +307,26 @@ export function calculateProbability(
     wpm < norm.min &&
     visualImpairedCount >= 2
   ) {
-    return rtiImprovement ? 'MODERATE' : 'HIGH';
+    return 'HIGH';
   }
 
   // HIGH: Severe fluency + 2+ visual domains impaired
   if (severeFluency && visualImpairedCount >= 2) {
-    return rtiImprovement ? 'MODERATE' : 'HIGH';
+    return 'HIGH';
   }
 
-  // MILD-MODERATE: Severe fluency alone (even with good spelling)
+  // HIGH: Severe fluency alone (even with good spelling)
   if (severeFluency) {
-    return 'MILD-MODERATE / NEEDS MONITORING';
+    return 'HIGH';
   }
 
-  // MILD-MODERATE if spelling moderate + slow speed + mild visual concerns
+  // HIGH if spelling moderate + slow speed + mild visual concerns
   if (
     spelling >= 50 && spelling < 70 &&
     wpm < norm.min &&
     (letterFormation >= 65 || alignment >= 70)
   ) {
-    return 'MILD-MODERATE / NEEDS MONITORING';
+    return 'HIGH';
   }
 
   // Count impaired domains (score < 60 OR visual impairment >= 1)
@@ -349,8 +339,7 @@ export function calculateProbability(
     scores.writingSpeed < 60,
   ].filter(Boolean).length;
 
-  if (impaired >= 3) return 'MODERATE';
-  if (impaired >= 2) return 'MILD-MODERATE / NEEDS MONITORING';
+  if (impaired >= 2) return 'HIGH';
   return 'LOW';
 }
 

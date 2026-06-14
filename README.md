@@ -57,14 +57,16 @@ graphia/
 
 ---
 
-## Server File Locations
+## Server File Locations (Runtime Paths - PM2)
 
 | What | Server Path |
 |------|-------------|
-| Backend entry | `/root/graphia/index.ts` |
+| PM2 entrypoint | `/root/graphia/index.ts` (imports ./app.js) |
+| Routes | `/root/graphia/routes/` |
+| Analyze controller | `/root/graphia/controllers/analyzeController.ts` |
+| Score engine | `/root/graphia/utils/scoreEngine.ts` |
 | Backend app | `/root/graphia/app.ts` |
 | Auth middleware | `/root/graphia/middleware/authMiddleware.ts` |
-| Controllers | `/root/graphia/controllers/` |
 | Config | `/root/graphia/config/` |
 | Backend .env | `/root/graphia/.env` |
 | Frontend build | `/var/www/graphiacheck/` |
@@ -72,6 +74,83 @@ graphia/
 | Nginx enabled | `/etc/nginx/sites-enabled/graphiacheck` |
 | PM2 logs out | `/root/.pm2/logs/graphia-out.log` |
 | PM2 logs err | `/root/.pm2/logs/graphia-error.log` |
+
+---
+
+## Local to Server File Mapping
+
+**CRITICAL:** Local repo structure differs from server runtime structure. When deploying, map files correctly:
+
+| Local Path (Mac repo) | Server Runtime Path |
+|----------------------|---------------------|
+| `server/controllers/analyzeController.ts` | `/root/graphia/controllers/analyzeController.ts` |
+| `server/utils/scoreEngine.ts` | `/root/graphia/utils/scoreEngine.ts` |
+| `server/routes/analyzeRoutes.ts` | `/root/graphia/routes/analyzeRoutes.ts` |
+| `server/config/openai.ts` | `/root/graphia/config/openai.ts` |
+| `server/config/db.ts` | `/root/graphia/config/db.ts` |
+| `server/middleware/authMiddleware.ts` | `/root/graphia/middleware/authMiddleware.ts` |
+
+**Note:** Server does NOT use `/root/graphia/server/` subfolder. PM2 runs from `/root/graphia/` root directly.
+
+---
+
+## Verify Before Restart Checklist
+
+After uploading files to server, run these verification steps before restarting PM2:
+
+```bash
+cd /root/graphia
+
+# 1. CRITICAL: Check for duplicate variable declarations (causes crashes)
+sudo grep -n "const norm" controllers/analyzeController.ts
+# Should return exactly 1 match at line ~611
+
+# 2. Check route structure
+cat routes/analyzeRoutes.ts | head
+
+# 3. Verify controller imports scoreEngine from correct path
+rg -n "from '../utils/scoreEngine" controllers/analyzeController.ts
+# Should show: import from '../utils/scoreEngine.js'
+
+# 4. Verify scoreEngine has expected changes
+rg -n "visualImpairedCount" utils/scoreEngine.ts
+rg -n "Math.round.*correct.*totalWords.*100" utils/scoreEngine.ts
+
+# 5. Check for cancellation guardrail (if added)
+rg -n "fixCancellationPatterns" controllers/analyzeController.ts
+
+# 6. Optional: Run tests if available (skip in production)
+# npm -s test
+
+# 7. Restart PM2 only after verification passes
+pm2 restart graphia --update-env
+pm2 save
+
+# 8. Check logs for errors
+pm2 logs graphia --lines 30
+```
+
+**Common Issues & Fixes:**
+- **"norm already declared"** → Duplicate variable declaration in analyzeController.ts (line 611 & 737). Fix: remove duplicate.
+- **"Cannot find module"** → Wrong import path in controller. Should be `../utils/scoreEngine.js`
+- **"TransformError"** → TypeScript compilation error. Run `npm run lint` locally first.
+- **"module not found"** → Wrong runtime path. Use `/root/graphia/utils/` NOT `/root/graphia/server/utils/`
+- **PM2 keeps crashing** → Check `pm2 logs graphia` for the actual error, fix source file, then restart.
+
+---
+
+## Important Notes
+
+**Production Runtime Paths:**
+- Production uses `/root/graphia/controllers/*` and `/root/graphia/utils/*`
+- Copying files to `/root/graphia/server/*` will NOT affect runtime
+- Always copy to the root paths shown in the mapping table above
+
+**UI Verification After Deployment:**
+- After backend deployment, hard refresh browser (Ctrl+Shift+R or Cmd+Shift+R)
+- Browser caching may show old reports/PDFs
+- Verify spelling score and probability in fresh browser session
+- Check PM2 logs to confirm backend is using new code
 
 ---
 
@@ -158,15 +237,24 @@ server {
 
 ### Backend Upload (Local Mac → Server)
 
+**IMPORTANT:** Use individual file uploads to ensure correct path mapping.
+
 ```bash
-rsync -avz --progress \
-  --exclude='node_modules' \
-  --exclude='.git' \
-  --exclude='dist' \
-  --exclude='.env' \
-  -e "ssh -i ~/.ssh/id_ed25519" \
-  /Users/adityasharma/Desktop/graphia/server/ \
-  aditya@195.35.45.17:/home/aditya/graphia-new-server/
+# Upload analyzeController.ts
+scp -i ~/.ssh/id_ed25519 \
+  /Users/adityasharma/Desktop/graphia/server/controllers/analyzeController.ts \
+  aditya@195.35.45.17:/home/aditya/analyzeController.ts
+
+# Upload scoreEngine.ts
+scp -i ~/.ssh/id_ed25519 \
+  /Users/adityasharma/Desktop/graphia/server/utils/scoreEngine.ts \
+  aditya@195.35.45.17:/home/aditya/scoreEngine.ts
+
+# Upload any other changed files individually
+# Example: config, routes, middleware
+scp -i ~/.ssh/id_ed25519 \
+  /Users/adityasharma/Desktop/graphia/server/config/openai.ts \
+  aditya@195.35.45.17:/home/aditya/openai.ts
 ```
 
 ### Frontend Build + Upload (Local Mac)
@@ -186,8 +274,13 @@ rsync -avz --progress \
 ### Server Deploy (SSH pe)
 
 ```bash
-# Backend — copy to correct location (PM2 uses /root/graphia/ directly)
-cp -r /home/aditya/graphia-new-server/. /root/graphia/
+# Backend — copy individual files to correct runtime paths
+# IMPORTANT: Use /root/graphia/ NOT /root/graphia/server/ for runtime
+sudo cp /home/aditya/analyzeController.ts /root/graphia/controllers/analyzeController.ts
+sudo cp /home/aditya/scoreEngine.ts /root/graphia/utils/scoreEngine.ts
+
+# Copy other files as needed (example)
+sudo cp /home/aditya/openai.ts /root/graphia/config/openai.ts
 
 # Frontend
 rm -rf /var/www/graphiacheck/*
@@ -195,11 +288,25 @@ cp -r /home/aditya/graphia-frontend/. /var/www/graphiacheck/
 chown -R www-data:www-data /var/www/graphiacheck
 chmod -R 755 /var/www/graphiacheck
 
+# Verify before restart (see checklist below)
+cd /root/graphia
+
+# Critical: Check for duplicate variable declarations (causes crashes)
+sudo grep -n "const norm" controllers/analyzeController.ts
+# Should return exactly 1 match
+
+# Verify specific function changes
+sudo rg -n "visualImpairedCount" utils/scoreEngine.ts
+sudo rg -n "from '../utils/scoreEngine" controllers/analyzeController.ts
+
 # Backend restart
 pm2 restart graphia --update-env
 pm2 save
 
-# Nginx reload
+# Check logs for errors
+pm2 logs graphia --lines 30
+
+# Nginx reload (if frontend changed)
 nginx -t && systemctl reload nginx
 ```
 

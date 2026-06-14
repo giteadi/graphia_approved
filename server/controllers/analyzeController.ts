@@ -639,6 +639,17 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         .filter(word => word.length > 0)
     );
     
+    // Canonical intended spelling for common OCR errors
+    function canonicalIntended(written: string, intended: string) {
+      const w = (written || '').toLowerCase().trim();
+      const i = (intended || '').toLowerCase().trim();
+
+      if (w === 'alot' && (!i || i === 'alot')) return 'a lot';
+      if (w === 'ad' && (!i || i === 'ad')) return 'and';
+      if (w === 'lifes' && (!i || i === 'lifes')) return 'lives';
+      return intended;
+    }
+
     const spellingErrors = (extracted.spellingErrors || [])
       .filter((e: any) => (e.confidence ?? 100) >= 85)
       .filter((err: any) => {
@@ -647,7 +658,11 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         const errorWords = writtenLower.split(/\s+/).filter(w => w.length > 0);
         return !errorWords.some(word => cancelledWordSet.has(word));
       })
-      .map((e: any) => ({ written: e.written, intended: e.intended, gradeLevel: e.gradeLevel || '' }));
+      .map((e: any) => ({
+        written: e.written,
+        intended: canonicalIntended(e.written, e.intended),
+        gradeLevel: e.gradeLevel || ''
+      }));
 
     // Strip placeholder strings AI sometimes echoes from the prompt template
     const isPlaceholder = (s: string) =>
@@ -693,14 +708,6 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       ).values()
     ) as { type: "agreement" | "plural" | "syntax" | "other"; example: string }[];
 
-    // Validate word count - exclude date/time headers and use deterministic count
-    // Remove date/time headers (patterns like "Date:", "2/18/2026", "2:45", "3pm", etc.)
-    const transcriptionWithoutHeaders = extracted.transcription
-      .replace(/Date:\s*\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
-      .replace(/\d{1,2}:\d{2}\s*(?:am|pm)?/gi, '')
-      .replace(/\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
-      .replace(/Date:/gi, '');
-
     // Post-process guardrail: Fix over-aggressive cancellation patterns
     // "[CANCELLED: my cousin]" -> "my [CANCELLED: cousin]"
     // "[CANCELLED: my cousin cousins]" -> "my [CANCELLED: cousin] cousins"
@@ -711,24 +718,71 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         .replace(/\[CANCELLED:\s*(my|the|a|an|his|her|their|our|your)\s+(\w+)\s+(\w+)\s*\]/gi, '$1 [CANCELLED: $2] $3');
     }
 
+    // Post-process: Inject [CANCELLED: ...] tags based on confirmedCancellations array
+    // This ensures UI shows strikethrough and word count includes cancelled words consistently
+    function injectCancellationTags(transcription: string, confirmedCancellations: any[]): string {
+      if (!confirmedCancellations || confirmedCancellations.length === 0) {
+        return transcription;
+      }
+
+      let result = transcription;
+      for (const cancellation of confirmedCancellations) {
+        const cancelText = cancellation.text;
+        if (!cancelText) continue;
+
+        // Check if the cancellation text already appears with [CANCELLED: ...] tag
+        const alreadyTagged = result.includes(`[CANCELLED: ${cancelText}]`);
+        if (alreadyTagged) continue;
+
+        // Find the text in transcription and wrap it with [CANCELLED: ...]
+        // Use case-insensitive replacement to handle variations
+        const regex = new RegExp(`\\b${escapeRegExp(cancelText)}\\b`, 'gi');
+        result = result.replace(regex, `[CANCELLED: ${cancelText}]`);
+      }
+      return result;
+    }
+
+    // Helper function to escape special regex characters
+    function escapeRegExp(string: string): string {
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    // 1) First fix + inject cancellations
     const fixedTranscription = fixCancellationPatterns(extracted.transcription);
+    const taggedTranscription = injectCancellationTags(
+      fixedTranscription,
+      extracted.confirmedCancellations || []
+    );
+
     const fixedNormalizedTranscription = extracted.normalizedTranscription
       ? fixCancellationPatterns(extracted.normalizedTranscription)
       : undefined;
+    const taggedNormalizedTranscription = fixedNormalizedTranscription
+      ? injectCancellationTags(fixedNormalizedTranscription, extracted.confirmedCancellations || [])
+      : undefined;
 
-    // Update extracted with fixed transcription
-    extracted.transcription = fixedTranscription;
+    // 2) Now remove headers from the FINAL tagged transcription (not the old one)
+    const transcriptionForCounting = taggedTranscription
+      .replace(/Date:\s*\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
+      .replace(/\d{1,2}:\d{2}\s*(?:am|pm)?/gi, '')
+      .replace(/\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
+      .replace(/Date:/gi, '');
+
+    // 3) Persist final transcription used everywhere
+    extracted.transcription = taggedTranscription;
     if (extracted.normalizedTranscription) {
-      extracted.normalizedTranscription = fixedNormalizedTranscription;
+      extracted.normalizedTranscription = taggedNormalizedTranscription;
     }
-    
-    // Use deterministic word count (inline [CANCELLED: tags are included in count)
-    const wordCount = countWordsDeterministic(transcriptionWithoutHeaders);
-    
+
+    // 4) Word count must use transcriptionForCounting
+    const wordCount = countWordsDeterministic(transcriptionForCounting);
+
     console.log('[INTERNAL DEBUG] Word Count Calculation:');
-    console.log(`Transcription: ${transcriptionWithoutHeaders.slice(0, 100)}...`);
+    console.log(`Transcription: ${transcriptionForCounting.slice(0, 100)}...`);
     console.log(`Cancelled words included in total count`);
+    console.log(`Visible word count: ${wordCount}`);
     console.log(`Final word count (includes cancelled): ${wordCount}`);
+    console.log(`Transcription has cancellation tags: ${extracted.transcription.includes('[CANCELLED:')}`);
     
     // Enhanced debug logging for future dispute resolution
     console.log('[INTERNAL DEBUG] Full Evidence for Dispute Resolution:');
