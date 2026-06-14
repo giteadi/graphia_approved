@@ -3,6 +3,7 @@
 
 export interface EvidenceData {
   transcription: string;
+  normalizedTranscription?: string;  // OCR-corrected version for display
   wordCount: number;          // Node-counted, not AI
   confirmedCancellations?: Array<{ text: string; confidence: number; occurrence?: number }>;
   uncertainCancellations?: Array<{ text: string; confidence: number; reason: string; occurrence?: number }>;
@@ -115,12 +116,11 @@ export function getWpmNorm(grade: string): { min: number; max: number } {
 
 // ─── Individual scorers (exact client formulas) ───────────────────────────────
 
-/** SPELLING: (correctly spelled words / total words) × 100, clamped 0-100 */
+/** SPELLING: 100 - (errors × 10), clamped 0-100 (stricter rubric for clinical accuracy) */
 function scoreSpelling(spellingErrors: number, totalWords: number): number {
   if (totalWords <= 0) return 0;
-  const correctlySpelled = totalWords - spellingErrors;
-  const percentage = Math.round((correctlySpelled / totalWords) * 100);
-  return Math.max(0, Math.min(100, percentage));
+  const score = 100 - (spellingErrors * 10);
+  return Math.max(0, Math.min(100, score));
 }
 
 /** SENTENCE BOUNDARIES: 100 - runOn×15 - missingCapital×5 - missingPunct×5 (grade-adjusted) */
@@ -300,31 +300,34 @@ export function calculateProbability(
   const { spelling, writingSpeed, letterFormation, alignment } = scores;
   const norm = getWpmNorm(grade);
 
-  // ── NEW: Severe fluency deficit alone can push to HIGH/MODERATE ──
-  const wpmPercent = norm.min > 0 ? (wpm / norm.min) * 100 : 100;
-  const severeFluency = wpm > 0 && wpmPercent < 50; // below 50% of norm min
+  // Count visual/mechanics impaired domains (score <= 60)
+  const visualImpairedCount =
+    (scores.letterFormation <= 60 ? 1 : 0) +
+    (scores.alignment <= 60 ? 1 : 0) +
+    (scores.lineQuality <= 60 ? 1 : 0) +
+    (scores.spatialOrganisation <= 60 ? 1 : 0);
 
-  // HIGH: Original condition (spelling + speed + visual both bad)
+  // ── Severe fluency deficit (below 50% of norm min) ──
+  const wpmPercent = norm.min > 0 ? (wpm / norm.min) * 100 : 100;
+  const severeFluency = wpm > 0 && wpmPercent < 50;
+
+  // HIGH: Original condition (spelling + speed + 2+ visual domains impaired)
   if (
     spelling <= 30 &&
     wpm < norm.min &&
-    (letterFormation <= 60 || alignment <= 65)
+    visualImpairedCount >= 2
   ) {
     return rtiImprovement ? 'MODERATE' : 'HIGH';
   }
 
-  // ── Severe fluency + low writingSpeed score → HIGH/MODERATE ──
-  // writingSpeed score <= 40 indicates below 50% of norm
-  if (
-    severeFluency &&
-    scores.writingSpeed <= 40
-  ) {
+  // HIGH: Severe fluency + 2+ visual domains impaired
+  if (severeFluency && visualImpairedCount >= 2) {
     return rtiImprovement ? 'MODERATE' : 'HIGH';
   }
 
-  // ── NEW: Severe fluency alone (even with good spelling) → MODERATE ──
-  if (severeFluency && wpm > 0) {
-    return rtiImprovement ? 'MILD-MODERATE / NEEDS MONITORING' : 'MODERATE';
+  // MILD-MODERATE: Severe fluency alone (even with good spelling)
+  if (severeFluency) {
+    return 'MILD-MODERATE / NEEDS MONITORING';
   }
 
   // MILD-MODERATE if spelling moderate + slow speed + mild visual concerns
@@ -336,14 +339,13 @@ export function calculateProbability(
     return 'MILD-MODERATE / NEEDS MONITORING';
   }
 
-  // Count impaired domains (score < 60)
+  // Count impaired domains (score < 60 OR visual impairment >= 1)
   const impaired = [
     scores.spelling < 60,
     scores.grammar < 60,
     scores.sentenceBoundaries < 60,
     scores.pastTenseUsage < 60,
-    scores.letterFormation < 60,
-    scores.alignment < 60,
+    visualImpairedCount >= 1,
     scores.writingSpeed < 60,
   ].filter(Boolean).length;
 

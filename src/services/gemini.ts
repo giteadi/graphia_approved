@@ -19,6 +19,7 @@ export interface AnalysisResult {
     verticalAnalysis: string;
     wordCount: number;
     transcription: string;
+    displayTranscription?: string;  // OCR-normalized version for display
     confirmedCancellations?: Array<{ text: string; confidence: number; occurrence?: number }>;
     uncertainCancellations?: Array<{ text: string; confidence: number; reason: string; occurrence?: number }>;
     observedLetterFormationLetters?: string[];

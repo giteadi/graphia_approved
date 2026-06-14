@@ -1529,7 +1529,7 @@ ${observationalNotes ? `**Assessor's Observational Notes:** ${observationalNotes
 **Writing Speed:** ${reportWpm ? `${reportWpm} words per minute` : "N/A"}
 **OCR Transcription:**
 *Note: [cancelled: text] indicates words crossed out by student.*
-${result.summary.transcription}
+${result.summary.displayTranscription || result.summary.transcription}
 
 **Spelling Patterns & Grade Level Discrepancies:**
 ${result.summary.spellingErrors.length > 0 ? result.summary.spellingErrors.map(e => `- ${e}`).join('\n') : "No significant patterns identified."}
@@ -1678,7 +1678,7 @@ WRITTEN LANGUAGE SKILLS:
 - Past Tense Usage: ${result.summary.scores.pastTenseUsage}/100 - ${result.summary.languageSkills.pastTenseUsage}
 
 OCR TRANSCRIPTION:
-"${result.summary.transcription}"
+"${result.summary.displayTranscription || result.summary.transcription}"
 
 CLINICAL REPORT:
 ${result.report}
@@ -1930,7 +1930,7 @@ ${result.report}
               }),
               new Paragraph({
                 children: (() => {
-                  const transcription = result.summary.transcription || '';
+                  const transcription = result.summary.displayTranscription || result.summary.transcription || '';
                   const errorWords = (result.summary.spellingErrors || []).map((err: string) => {
                     const m = err.match(/^([^\s(]+)/);
                     return m ? m[1].toLowerCase() : '';
@@ -3626,7 +3626,7 @@ ${result.report}
                             OCR TRANSCRIPTION
                           </h3>
                           <div className="border border-gray-200 p-3.5 bg-[#FAFAFA] rounded-sm text-[9.5pt] leading-relaxed text-gray-800 italic block max-h-[180px] overflow-y-auto">
-                            "<RenderTranscription text={result.summary.transcription} spellingErrors={result.summary.spellingErrors} />"
+                            "<RenderTranscription text={result.summary.displayTranscription || result.summary.transcription} spellingErrors={result.summary.spellingErrors} />"
                           </div>
                         </div>
 

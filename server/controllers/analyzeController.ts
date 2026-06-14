@@ -35,9 +35,17 @@ Do not omit visible words.
 Do not merge repeated words.
 Do not delete overwritten words unless a clear strike-through exists.
 
-1. CANCELLED/CROSSED-OUT WORDS:
-   If any visible strike, cross-out, overwrite line, or cancellation mark passes through a word,
-   treat that word as a confirmed cancellation.
+1. CANCELLED / CROSSED-OUT WORDS (BE CONSERVATIVE):
+   - Mark as CONFIRMED cancellation ONLY if the word is clearly and unambiguously struck out to remove it.
+   - Overwriting / rewrite / messy strokes are NOT confirmed cancellations. Put them in uncertainCancellations instead.
+   - If uncertain: KEEP the word in transcription AND add it to uncertainCancellations (do NOT cancel).
+   - Cancel ONLY the exact struck word(s), not surrounding context words.
+   - Example correct: "my [CANCELLED: cousin] cousins"
+   - Example wrong: "[CANCELLED: my cousin cousins]"
+   - Preserve cancellations inline in transcription as [CANCELLED: ...] for display.
+   - Also return the same cancellation in confirmedCancellations array.
+
+   IMPORTANT: Check the LAST LINE carefully. If any word is struck on the last line (e.g., "lego" in "lego lego"), it MUST be returned in confirmedCancellations and shown inline as [CANCELLED: ...].
 
    IMPORTANT: Evaluate each occurrence independently.
    - Mark ONLY the exact word(s) through which a strike line visibly passes.
@@ -61,7 +69,7 @@ Do not delete overwritten words unless a clear strike-through exists.
    - This ensures both scoring accuracy (tags removed) and visual display (tags preserved)
 
    Do NOT classify struck words as uncertain.
-   When in doubt, prefer cancellation over retention.
+   When in doubt, KEEP word in transcription + add to uncertainCancellations.
 
 2. HYPHENATED WORDS:
    - Treat hyphenated compounds as ONE word: "get-together" = 1 word
@@ -76,6 +84,12 @@ Do not delete overwritten words unless a clear strike-through exists.
    - Only transcribe what is clearly visible in the handwriting.
    - If a word is ambiguous, write your best read and add it to uncertainWords.
    - Use \\n for line breaks in transcription.
+
+5. OCR NORMALIZATION RULE:
+   - normalizedTranscription must be identical to transcription EXCEPT:
+     for uncertainWords with confidence >= 70, replace word with best possibleAlternative.
+   - Do NOT normalize anything else.
+   - Example: transcription has "en" and uncertainWords says en->in (80), then normalizedTranscription uses "in".
 
 5. SPELLING DETECTION — EXHAUSTIVE (flag everything suspicious):
 - Flag only words that clearly deviate from standard spelling
@@ -136,13 +150,14 @@ IMPORTANT:
 RETURN ONLY THIS JSON (no markdown fences, no extra text):
 {
   "transcription": "verbatim text preserving errors, \\n for line breaks",
+  "normalizedTranscription": "only apply replacements for uncertainWords with confidence >= 70",
   "confirmedCancellations": [
-    { "text": "every sunday", "confidence": 95, "occurrence": 1 }
+    { "text": "exact struck text", "confidence": 0-100, "occurrence": 1 }
   ],
   "uncertainCancellations": [
-    { "text": "cousin cousins", "confidence": 40, "reason": "overwrite", "occurrence": 1 }
+    { "text": "maybe cancelled", "confidence": 0-100, "reason": "overwrite|messy|unclear strike", "occurrence": 1 }
   ],
-  "uncertainWords": [{ "word": "ambiguous", "confidence": 45, "possibleAlternatives": ["alt1"] }],
+  "uncertainWords": [{ "word": "en", "confidence": 45, "possibleAlternatives": ["in"] }],
 
   "spellingErrors": [
     { "written": "gettogether", "intended": "get-together", "confidence": 95, "reason": "written as one word without hyphen", "gradeLevel": "approx 2nd grade" }
@@ -291,6 +306,7 @@ After the report, append:
   "verticalAnalysis": "2-sentence vertical organisation observation",
   "wordCount": ${evidence.wordCount},
   "transcription": "${evidence.transcription.replace(/"/g, '\\"').replace(/\n/g, '\\n')}",
+  "displayTranscription": "${(evidence.normalizedTranscription || evidence.transcription).replace(/"/g, '\\"').replace(/\n/g, '\\n')}",
   "fluencyAnalysis": "${fluencyLabel} — ${evidence.wpm} WPM vs norm ${norm.min}–${norm.max} WPM. 2-sentence qualitative assessment.",
   "wpm": ${evidence.wpm},
   "basalLevel": "2 sentences on consistently demonstrated skills",
@@ -684,6 +700,27 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       .replace(/\d{1,2}:\d{2}\s*(?:am|pm)?/gi, '')
       .replace(/\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
       .replace(/Date:/gi, '');
+
+    // Post-process guardrail: Fix over-aggressive cancellation patterns
+    // "[CANCELLED: my cousin]" -> "my [CANCELLED: cousin]"
+    // "[CANCELLED: my cousin cousins]" -> "my [CANCELLED: cousin] cousins"
+    function fixCancellationPatterns(text: string): string {
+      // Pattern: [CANCELLED: article/pronoun noun] -> article/pronoun [CANCELLED: noun]
+      return text
+        .replace(/\[CANCELLED:\s*(my|the|a|an|his|her|their|our|your)\s+(\w+)\s*\]/gi, '$1 [CANCELLED: $2]')
+        .replace(/\[CANCELLED:\s*(my|the|a|an|his|her|their|our|your)\s+(\w+)\s+(\w+)\s*\]/gi, '$1 [CANCELLED: $2] $3');
+    }
+
+    const fixedTranscription = fixCancellationPatterns(extracted.transcription);
+    const fixedNormalizedTranscription = extracted.normalizedTranscription
+      ? fixCancellationPatterns(extracted.normalizedTranscription)
+      : undefined;
+
+    // Update extracted with fixed transcription
+    extracted.transcription = fixedTranscription;
+    if (extracted.normalizedTranscription) {
+      extracted.normalizedTranscription = fixedNormalizedTranscription;
+    }
     
     // Use deterministic word count (inline [CANCELLED: tags are included in count)
     const wordCount = countWordsDeterministic(transcriptionWithoutHeaders);
@@ -708,6 +745,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
 
     const evidenceData: EvidenceData = {
       transcription:              extracted.transcription,
+      normalizedTranscription:     extracted.normalizedTranscription || extracted.transcription,
       wordCount,
       confirmedCancellations:     extracted.confirmedCancellations || [],
       uncertainCancellations:    extracted.uncertainCancellations || [],

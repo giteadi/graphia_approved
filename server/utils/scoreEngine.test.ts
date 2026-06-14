@@ -43,11 +43,11 @@ const expected = {
   sentenceBoundaries: 85,
   grammar: 50,
   pastTenseUsage: 60,
-  spelling: 94,  // Updated: (125 - 7) / 125 * 100 = 118/125 * 100 = 94.4 ≈ 94
+  spelling: 30,  // Updated: 100 - (7 * 10) = 30 (stricter rubric)
   letterFormation: 65,
   alignment: 75,
   writingSpeed: 40,
-  probability: 'MODERATE',
+  probability: 'MODERATE',  // Updated: severe fluency (8 WPM) + spelling 30 (<60) + grammar 50 (<60) = 3 impaired domains
 };
 
 const actual = {
