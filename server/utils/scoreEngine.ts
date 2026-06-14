@@ -119,7 +119,7 @@ export function getWpmNorm(grade: string): { min: number; max: number } {
 function scoreSpelling(spellingErrors: number, totalWords: number): number {
   if (totalWords <= 0) return 0;
   const correctlySpelled = totalWords - spellingErrors;
-  const percentage = (correctlySpelled / totalWords) * 100;
+  const percentage = Math.round((correctlySpelled / totalWords) * 100);
   return Math.max(0, Math.min(100, percentage));
 }
 
