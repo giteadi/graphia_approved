@@ -3,7 +3,8 @@ import { calculateScoresWithNorm, calculateProbability, EvidenceData } from './s
 const g10ReferenceEvidence: EvidenceData = {
   transcription: 'Reference My Family sample',
   wordCount: 125,
-  cancelledWords: [],
+  confirmedCancellations: [],
+  uncertainCancellations: [],
   spellingErrors: [
     { written: 'get-togethir', intended: 'get-together', gradeLevel: 'below grade' },
     { written: 'theire', intended: 'their', gradeLevel: 'below grade' },
@@ -36,7 +37,7 @@ const g10ReferenceEvidence: EvidenceData = {
 };
 
 const scores = calculateScoresWithNorm(g10ReferenceEvidence, 'Grade 11');
-const probability = calculateProbability(scores, false, g10ReferenceEvidence.wpm);
+const probability = calculateProbability(scores, false, g10ReferenceEvidence.wpm, 'Grade 11');
 
 const expected = {
   sentenceBoundaries: 85,

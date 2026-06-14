@@ -51,7 +51,7 @@ export default function AboutPage({ onBack, onAbout, onTerms, onPrivacy, onRefun
               </p>
               <h2 className="text-4xl font-bold text-[#1a1a2e] mb-5">Earlier signal. Better support.</h2>
               <p className="text-[#555] leading-relaxed mb-4 text-sm" style={{ fontFamily: "system-ui, sans-serif" }}>
-                Dyslexia and dysgraphia are often identified late — sometimes years after a child has begun to compensate, hide, or disengage.
+                Dysgraphia is often identified late — sometimes years after a child has begun to compensate, hide, or disengage.
                 GraphiaCheck shortens that gap by turning a single handwriting sample into a structured screening that can be reviewed, repeated, and tracked over time.
               </p>
               <p className="text-[#555] text-sm" style={{ fontFamily: "system-ui, sans-serif" }}>
@@ -122,7 +122,7 @@ export default function AboutPage({ onBack, onAbout, onTerms, onPrivacy, onRefun
             </p>
             <h2 className="text-3xl font-bold text-[#1a1a2e] mb-5">A screening is not a diagnosis.</h2>
             <p className="text-[#555] leading-relaxed max-w-2xl text-sm mb-6" style={{ fontFamily: "system-ui, sans-serif" }}>
-              GraphiaCheck identifies patterns that are structurally consistent with dysgraphia or dyslexia. It does not diagnose either condition.
+              GraphiaCheck identifies patterns that are structurally consistent with dysgraphia. It does not diagnose the condition.
               A positive screening should lead to conversation with a qualified specialist — an educational psychologist, occupational therapist, or speech-language pathologist.
             </p>
             <p className="text-[#555] leading-relaxed max-w-2xl text-sm" style={{ fontFamily: "system-ui, sans-serif" }}>

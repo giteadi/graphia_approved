@@ -44,7 +44,7 @@ export default function HomePage({ onGetStarted, onHome, onAbout, onTerms, onPri
 
             <p className="text-lg text-[#555] leading-relaxed mb-10" style={{ fontFamily: "system-ui, sans-serif" }}>
               A clinical diagnostic tool that evaluates handwriting samples for characteristics associated with{' '}
-              <strong className="text-[#1a1a2e]">dyslexia</strong> and <strong className="text-[#1a1a2e]">dysgraphia</strong>.
+              <strong className="text-[#1a1a2e]">dysgraphia</strong>.
               Fully calibrated for students from Grade 1 through the 15th Year — the third year of college.
             </p>
 

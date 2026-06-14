@@ -9,6 +9,7 @@ import {
   calculateProbability,
   getActionableStrategies,
   countWords,
+  countWordsDeterministic,
   getWpmNorm,
 } from '../utils/scoreEngine.js';
 
@@ -26,23 +27,40 @@ looks like a normal word was intended.
 
 ═══ STRICT OCR RULES (follow exactly) ═══
 
+OCR STABILITY RULE:
+If the same handwriting could reasonably be interpreted in multiple ways,
+prefer the most conservative literal reading.
+
+Do not omit visible words.
+Do not merge repeated words.
+Do not delete overwritten words unless a clear strike-through exists.
+
 1. CANCELLED/CROSSED-OUT WORDS:
-   - Only mark words as CANCELLED if the strikethrough is clearly visible in the handwriting.
-   - If uncertain about whether a word is cancelled, place it in uncertainWords instead.
-   - Do NOT infer or guess hidden cancelled text that is not clearly visible.
-   - Do NOT skip cancelled words. Do NOT include them in the main transcription flow.
-   - Example: "I went [CANCELLED: to the] store" — not "I went store"
+   If any visible strike, cross-out, overwrite line, or cancellation mark passes through a word,
+   treat that word as a confirmed cancellation.
+
+   IMPORTANT: Evaluate each occurrence independently.
+   - Mark ONLY the exact word(s) through which a strike line visibly passes.
+   - Do NOT cancel repeated words automatically.
+   - Example: If "lego lego" appears and only the first "lego" is struck, cancel ONLY the first occurrence.
+   - If the same word appears multiple times, determine separately whether each occurrence is struck.
+   - Never infer cancellation based only on repetition. A repeated word is not automatically a cancellation.
+   - Return cancellations exactly as they appear from left to right in the handwriting sample.
+
+   TRANSCRIPTION REQUIREMENT:
+   - Include confirmed cancellations inline in transcription as [CANCELLED: text]
+   - Example: "In my family we have get-together every month [CANCELLED: every sunday] we go out"
+   - Also return confirmedCancellations separately in the array
+   - This ensures both scoring accuracy (tags removed) and visual display (tags preserved)
+
+   Do NOT classify struck words as uncertain.
+   When in doubt, prefer cancellation over retention.
 
 2. HYPHENATED WORDS:
    - Treat hyphenated compounds as ONE word: "get-together" = 1 word
    - Even if written as two words with a space (e.g., "get together"), count as written — do NOT merge or split differently than what is on the page.
 
-3. WORD COUNT:
-   - Count ONLY the actual handwritten writing sample text.
-   - EXCLUDE date/time headers (e.g., "Date:", "2/18/2026", "2:45", "3pm").
-   - INCLUDE [CANCELLED: ...] words in wordCount.
-   - Count hyphenated words as 1 word each.
-   - Be thorough — count line by line if needed.
+
 
 4. TRANSCRIPTION ACCURACY:
    - Transcribe character-by-character. NEVER autocorrect.
@@ -110,9 +128,13 @@ IMPORTANT:
 
 RETURN ONLY THIS JSON (no markdown fences, no extra text):
 {
-  "transcription": "verbatim text preserving errors, \\n for line breaks, [CANCELLED: word] for crossed-out",
-  "wordCount": 0,
-  "cancelledWords": ["word1", "word2"],
+  "transcription": "verbatim text preserving errors, \\n for line breaks",
+  "confirmedCancellations": [
+    { "text": "every sunday", "confidence": 95, "occurrence": 1 }
+  ],
+  "uncertainCancellations": [
+    { "text": "cousin cousins", "confidence": 40, "reason": "overwrite", "occurrence": 1 }
+  ],
   "uncertainWords": [{ "word": "ambiguous", "confidence": 45, "possibleAlternatives": ["alt1"] }],
 
   "spellingErrors": [
@@ -472,6 +494,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       }] as OpenAI.Chat.ChatCompletionMessageParam[],
       response_format: { type: 'json_object' },
       temperature: 0,
+      seed: 42,
       max_tokens: 4096,
     }));
 
@@ -510,18 +533,46 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       dsm5Traits: extracted.dsm5Traits,
     }, null, 2));
 
+    // Internal debug evidence logging for cancellation verification
+    console.log('[INTERNAL DEBUG] Cancellation Evidence:');
+    const confirmedEvidence = (extracted.confirmedCancellations || []).map(c => ({
+      word: c.text,
+      confidence: c.confidence,
+      status: 'confirmed'
+    }));
+    const uncertainEvidence = (extracted.uncertainCancellations || []).map(c => ({
+      word: c.text,
+      confidence: c.confidence,
+      status: 'uncertain',
+      reason: c.reason
+    }));
+    console.log(JSON.stringify([...confirmedEvidence, ...uncertainEvidence], null, 2));
+
     // ── STEP 2: Node.js Scoring ───────────────────────────────────────────────
     console.log('\n[Step 2] Calculating scores...');
 
     const norm      = getWpmNorm(grade_p);
 
-    // Filter spelling by confidence >= 85 and remove cancelled words
-    const cancelledWordsLower = (extracted.cancelledWords || []).map((w: string) => w.toLowerCase());
+    // Filter spelling by confidence >= 85 and remove cancelled words using word-level matching
+    // Also filter out high-confidence confirmed cancellations
+    const confirmedCancellationTexts = (extracted.confirmedCancellations || [])
+      .filter((c: any) => (c.confidence ?? 0) >= 80)
+      .map((c: any) => c.text?.toLowerCase() || '');
+    
+    // Create word-level set for matching (split phrases into individual words)
+    const cancelledWordSet = new Set(
+      confirmedCancellationTexts
+        .flatMap(text => text.split(/\s+/))
+        .filter(word => word.length > 0)
+    );
+    
     const spellingErrors = (extracted.spellingErrors || [])
       .filter((e: any) => (e.confidence ?? 100) >= 85)
       .filter((err: any) => {
         const writtenLower = err.written?.toLowerCase();
-        return !cancelledWordsLower.includes(writtenLower);
+        // Check if any word in the spelling error matches a cancelled word
+        const errorWords = writtenLower.split(/\s+/).filter(w => w.length > 0);
+        return !errorWords.some(word => cancelledWordSet.has(word));
       })
       .map((e: any) => ({ written: e.written, intended: e.intended, gradeLevel: e.gradeLevel || '' }));
 
@@ -569,15 +620,30 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       ).values()
     ) as { type: "agreement" | "plural" | "syntax" | "other"; example: string }[];
 
-    // Validate word count - exclude date/time headers but include cancelled words
+    // Validate word count - exclude date/time headers and use deterministic count
     // Remove date/time headers (patterns like "Date:", "2/18/2026", "2:45", "3pm", etc.)
     const transcriptionWithoutHeaders = extracted.transcription
       .replace(/Date:\s*\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
       .replace(/\d{1,2}:\d{2}\s*(?:am|pm)?/gi, '')
       .replace(/\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
       .replace(/Date:/gi, '');
-    // Use AI extracted wordCount if available, otherwise calculate
-    const wordCount = extracted.wordCount > 0 ? extracted.wordCount : countWords(transcriptionWithoutHeaders);
+    
+    // Use deterministic word count (inline [CANCELLED: tags are removed)
+    const wordCount = countWordsDeterministic(transcriptionWithoutHeaders);
+    
+    console.log('[INTERNAL DEBUG] Word Count Calculation:');
+    console.log(`Transcription before tag removal: ${transcriptionWithoutHeaders.slice(0, 100)}...`);
+    console.log(`Transcription after [CANCELLED:...] removal: ${transcriptionWithoutHeaders.replace(/\[CANCELLED:[^\]]+\]/gi, '[REMOVED]').slice(0, 100)}...`);
+    console.log(`Final word count (tags removed): ${wordCount}`);
+    
+    // Enhanced debug logging for future dispute resolution
+    console.log('[INTERNAL DEBUG] Full Evidence for Dispute Resolution:');
+    console.log(JSON.stringify({
+      transcription: extracted.transcription,
+      confirmedCancellations: extracted.confirmedCancellations,
+      uncertainCancellations: extracted.uncertainCancellations,
+      finalWordCount: wordCount
+    }, null, 2));
 
     // Safe time calculation for WPM
     const safeTime = timeTaken && timeTaken > 0 ? timeTaken : undefined;
@@ -586,7 +652,8 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     const evidenceData: EvidenceData = {
       transcription:              extracted.transcription,
       wordCount,
-      cancelledWords:             extracted.cancelledWords || [],
+      confirmedCancellations:     extracted.confirmedCancellations || [],
+      uncertainCancellations:    extracted.uncertainCancellations || [],
       spellingErrors,
       grammarMistakes,
       runOnSentences,
@@ -606,7 +673,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     };
 
     const scores = calculateScoresWithNorm(evidenceData, grade_p);
-    const probability = calculateProbability(scores, rtiImprovement, wpm);
+    const probability = calculateProbability(scores, rtiImprovement, wpm, grade_p);
     const actionableStrategies = getActionableStrategies(scores, rtiImprovement);
 
     const spellingLabel = scores.spelling < 50 ? 'Significantly Below Grade Level'

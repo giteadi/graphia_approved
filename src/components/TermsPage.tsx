@@ -60,7 +60,7 @@ export default function TermsPage({ onBack }: TermsPageProps) {
               <section>
                 <h2 className="text-2xl font-bold mb-4">2. Service Description</h2>
                 <p className="text-gray-700 leading-relaxed">
-                  GraphiaCheck is a clinical diagnostic tool that analyzes handwriting samples to screen for characteristics associated with dysgraphia and dyslexia. The Service generates comprehensive reports based on AI analysis of uploaded handwriting samples.
+                  GraphiaCheck is a clinical diagnostic tool that analyzes handwriting samples to screen for characteristics associated with dysgraphia. The Service generates comprehensive reports based on AI analysis of uploaded handwriting samples.
                 </p>
                 <div className="bg-yellow-50 border-l-4 border-yellow-600 p-4 my-4">
                   <p className="text-sm font-semibold text-yellow-900">

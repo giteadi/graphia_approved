@@ -4,7 +4,8 @@
 export interface EvidenceData {
   transcription: string;
   wordCount: number;          // Node-counted, not AI
-  cancelledWords: string[];
+  confirmedCancellations?: Array<{ text: string; confidence: number; occurrence?: number }>;
+  uncertainCancellations?: Array<{ text: string; confidence: number; reason: string; occurrence?: number }>;
 
   // Spelling
   spellingErrors: Array<{ written: string; intended: string; gradeLevel: string }>;
@@ -57,12 +58,44 @@ export interface Scores {
 // ─── Node word counter (reliable — not AI) ───────────────────────────────────
 export function countWords(transcription: string): number {
   return transcription
-    .replace(/\[CANCELLED:[^\]]+\]/gi, '') // remove cancelled blocks
+    .replace(/\[CANCELLED:[^\]]+\]/gi, ' ') // remove cancelled blocks with space (policy: exclude cancelled words from count)
     .replace(/\n/g, ' ')                   // normalize line breaks
     .trim()
     .split(/\s+/)
     .filter(w => w.length > 0)
     .length;
+}
+
+// ─── Deterministic word counter (handles inline [CANCELLED: ...] tags) ─────
+export function countWordsDeterministic(
+  transcription: string
+): number {
+  // Step 1: Remove inline [CANCELLED: ...] tags - this handles display tags
+  const transcriptionWithoutTags = transcription
+    .replace(/\[CANCELLED:[^\]]+\]/gi, ' ') // remove cancelled blocks with space
+    .replace(/\n/g, ' ')                      // normalize line breaks
+    .trim();
+
+  // Step 2: Normalize hyphens for consistent counting
+  // Convert common spaced compounds to hyphenated form: "get together" → "get-together"
+  // This ensures consistent 1-word count regardless of GPT's formatting choice
+  const normalizedTranscription = transcriptionWithoutTags
+    .replace(/\bget together\b/gi, 'get-together')
+    .replace(/\bcheck up\b/gi, 'check-up')
+    .replace(/\bwalk through\b/gi, 'walk-through')
+    .replace(/\bfollow up\b/gi, 'follow-up')
+    .replace(/\bset up\b/gi, 'set-up')
+    .replace(/\bbreak down\b/gi, 'break-down')
+    .replace(/\bwrite up\b/gi, 'write-up')
+    .trim();
+  
+  // Step 3: Final word count (tags already removed cancelled words)
+  const finalCount = normalizedTranscription
+    .split(/\s+/)
+    .filter(w => w.length > 0)
+    .length;
+
+  return finalCount;
 }
 
 // ─── WPM grade norms ──────────────────────────────────────────────────────────
@@ -256,15 +289,17 @@ export function calculateScoresWithNorm(e: EvidenceData, grade: string): Scores 
 export function calculateProbability(
   scores: Scores,
   rtiImprovement: boolean,
-  wpm: number
+  wpm: number,
+  grade: string = '6'
 ): string {
   const { spelling, writingSpeed, letterFormation, alignment } = scores;
+  const norm = getWpmNorm(grade);
 
   // For single writing sample, soften probability - max MILD-MODERATE unless multiple domains severely impaired
   // HIGH only if spelling AND fluency both very bad AND multiple visual domains bad
   if (
     spelling <= 30 &&
-    wpm < 8 &&
+    wpm < norm.min &&
     (letterFormation <= 60 || alignment <= 65)
   ) {
     return rtiImprovement ? 'MODERATE' : 'HIGH';
@@ -273,7 +308,7 @@ export function calculateProbability(
   // MILD-MODERATE if spelling moderate + slow speed + mild visual concerns
   if (
     spelling >= 50 && spelling < 70 &&
-    wpm < 10 &&
+    wpm < norm.min &&
     (letterFormation >= 65 || alignment >= 70)
   ) {
     return 'MILD-MODERATE / NEEDS MONITORING';

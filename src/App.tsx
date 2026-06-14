@@ -280,7 +280,7 @@ const VisualAnalysis = ({ scores }: VisualAnalysisProps) => {
 const TOUR_STEPS = [
   {
     title: "Welcome to GraphiaCheck Demo 🎓",
-    text: "Welcome to GraphiaCheck! This clinical diagnostic tool evaluates handwriting samples for characteristics associated with dyslexia and dysgraphia. It is fully calibrated and suitable for students from Grade 1 all the way to the 15th Year (which is the Third Year of College). Note that a minimum writing sample of 75 to 100 words is required for a clinically valid screening, and the sample must be captured with absolute clarity for accurate structural modeling.",
+    text: "Welcome to GraphiaCheck! This clinical diagnostic tool evaluates handwriting samples for characteristics associated with dysgraphia. It is fully calibrated and suitable for students from Grade 1 all the way to the 15th Year (which is the Third Year of College). Note that a minimum writing sample of 75 to 100 words is required for a clinically valid screening, and the sample must be captured with absolute clarity for accurate structural modeling.",
     voiceText: "Welcome to GraphiaCheck! This clinical diagnostic tool evaluates handwriting samples. It is fully calibrated and suitable for students from Grade One all the way to the Fifteenth Year, which is the Third Year of College. For a clinically valid screening, please ensure that a handwriting sample of at least 75 to 100 words is uploaded, and is captured with absolute clarity and focus.",
     targetId: ""
   },
@@ -516,7 +516,6 @@ export default function App({ user, onLogout, reportTabMode = false }: AppProps)
   const [observationalNotes, setObservationalNotes] = useState<string>('');
 
   const DIAGNOSES_OPTIONS = [
-    "Dyslexia (Specific Reading Disorder)",
     "Dyscalculia / Mathematics LD",
     "ADHD",
     "Autism Spectrum Disorder",
@@ -1528,7 +1527,7 @@ ${observationalNotes ? `**Assessor's Observational Notes:** ${observationalNotes
 **Word Count:** ${result.summary.wordCount}
 **Time Taken:** ${timeTaken ? `${timeTaken} minutes` : "Not provided"}
 **Writing Speed:** ${reportWpm ? `${reportWpm} words per minute` : "N/A"}
-**Verbatim OCR Transcription:**
+**OCR Transcription:**
 *Note: [cancelled: text] indicates words crossed out by student.*
 ${result.summary.transcription}
 
@@ -1926,7 +1925,7 @@ ${result.report}
               
               new Paragraph({
                 children: [
-                  new TextRun({ text: "VERBATIM OCR TRANSCRIPTION:", font: "Times New Roman", size: 22, bold: true, underline: {} }),
+                  new TextRun({ text: "OCR TRANSCRIPTION:", font: "Times New Roman", size: 22, bold: true, underline: {} }),
                 ],
               }),
               new Paragraph({
@@ -3614,7 +3613,7 @@ ${result.report}
                         <div>
                           <p className="text-[7.5pt] text-gray-400 italic font-mono mb-1">Note: Words in bold = spelling errors. Strikethrough = student cancellations.</p>
                           <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-2">
-                            VERBATIM OCR TRANSCRIPTION
+                            OCR TRANSCRIPTION
                           </h3>
                           <div className="border border-gray-200 p-3.5 bg-[#FAFAFA] rounded-sm text-[9.5pt] leading-relaxed text-gray-800 italic block max-h-[180px] overflow-y-auto">
                             "<RenderTranscription text={result.summary.transcription} spellingErrors={result.summary.spellingErrors} />"
@@ -4111,7 +4110,7 @@ ${result.report}
                 </div>
               </div>
               <p className="text-sm opacity-70 leading-relaxed">
-                AI-powered handwriting analysis for clinical-grade dysgraphia and dyslexia screening.
+                AI-powered handwriting analysis for clinical-grade dysgraphia screening.
               </p>
             </div>
 
