@@ -114,9 +114,12 @@ export function getWpmNorm(grade: string): { min: number; max: number } {
 
 // ─── Individual scorers (exact client formulas) ───────────────────────────────
 
-/** SPELLING: 100 - (errors × 10), clamped 0-100 */
-function scoreSpelling(spellingErrors: number): number {
-  return Math.max(0, Math.min(100, 100 - spellingErrors * 10));
+/** SPELLING: (correctly spelled words / total words) × 100, clamped 0-100 */
+function scoreSpelling(spellingErrors: number, totalWords: number): number {
+  if (totalWords <= 0) return 0;
+  const correctlySpelled = totalWords - spellingErrors;
+  const percentage = (correctlySpelled / totalWords) * 100;
+  return Math.max(0, Math.min(100, percentage));
 }
 
 /** SENTENCE BOUNDARIES: 100 - runOn×15 - missingCapital×5 - missingPunct×5 (grade-adjusted) */
@@ -228,7 +231,7 @@ function scoreWritingSpeed(wpm: number, normMin: number, normMax: number): numbe
 export function calculateScores(e: EvidenceData, grade: string): Scores {
   const norm = getWpmNorm(''); // fallback — caller should set wpm against norm separately
 
-  const spelling           = scoreSpelling(e.spellingErrors.length);
+  const spelling           = scoreSpelling(e.spellingErrors.length, e.wordCount);
   const grammar            = scoreGrammar(e.grammarMistakes);
   const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation, grade);
   const pastTenseUsage     = scorePastTense(e.pastTenseErrors);
@@ -259,7 +262,7 @@ export function calculateScores(e: EvidenceData, grade: string): Scores {
 export function calculateScoresWithNorm(e: EvidenceData, grade: string): Scores {
   const norm = getWpmNorm(grade);
 
-  const spelling           = scoreSpelling(e.spellingErrors.length);
+  const spelling           = scoreSpelling(e.spellingErrors.length, e.wordCount);
   const grammar            = scoreGrammar(e.grammarMistakes);
   const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation, grade);
   const pastTenseUsage     = scorePastTense(e.pastTenseErrors);

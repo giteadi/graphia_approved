@@ -43,7 +43,7 @@ const expected = {
   sentenceBoundaries: 85,
   grammar: 50,
   pastTenseUsage: 60,
-  spelling: 30,
+  spelling: 94,  // Updated: (125 - 7) / 125 * 100 = 118/125 * 100 = 94.4 ≈ 94
   letterFormation: 65,
   alignment: 75,
   writingSpeed: 40,
