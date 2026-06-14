@@ -21,6 +21,7 @@ export interface EvidenceData {
 
   // Visual mechanics (observation strings from AI)
   letterFormationObservations: string[];
+  observedLetterFormationLetters?: string[];
   alignmentObservations: string[];
   spacingObservations: string[];
   lineQualityObservations: string[];

@@ -158,8 +158,9 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
   "pastTenseErrors": 0,
 
   "letterFormationObservations": [
-    "write at least 3 specific observations if issues exist (e.g., inconsistent letter size, irregular joins, unclear letter closure, variable formation of t/g/r, overwriting/cross-outs affecting legibility)"
+    "write actual observations only, such as inconsistent letter size, irregular joins, unclear closures, overwriting/cross-outs affecting legibility. Do NOT name specific letters unless visually confirmed."
   ],
+  "observedLetterFormationLetters": ["only letters with visually confirmed formation concerns; leave empty if unsure"],
   "alignmentObservations": [
     "write actual observations only, no examples here"
   ],
@@ -224,6 +225,7 @@ Write a clinical handwriting assessment report. Use ONLY the data supplied. You 
 6. Parent-friendly language. Explain clinical terms.
 7. 2 detailed sentences per mechanics sub-point citing the observations below.
 8. ${evidence.wordCount < 75 ? 'Include VALIDITY WARNING after title.' : 'No validity warning needed.'}
+9. Do NOT invent specific letter names. Mention specific letters only if they are listed in OBSERVED LETTERS FOR FORMATION. If that list is empty, use "some letter forms" or "rounded/hump-based forms" without naming letters.
 
 STUDENT DETAILS:
 Grade: ${grade}${age ? ` | Age: ${age}` : ''}${timeTaken ? ` | Time Taken: ${timeTaken} min` : ''}${timeGiven ? ` | Time Given: ${timeGiven} min` : ''}${writingPrompt ? `\nPrompt: ${writingPrompt}` : ''}${paperType ? ` | Paper: ${paperType}` : ''}${writingInstrument ? ` | Instrument: ${writingInstrument}` : ''}
@@ -249,6 +251,7 @@ Grammar issues: ${JSON.stringify(evidence.grammarMistakes)}
 Run-ons: ${evidence.runOnSentences} | Missing capitals: ${evidence.missingCapitals} | Missing punctuation: ${evidence.missingPunctuation}
 Past tense errors: ${evidence.pastTenseErrors}
 Letter formation: ${evidence.letterFormationObservations.join('; ') || 'none noted'}
+Observed letters for formation: ${evidence.observedLetterFormationLetters?.join(', ') || 'none confirmed'}
 Alignment: ${evidence.alignmentObservations.join('; ') || 'none noted'}
 Spacing: ${evidence.spacingObservations.join('; ') || 'none noted'}
 Line quality: ${evidence.lineQualityObservations.join('; ') || 'none noted'}
@@ -275,8 +278,9 @@ After the report, append:
 {
   "alignment": "2-sentence alignment observation",
   "lineQuality": "2-sentence line quality observation",
-  "lineFormation": "2-sentence letter formation observation",
-  "mechanics": "2-sentence overall mechanics summary",
+	  "lineFormation": "2-sentence letter formation observation",
+	  "observedLetterFormationLetters": ${JSON.stringify(evidence.observedLetterFormationLetters || [])},
+	  "mechanics": "2-sentence overall mechanics summary",
   "spellingErrors": ${JSON.stringify(evidence.spellingErrors.map(e => `${e.written} (${e.intended}) - ${e.gradeLevel || spellingGradeLevelLabel(scores.spelling, grade)}`))},
   "dysgraphiaIndicators": ${JSON.stringify(evidence.dsm5Traits || [])},
   "assessmentRecommendation": "${rtiImprovement ? 'A formal evaluation is NOT recommended at this time because the student has shown positive improvement with current interventions. Continued monitoring and support is recommended.' : 'Based on the evidence, a formal psycho-educational assessment is recommended.'}",
@@ -332,6 +336,23 @@ function stripSummaryBlock(reportText: string): string {
   return reportText.replace(/```json\s*[\s\S]*?\s*```/g, '').trim();
 }
 
+function sanitizeUnsupportedLetterClaims(text: string, observedLetters: string[] = []): string {
+  if (!text) return text;
+  const allowed = new Set(observedLetters.map(l => l.toLowerCase()).filter(Boolean));
+
+  return text.replace(
+    /(?:notably\s+)?in letters?\s+((?:(?:['"][a-z]['"]|[a-z])(?:\s*(?:,|and)\s*)?)+)/gi,
+    (match, lettersText: string) => {
+      const mentioned = (lettersText.match(/[a-z]/gi) || []).map(l => l.toLowerCase());
+      const unsupported = mentioned.some(l => !allowed.has(l));
+      if (unsupported || mentioned.length === 0) {
+        return 'in some letter forms';
+      }
+      return match;
+    }
+  );
+}
+
 function spellingGradeLevelLabel(score: number, grade: string): string {
   const gradeLabel = grade?.trim() || 'submitted grade';
   if (score < 20) return `approx 1st grade`;
@@ -383,13 +404,16 @@ function buildDeterministicSummary(params: {
   return {
     alignment: existingSummary.alignment || evidence.alignmentObservations.join(' ') || 'No major alignment concern was extracted from the handwriting sample.',
     lineQuality: existingSummary.lineQuality || evidence.lineQualityObservations.join(' ') || 'No major line quality concern was extracted from the handwriting sample.',
-    lineFormation: existingSummary.lineFormation || evidence.letterFormationObservations.join(' ') || 'Letter formation observations were limited in the extracted evidence.',
-    mechanics: existingSummary.mechanics || [
+    lineFormation: sanitizeUnsupportedLetterClaims(
+      existingSummary.lineFormation || evidence.letterFormationObservations.join(' ') || 'Letter formation observations were limited in the extracted evidence.',
+      evidence.observedLetterFormationLetters
+    ),
+    mechanics: sanitizeUnsupportedLetterClaims(existingSummary.mechanics || [
       ...evidence.letterFormationObservations,
       ...evidence.alignmentObservations,
       ...evidence.spacingObservations,
       ...evidence.lineQualityObservations,
-    ].join(' ') || 'Overall mechanics should be interpreted from the extracted handwriting evidence.',
+    ].join(' ') || 'Overall mechanics should be interpreted from the extracted handwriting evidence.', evidence.observedLetterFormationLetters),
     spellingErrors,
     dysgraphiaIndicators: evidence.dsm5Traits || [],
     assessmentRecommendation: rtiImprovement
@@ -409,6 +433,7 @@ function buildDeterministicSummary(params: {
     ocrConfidence: evidence.ocrConfidence || 80,
     uncertainWords: evidence.uncertainWords || [],
     features: evidence.features || {},
+    observedLetterFormationLetters: evidence.observedLetterFormationLetters || [],
     languageSkills: {
       sentenceBoundaries: languageSkills.sentenceBoundaries || `Focus on observed issues: ${evidence.runOnSentences} run-on sentences${evidence.missingPunctuation > 0 ? `, ${evidence.missingPunctuation} missing punctuation` : ''}${evidence.missingCapitals > 0 ? `, ${evidence.missingCapitals} missing capitals` : ''}. Only mention missing capitals/punctuation if clearly visible in sample.`,
       grammar: languageSkills.grammar || `Focus on verb form errors, syntax issues, and sentence structure. ${evidence.grammarMistakes.length} grammar issue${evidence.grammarMistakes.length === 1 ? '' : 's'} observed. Do NOT include spelling errors in grammar analysis.`,
@@ -440,8 +465,8 @@ function normalizeOverCancelledPhrases(transcription: string): string {
     .replace(/\[CANCELLED:\s*my cousin cousin\]/gi, 'my [CANCELLED: cousin] cousin')
     .replace(/\[CANCELLED:\s*my cousin\]/gi, 'my [CANCELLED: cousin]')
     .replace(/\[CANCELLED:\s*my cousins\]/gi, 'my [CANCELLED: cousins]')
-    .replace(/\[CANCELLED:\s*the \w+\s*\w*\]/gi, (match, content) => {
-      const words = content.replace(/the\s*/i, '').trim();
+    .replace(/\[CANCELLED:\s*the\s+([^\]]+)\]/gi, (_match, content: string) => {
+      const words = content.trim();
       return `the [CANCELLED: ${words}]`;
     })
     .replace(/\[CANCELLED:\s*i get to met\]/gi, 'i get to [CANCELLED: met]')
@@ -558,6 +583,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       missingPunctuation: extracted.missingPunctuation,
       pastTenseErrors: extracted.pastTenseErrors,
       letterFormationObservations: extracted.letterFormationObservations,
+      observedLetterFormationLetters: extracted.observedLetterFormationLetters,
       alignmentObservations: extracted.alignmentObservations,
       spacingObservations: extracted.spacingObservations,
       lineQualityObservations: extracted.lineQualityObservations,
@@ -692,6 +718,10 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       missingPunctuation,
       pastTenseErrors:            extracted.pastTenseErrors || 0,
       letterFormationObservations: cleanObs(extracted.letterFormationObservations),
+      observedLetterFormationLetters: (extracted.observedLetterFormationLetters || [])
+        .filter((letter: any) => typeof letter === 'string')
+        .map((letter: string) => letter.toLowerCase().trim())
+        .filter((letter: string) => /^[a-z]$/.test(letter)),
       alignmentObservations:      cleanObs(extracted.alignmentObservations),
       spacingObservations:        cleanObs(extracted.spacingObservations),
       lineQualityObservations:    cleanObs(extracted.lineQualityObservations),

@@ -19,6 +19,9 @@ export interface AnalysisResult {
     verticalAnalysis: string;
     wordCount: number;
     transcription: string;
+    confirmedCancellations?: Array<{ text: string; confidence: number; occurrence?: number }>;
+    uncertainCancellations?: Array<{ text: string; confidence: number; reason: string; occurrence?: number }>;
+    observedLetterFormationLetters?: string[];
     fluencyAnalysis: string;
     wpm: number;
     basalLevel: string;
