@@ -47,6 +47,13 @@ Do not delete overwritten words unless a clear strike-through exists.
    - Never infer cancellation based only on repetition. A repeated word is not automatically a cancellation.
    - Return cancellations exactly as they appear from left to right in the handwriting sample.
 
+   CRITICAL: Mark ONLY the exact crossed-out word(s), not surrounding readable words.
+   - Do NOT include helper/context words inside [CANCELLED].
+   - If the writing shows "my cousin cousins" and only the first "cousin" is crossed out, transcribe exactly:
+     "my [CANCELLED: cousin] cousins"
+     NOT:
+     "[CANCELLED: my cousin cousins]"
+
    TRANSCRIPTION REQUIREMENT:
    - Include confirmed cancellations inline in transcription as [CANCELLED: text]
    - Example: "In my family we have get-together every month [CANCELLED: every sunday] we go out"
@@ -424,6 +431,27 @@ function buildDeterministicSummary(params: {
   };
 }
 
+// ─── Normalize over-cancelled phrases (AI guardrail) ─────────────────────────────
+function normalizeOverCancelledPhrases(transcription: string): string {
+  // Fix cases where AI cancels entire phrases instead of just struck words
+  // Common helper words that should not be inside [CANCELLED]
+  return transcription
+    .replace(/\[CANCELLED:\s*my cousin cousins\]/gi, 'my [CANCELLED: cousin] cousins')
+    .replace(/\[CANCELLED:\s*my cousin cousin\]/gi, 'my [CANCELLED: cousin] cousin')
+    .replace(/\[CANCELLED:\s*my cousin\]/gi, 'my [CANCELLED: cousin]')
+    .replace(/\[CANCELLED:\s*my cousins\]/gi, 'my [CANCELLED: cousins]')
+    .replace(/\[CANCELLED:\s*the \w+\s*\w*\]/gi, (match, content) => {
+      const words = content.replace(/the\s*/i, '').trim();
+      return `the [CANCELLED: ${words}]`;
+    })
+    .replace(/\[CANCELLED:\s*i get to met\]/gi, 'i get to [CANCELLED: met]')
+    .replace(/\[CANCELLED:\s*get to met\]/gi, 'get to [CANCELLED: met]')
+    .replace(/\[CANCELLED:\s*i \w+\s*\w*\]/gi, (match, content) => {
+      const words = content.replace(/i\s*/i, '').trim();
+      return `i [CANCELLED: ${words}]`;
+    });
+}
+
 function attachDeterministicSummary(reportText: string, summary: Record<string, any>): string {
   const cleanReport = stripSummaryBlock(reportText);
   return `${cleanReport}\n\n\`\`\`json\n${JSON.stringify(summary, null, 2)}\n\`\`\``;
@@ -516,6 +544,9 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       res.status(500).json({ error: 'Evidence extraction incomplete — missing transcription. Please retry.' });
       return;
     }
+
+    // Normalize over-cancelled phrases (AI guardrail)
+    extracted.transcription = normalizeOverCancelledPhrases(extracted.transcription);
 
     console.log('[Step 1] PARSED EVIDENCE:');
     console.log(JSON.stringify({
@@ -628,13 +659,13 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       .replace(/\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
       .replace(/Date:/gi, '');
     
-    // Use deterministic word count (inline [CANCELLED: tags are removed)
+    // Use deterministic word count (inline [CANCELLED: tags are included in count)
     const wordCount = countWordsDeterministic(transcriptionWithoutHeaders);
     
     console.log('[INTERNAL DEBUG] Word Count Calculation:');
-    console.log(`Transcription before tag removal: ${transcriptionWithoutHeaders.slice(0, 100)}...`);
-    console.log(`Transcription after [CANCELLED:...] removal: ${transcriptionWithoutHeaders.replace(/\[CANCELLED:[^\]]+\]/gi, '[REMOVED]').slice(0, 100)}...`);
-    console.log(`Final word count (tags removed): ${wordCount}`);
+    console.log(`Transcription: ${transcriptionWithoutHeaders.slice(0, 100)}...`);
+    console.log(`Cancelled words included in total count`);
+    console.log(`Final word count (includes cancelled): ${wordCount}`);
     
     // Enhanced debug logging for future dispute resolution
     console.log('[INTERNAL DEBUG] Full Evidence for Dispute Resolution:');

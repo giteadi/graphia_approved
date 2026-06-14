@@ -3568,10 +3568,20 @@ ${result.report}
                                   </div>
                                 </div>
                                 <div className="border-t border-gray-150 pt-2">
-                                  <div className="text-[8pt] text-gray-500 font-mono uppercase tracking-wider">Total words</div>
+                                  <div className="text-[8pt] text-gray-500 font-mono uppercase tracking-wider">Total written words</div>
                                   <div className="text-[15pt] font-black text-[#0c2340] leading-none mt-0.5">
                                     {reportValue(result.summary.wordCount, 97)} words
                                   </div>
+                                  {result.summary.confirmedCancellations && result.summary.confirmedCancellations.length > 0 && (
+                                    <div className="text-[6pt] text-gray-500 italic mt-0.5 font-mono">
+                                      {(() => {
+                                        const cancelledWords = result.summary.confirmedCancellations.reduce((sum: number, c: any) => {
+                                          return sum + (c.text || '').split(/\s+/).filter((w: string) => w.length > 0).length;
+                                        }, 0);
+                                        return `${cancelledWords} cancelled included`;
+                                      })()}
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="border-t border-gray-150 pt-2">
                                   <div className="text-[8pt] text-gray-500 font-mono uppercase tracking-wider">Writing speed</div>
@@ -3890,7 +3900,17 @@ ${result.report}
                               <tr className="border-b border-gray-300 text-center">
                                 <td className="border border-gray-300 px-2 py-2">
                                   <div className="text-[14pt] font-black text-[#0c2340] leading-none">{result.summary.wordCount}</div>
-                                  <div className="text-[6.5pt] text-gray-400 uppercase tracking-wide mt-0.5">words</div>
+                                  <div className="text-[6.5pt] text-gray-400 uppercase tracking-wide mt-0.5">total written words</div>
+                                  {result.summary.confirmedCancellations && result.summary.confirmedCancellations.length > 0 && (
+                                    <div className="text-[5pt] text-gray-500 mt-0.5">
+                                      {(() => {
+                                        const cancelledWords = result.summary.confirmedCancellations.reduce((sum: number, c: any) => {
+                                          return sum + (c.text || '').split(/\s+/).filter((w: string) => w.length > 0).length;
+                                        }, 0);
+                                        return `${cancelledWords} cancelled included`;
+                                      })()}
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="border border-gray-300 px-2 py-2">
                                   <div className="text-[14pt] font-black text-[#0c2340] leading-none">{timeTaken || 12}</div>

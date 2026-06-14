@@ -70,16 +70,17 @@ export function countWords(transcription: string): number {
 export function countWordsDeterministic(
   transcription: string
 ): number {
-  // Step 1: Remove inline [CANCELLED: ...] tags - this handles display tags
-  const transcriptionWithoutTags = transcription
-    .replace(/\[CANCELLED:[^\]]+\]/gi, ' ') // remove cancelled blocks with space
+  // Step 1: Keep cancelled words in count by replacing tags with content
+  // This includes cancelled words in total written words count
+  const transcriptionWithCancelled = transcription
+    .replace(/\[CANCELLED:\s*([^\]]+)\]/gi, ' $1 ') // keep cancelled content
     .replace(/\n/g, ' ')                      // normalize line breaks
     .trim();
 
   // Step 2: Normalize hyphens for consistent counting
   // Convert common spaced compounds to hyphenated form: "get together" → "get-together"
   // This ensures consistent 1-word count regardless of GPT's formatting choice
-  const normalizedTranscription = transcriptionWithoutTags
+  const normalizedTranscription = transcriptionWithCancelled
     .replace(/\bget together\b/gi, 'get-together')
     .replace(/\bcheck up\b/gi, 'check-up')
     .replace(/\bwalk through\b/gi, 'walk-through')
@@ -89,7 +90,7 @@ export function countWordsDeterministic(
     .replace(/\bwrite up\b/gi, 'write-up')
     .trim();
   
-  // Step 3: Final word count (tags already removed cancelled words)
+  // Step 3: Final word count (includes cancelled words)
   const finalCount = normalizedTranscription
     .split(/\s+/)
     .filter(w => w.length > 0)
