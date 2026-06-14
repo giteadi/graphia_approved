@@ -300,14 +300,31 @@ export function calculateProbability(
   const { spelling, writingSpeed, letterFormation, alignment } = scores;
   const norm = getWpmNorm(grade);
 
-  // For single writing sample, soften probability - max MILD-MODERATE unless multiple domains severely impaired
-  // HIGH only if spelling AND fluency both very bad AND multiple visual domains bad
+  // ── NEW: Severe fluency deficit alone can push to HIGH/MODERATE ──
+  const wpmPercent = norm.min > 0 ? (wpm / norm.min) * 100 : 100;
+  const severeFluency = wpm > 0 && wpmPercent < 50; // below 50% of norm min
+
+  // HIGH: Original condition (spelling + speed + visual both bad)
   if (
     spelling <= 30 &&
     wpm < norm.min &&
     (letterFormation <= 60 || alignment <= 65)
   ) {
     return rtiImprovement ? 'MODERATE' : 'HIGH';
+  }
+
+  // ── Severe fluency + low writingSpeed score → HIGH/MODERATE ──
+  // writingSpeed score <= 40 indicates below 50% of norm
+  if (
+    severeFluency &&
+    scores.writingSpeed <= 40
+  ) {
+    return rtiImprovement ? 'MODERATE' : 'HIGH';
+  }
+
+  // ── NEW: Severe fluency alone (even with good spelling) → MODERATE ──
+  if (severeFluency && wpm > 0) {
+    return rtiImprovement ? 'MILD-MODERATE / NEEDS MONITORING' : 'MODERATE';
   }
 
   // MILD-MODERATE if spelling moderate + slow speed + mild visual concerns

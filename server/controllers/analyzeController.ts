@@ -512,7 +512,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     return m?.[1]?.trim();
   }
 
-  const grade_p      = extract('Grade') || grade || '';
+  const grade_p      = grade || extract('Grade') || '';
   const age_p        = extract('Chronological Age');
   const timeGiven_p  = extract('Time Given \\(Allotted Time\\)');
   const timeTaken_p  = extract('Time Taken \\(Actual Time Spent\\)');
@@ -732,6 +732,11 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       ocrConfidence:              extracted.ocrConfidence || 80,
       dysgraphiaIndicators:       cleanObs(extracted.dsm5Traits),
     };
+
+    // Debug: Log grade and norm before calculation
+    console.log('[DEBUG] Grade being used:', grade_p);
+    console.log('[DEBUG] WPM Norm:', norm);
+    console.log('[DEBUG] WPM % of norm min:', norm.min > 0 ? ((wpm / norm.min) * 100).toFixed(1) + '%' : 'N/A');
 
     const scores = calculateScoresWithNorm(evidenceData, grade_p);
     const probability = calculateProbability(scores, rtiImprovement, wpm, grade_p);
