@@ -5,6 +5,8 @@ interface NavbarProps {
   onAbout?: () => void;
   onGetStarted?: () => void;
   onHome?: () => void;
+  onLogin?: () => void;
+  activePage?: 'home' | 'about';
 }
 
 export default function Navbar({
@@ -12,6 +14,8 @@ export default function Navbar({
   onAbout,
   onGetStarted,
   onHome,
+  onLogin,
+  activePage = 'home',
 }: NavbarProps) {
   return (
     <header className="bg-white border-b border-[#e0d9ce] sticky top-0 z-50">
@@ -37,7 +41,11 @@ export default function Navbar({
         <nav className="flex items-center gap-8">
           <button
             onClick={onHome || onGetStarted}
-            className="text-[#1a1a2e] text-sm hover:text-[#1a3a4a] transition-colors"
+            className={`text-sm transition-colors ${
+              activePage === 'home' 
+                ? 'text-[#1a5c6b] font-semibold border-b-2 border-[#1a5c6b] pb-1' 
+                : 'text-[#1a1a2e] hover:text-[#1a3a4a]'
+            }`}
             style={{ fontFamily: "system-ui, sans-serif" }}
           >
             Home
@@ -45,11 +53,25 @@ export default function Navbar({
 
           <button
             onClick={onAbout}
-            className="text-[#1a1a2e] text-sm hover:text-[#1a3a4a] transition-colors"
+            className={`text-sm transition-colors ${
+              activePage === 'about' 
+                ? 'text-[#1a5c6b] font-semibold border-b-2 border-[#1a5c6b] pb-1' 
+                : 'text-[#1a1a2e] hover:text-[#1a3a4a]'
+            }`}
             style={{ fontFamily: "system-ui, sans-serif" }}
           >
             About
           </button>
+
+          {onLogin && (
+            <button
+              onClick={onLogin}
+              className="bg-[#1a5c6b] text-white px-4 py-2 rounded-sm text-sm font-semibold hover:bg-[#154f5c] transition-colors"
+              style={{ fontFamily: "system-ui, sans-serif" }}
+            >
+              Login
+            </button>
+          )}
 
           {showBack && (
             <button

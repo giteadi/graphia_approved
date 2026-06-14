@@ -20,6 +20,8 @@ export default function HomePage({ onGetStarted, onHome, onAbout, onTerms, onPri
         onGetStarted={onGetStarted}
         onHome={onHome}
         onAbout={onAbout}
+        onLogin={onGetStarted}
+        activePage="home"
       />
 
       {/* ── HERO ── */}
@@ -65,7 +67,7 @@ export default function HomePage({ onGetStarted, onHome, onAbout, onTerms, onPri
           </div>
 
           {/* Hero video */}
-          <div className="rounded-2xl overflow-hidden shadow-md h-80 lg:h-96 bg-[#e8e0d0] flex items-center justify-center">
+          <div className="rounded-2xl overflow-hidden shadow-md h-80 lg:h-96 bg-[#e8e0d0] flex items-center justify-center p-2">
             <video
               src="https://res.cloudinary.com/bazeercloud/video/upload/v1781325911/ye_graphia_che_kwebsite_bnai_h_tji1sa.mp4"
               controls
@@ -73,7 +75,7 @@ export default function HomePage({ onGetStarted, onHome, onAbout, onTerms, onPri
               autoPlay
               muted
               loop
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain rounded-lg"
             />
           </div>
         </div>
@@ -96,7 +98,7 @@ export default function HomePage({ onGetStarted, onHome, onAbout, onTerms, onPri
             {/* 2×2 grid of cards */}
             <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-5">
               {[
-                { stat: '75–100', label: 'Minimum Words', desc: 'A writing sample of 75 to 100 words is required for the structural model to reach clinical validity.' },
+                { stat: '75–100', label: 'Minimum Words', desc: 'Student must write 75–100 words on unruled or lightly lined paper using their natural/dominant hand for clinical validity.' },
                 { stat: 'Grade 1 – 15', label: 'Calibrated Range', desc: 'Norm-referenced from elementary writers through third-year college, with age-appropriate baselines.' },
                 { stat: '300 DPI', label: 'Capture Clarity', desc: 'The sample must be captured with absolute clarity so stroke geometry can be modeled accurately.' },
                 { stat: '< 60s', label: 'Analysis Time', desc: 'Most screenings return a full structural breakdown in under a minute.' },
@@ -122,9 +124,9 @@ export default function HomePage({ onGetStarted, onHome, onAbout, onTerms, onPri
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
-              { step: 'Step 1', title: 'Collect the sample', desc: 'Have the student write 75–100 words on unlined or lightly lined paper in their natural hand.' },
+              { step: 'Step 1', title: 'Collect the sample', desc: 'Have the student write 75–100 words on blank or lightly lined paper using their dominant hand.' },
               { step: 'Step 2', title: 'Capture with clarity', desc: 'Photograph or scan the page in even light. Sharp focus and full-page framing are required for structural modeling.' },
-              { step: 'Step 3', title: 'Read the screening', desc: 'GraphiaCheck returns indicators across letter formation, spacing, slant, pressure, and fluency.' },
+              { step: 'Step 3', title: 'Upload/Run screening', desc: 'Upload the sample to generate the report and view the screening results.' },
             ].map(({ step, title, desc }) => (
               <div key={step} className="bg-white rounded-xl p-6 shadow-sm border border-[#e8e0d0]">
                 <p className="text-sm font-semibold text-[#e07a3a] mb-3" style={{ fontFamily: "system-ui, sans-serif" }}>{step}</p>
@@ -240,7 +242,6 @@ export default function HomePage({ onGetStarted, onHome, onAbout, onTerms, onPri
           <div className="flex gap-6 text-xs text-[#888]" style={{ fontFamily: "system-ui, sans-serif" }}>
             <button onClick={onPrivacy} className="hover:text-[#1a3a4a] transition-colors">Privacy</button>
             <button onClick={onTerms} className="hover:text-[#1a3a4a] transition-colors">Terms</button>
-            <button onClick={onRefund} className="hover:text-[#1a3a4a] transition-colors">Refund</button>
           </div>
         </div>
       </footer>

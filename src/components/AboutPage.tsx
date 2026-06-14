@@ -17,6 +17,8 @@ export default function AboutPage({ onBack, onAbout, onTerms, onPrivacy, onRefun
         showBack
         onGetStarted={onBack}
         onAbout={onAbout}
+        onLogin={onBack}
+        activePage="about"
       />
 
       {/* ── HERO ── */}
@@ -134,9 +136,14 @@ export default function AboutPage({ onBack, onAbout, onTerms, onPrivacy, onRefun
       <section className="bg-[#ece7dd] py-20">
         <div className="max-w-6xl mx-auto px-6 text-center">
           <h2 className="text-4xl font-bold text-[#1a1a2e] mb-4">Ready to run a screening?</h2>
-          <p className="text-[#666] mb-8 max-w-xl mx-auto text-sm" style={{ fontFamily: "system-ui, sans-serif" }}>
+          <p className="text-[#666] mb-4 max-w-xl mx-auto text-sm" style={{ fontFamily: "system-ui, sans-serif" }}>
             Upload a handwriting sample and receive a full structural breakdown in under a minute.
           </p>
+          <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-8 max-w-2xl mx-auto">
+            <p className="text-sm text-blue-800" style={{ fontFamily: "system-ui, sans-serif" }}>
+              <span className="font-semibold">ℹ️ Note:</span> When you click on "Ready to Run a Screening", it redirects you to the Build for Clinician section.
+            </p>
+          </div>
           <button
             onClick={onBack}
             className="bg-[#1a5c6b] text-white px-8 py-3.5 rounded-sm font-semibold hover:bg-[#154f5c] transition-colors text-sm"
@@ -184,7 +191,6 @@ export default function AboutPage({ onBack, onAbout, onTerms, onPrivacy, onRefun
           <div className="flex gap-6 text-xs text-[#888]" style={{ fontFamily: "system-ui, sans-serif" }}>
             <button onClick={onPrivacy} className="hover:text-[#1a3a4a] transition-colors">Privacy</button>
             <button onClick={onTerms} className="hover:text-[#1a3a4a] transition-colors">Terms</button>
-            <button onClick={onRefund} className="hover:text-[#1a3a4a] transition-colors">Refund</button>
           </div>
         </div>
       </footer>

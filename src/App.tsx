@@ -3498,6 +3498,13 @@ ${result.report}
                     {/* PAGE 1 */}
                     <div className="report-page bg-white p-10 flex flex-col justify-between print:p-0 print:m-0 shadow-lg border border-gray-200 print:border-none print:shadow-none" style={{ width: '210mm', height: '297mm', minHeight: '297mm', maxHeight: '297mm', boxSizing: 'border-box', pageBreakAfter: 'always' }}>
                       <div className="space-y-5">
+                        {/* Important Limitation Disclaimer */}
+                        <div className="bg-amber-50 border border-amber-200 p-3 rounded-sm">
+                          <p className="text-[8pt] text-amber-800 font-semibold text-center">
+                            ⚠️ A screening is not a diagnosis. Continue tests and consult professionals/clinicians.
+                          </p>
+                        </div>
+
                         {/* Header Box (navy banner) */}
                         <div className="bg-[#0C2340] text-white pt-3 pb-4 px-6 rounded-sm">
                           {/* MINDSAID LEARNING — top left, small gray mono */}
