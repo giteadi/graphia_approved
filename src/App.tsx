@@ -377,16 +377,17 @@ const RenderTranscription = ({ text, spellingErrors = [] }: { text: string, spel
     return parsed.raw.toLowerCase().trim();
   }).filter(Boolean);
 
-  // Split text by [cancelled: ...] or [CANCELLED: ...] blocks
-  const parts = text.split(/(\[(?:cancelled|CANCELLED):.*?\])/gi);
+  // Split text by [cancelled: ...] or [CANCELLED: ...] or [MAYBE-CANCELLED: ...] blocks
+  const parts = text.split(/(\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):.*?\])/gi);
   
   return (
     <>
       {parts.map((part, idx) => {
-        if (part && /^\[(?:cancelled|CANCELLED):/i.test(part) && part.endsWith(']')) {
-          const content = part.replace(/^\[(?:cancelled|CANCELLED):\s*/i, '').replace(/\]$/, '');
+        if (part && /^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):/i.test(part) && part.endsWith(']')) {
+          const isMaybeCancelled = part.toLowerCase().includes('maybe-cancelled');
+          const content = part.replace(/^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):\s*/i, '').replace(/\]$/, '');
           return (
-            <span key={idx} className="text-gray-400 line-through mr-1 font-sans italic">
+            <span key={idx} className={`mr-1 font-sans italic ${isMaybeCancelled ? 'text-orange-400' : 'text-gray-400 line-through'}`}>
               {content}
             </span>
           );

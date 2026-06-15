@@ -10,6 +10,7 @@ export interface EvidenceData {
   wordCount: number;                 // Node-counted, not AI
   confirmedCancellations?: Array<{ text: string; confidence: number; occurrence?: number; status?: 'confirmed' | 'uncertain' }>;
   uncertainCancellations?: Array<{ text: string; confidence: number; reason: string; occurrence?: number; status?: 'confirmed' | 'uncertain' }>;
+  unplacedCancellations?: Array<{ text: string; confidence: number; reason: string; occurrence?: number }>;
 
   // Spelling
   spellingErrors: Array<{ written: string; intended: string; gradeLevel: string }>;

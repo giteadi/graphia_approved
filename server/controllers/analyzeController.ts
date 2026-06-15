@@ -559,6 +559,11 @@ function applySpellingHeuristics(transcription: string, spellingErrors: SpErr[])
     add({ written: 'togther', intended: 'together', reason: 'missing letter', gradeLevel: 'approx 2nd grade', confidence: 95 });
   }
 
+  // "get-togther" missing 'e'
+  if (/\bget[-\s]?togther\b/i.test(t)) {
+    add({ written: 'get-togther', intended: 'get-together', confidence: 90, reason: 'missing letter', gradeLevel: 'approx 2nd grade' });
+  }
+
   return spellingErrors;
 }
 
@@ -800,19 +805,26 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // Normalize over-cancelled phrases (AI guardrail)
     extracted.transcription = normalizeOverCancelledPhrases(extracted.transcription);
 
-    // Re-classify uncertain cancellations with high confidence as confirmed
-    // If LLM is unsure but confidence >= 60, treat as confirmed
-    const highConfidenceUncertain = (extracted.uncertainCancellations || [])
-      .filter((c: any) => (c.confidence ?? 0) >= 60);
+    // Rebucket cancellations: Confirmed = confidence >= 50 AND reason empty, else Uncertain
+    const rawConfirmed = extracted.confirmedCancellations || [];
+    const rawUncertain = extracted.uncertainCancellations || [];
 
-    extracted.confirmedCancellations = [
-      ...(extracted.confirmedCancellations || []),
-      ...highConfidenceUncertain
+    const rebucketedConfirmed = rawConfirmed.filter((c: any) => (c.confidence ?? 0) >= 50 && !c.reason);
+    const rebucketedUncertain = [
+      ...rawUncertain,
+      ...rawConfirmed.filter((c: any) => !((c.confidence ?? 0) >= 50 && !c.reason)).map((c: any) => ({
+        text: c.text,
+        confidence: c.confidence ?? 0,
+        reason: c.reason || 'low_confidence',
+        occurrence: c.occurrence
+      }))
     ];
 
-    // Remove high-confidence items from uncertain list
-    extracted.uncertainCancellations = (extracted.uncertainCancellations || [])
-      .filter((c: any) => (c.confidence ?? 0) < 60);
+    extracted.confirmedCancellations = rebucketedConfirmed;
+    extracted.uncertainCancellations = rebucketedUncertain;
+
+    // Capture raw transcription immediately after Step-1 parse (before any modifications)
+    const rawTranscription = extracted.transcription || '';
 
     console.log('[Step 1] PARSED EVIDENCE:');
     console.log(JSON.stringify({
@@ -925,35 +937,71 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       /^(write actual|specific visual|specific observable|e\.g\.|no examples)/i.test(s.trim());
     const cleanObs = (arr: string[]) => (arr || []).filter(s => !isPlaceholder(s));
 
-    // Validate missing capitals against actual transcription
-    const missingCapitals = extracted.missingCapitals > 0 &&
-      extracted.transcription
-        .split(/[.!?]+/)
-        .some((s: string) => /^[a-z]/.test(s.trim()))
-      ? extracted.missingCapitals
-      : 0;
+    // Promote high-signal uncertain words to spelling errors (ad->and, en->in, ar->are)
+    function promoteUncertainWordsToSpellingErrors(
+      uncertainWords: any[],
+      existingSpellingErrors: any[]
+    ): any[] {
+      const promoted: any[] = [];
+      const highSignalConfusions: Record<string, string> = {
+        'ad': 'and',
+        'en': 'in',
+        'ar': 'are'
+      };
 
-    // Validate missing punctuation against actual transcription
-    const visiblePunctuation = (extracted.transcription.match(/[.!?]/g) || []).length;
-    const sentenceStarts = extracted.transcription
-      .split(/[.!?]+/)
-      .filter((s: string) => s.trim().length > 0)
-      .length;
-    const missingPunctuation = visiblePunctuation < sentenceStarts - 1
-      ? Math.min(
-          extracted.missingPunctuation || 0,
-          sentenceStarts - visiblePunctuation - 1
-        )
-      : 0;
+      for (const uw of uncertainWords || []) {
+        const written = (uw.written || '').toLowerCase().trim();
+        const alternatives = uw.alternatives || [];
 
-    // Validate run-on sentences against estimated sentence count
-    const estimatedSentences = extracted.transcription
-      .split(/[.!?]+/)
-      .filter(Boolean).length;
-    const runOnSentences = Math.min(
-      extracted.runOnSentences || 0,
-      Math.max(0, estimatedSentences - 1)
+        if (highSignalConfusions[written] && alternatives.includes(highSignalConfusions[written])) {
+          // Check if already in spelling errors to avoid duplicates
+          const alreadyExists = existingSpellingErrors.some(
+            (e: any) => (e.written || '').toLowerCase() === written
+          );
+          if (!alreadyExists) {
+            promoted.push({
+              written: written,
+              intended: highSignalConfusions[written],
+              gradeLevel: 'approx 1st grade',
+              confidence: uw.confidence || 70,
+              reason: 'promoted from uncertain words'
+            });
+          }
+        }
+      }
+
+      return promoted;
+    }
+
+    // Find cancellations that are missing from the display transcription
+    function findUnplacedCancellations(
+      displayTranscription: string,
+      cancellations: any[]
+    ): any[] {
+      const unplaced: any[] = [];
+      const transcriptionLower = (displayTranscription || '').toLowerCase();
+
+      for (const c of cancellations || []) {
+        const text = (c.text || '').toLowerCase().trim();
+        if (text && !transcriptionLower.includes(text)) {
+          unplaced.push({
+            text: c.text,
+            confidence: c.confidence ?? 0,
+            reason: c.reason || 'unplaced',
+            occurrence: c.occurrence
+          });
+        }
+      }
+
+      return unplaced;
+    }
+
+    // Apply promotion of uncertain words to spelling errors
+    const promotedSpellingErrors = promoteUncertainWordsToSpellingErrors(
+      extracted.uncertainWords || [],
+      spellingErrors
     );
+    spellingErrors = [...spellingErrors, ...promotedSpellingErrors];
 
     // Override LLM values with deterministic heuristic calculation
     const sb = computeSentenceBoundaryEvidence(extracted.transcription);
@@ -962,11 +1010,6 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     extracted.runOnSentences = sb.runOnSentences;
     extracted.missingCapitals = sb.missingCapitals;
     extracted.missingPunctuation = sb.missingPunctuation;
-
-    // IMPORTANT: Update local variables to use the heuristic values
-    const runOnSentencesFinal = extracted.runOnSentences;
-    const missingCapitalsFinal = extracted.missingCapitals;
-    const missingPunctuationFinal = extracted.missingPunctuation;
 
     // Deduplicate grammar mistakes
     const grammarMistakes = Array.from(
@@ -1004,21 +1047,26 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       .replace(/Date:/gi, '');
 
     // 3) Persist final transcription used everywhere
-    // First capture raw before any modifications
-    const rawTranscription = taggedTranscription;
-
     extracted.transcription = taggedTranscription;
     if (extracted.normalizedTranscription) {
       extracted.normalizedTranscription = taggedNormalizedTranscription;
     }
 
     // 4) Multiple transcription storage for consistency
+    extracted.rawTranscription = rawTranscription;
 
     const displayTranscription = injectCancellationTags(
       fixCancellationPatterns(rawTranscription),
       extracted.confirmedCancellations || [],
       extracted.uncertainCancellations || []
     );
+
+    // Detect cancellations that are missing from the display transcription
+    const allCancellations = [
+      ...(extracted.confirmedCancellations || []),
+      ...(extracted.uncertainCancellations || [])
+    ];
+    const unplacedCancellations = findUnplacedCancellations(displayTranscription, allCancellations);
 
     const countingTranscription = displayTranscription
       .replace(/Date:\s*\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
@@ -1079,12 +1127,13 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       wordCount,
       confirmedCancellations:     extracted.confirmedCancellations || [],
       uncertainCancellations:    extracted.uncertainCancellations || [],
+      unplacedCancellations:      unplacedCancellations || [],
       spellingErrors,
       wordChoiceMistakes:        allWordChoiceMistakes,
       grammarMistakes,
-      runOnSentences:           runOnSentencesFinal,
-      missingCapitals:          missingCapitalsFinal,
-      missingPunctuation:       missingPunctuationFinal,
+      runOnSentences:           extracted.runOnSentences,
+      missingCapitals:          extracted.missingCapitals,
+      missingPunctuation:       extracted.missingPunctuation,
       pastTenseErrors:            extracted.pastTenseErrors || 0,
       letterFormationObservations: cleanObs(extracted.letterFormationObservations),
       observedLetterFormationLetters: (extracted.observedLetterFormationLetters || [])
