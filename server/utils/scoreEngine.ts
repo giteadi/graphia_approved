@@ -130,7 +130,7 @@ function scoreSentenceBoundaries(
   // Higher grades = stricter penalties, lower grades = more lenient
   const gradeNum = parseInt(grade.toLowerCase().replace(/[^0-9]/g, '')) || 6;
   let penaltyMultiplier = 1.0;
-  
+
   if (gradeNum <= 2) {
     penaltyMultiplier = 0.5; // Very lenient for early elementary
   } else if (gradeNum <= 5) {
@@ -145,7 +145,7 @@ function scoreSentenceBoundaries(
 
   const baseScore = 100 - (runOnSentences * 15) - (missingCapitals * 5) - (missingPunctuation * 5);
   const adjustedScore = 100 - ((100 - baseScore) * penaltyMultiplier);
-  
+
   return Math.max(0, Math.min(100, adjustedScore));
 }
 

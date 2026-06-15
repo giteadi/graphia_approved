@@ -564,35 +564,25 @@ function applySpellingHeuristics(transcription: string, spellingErrors: SpErr[])
 
 function computeSentenceBoundaryEvidence(transcription: string) {
   const text = (transcription || '').trim();
+  if (!text) return { runOnSentences: 0, missingCapitals: 0, missingPunctuation: 0 };
 
-  if (!text) {
-    return { runOnSentences: 0, missingCapitals: 0, missingPunctuation: 0 };
-  }
+  const endPunctMatches = text.match(/[.!?]/g) || [];
+  const endPunct = endPunctMatches.length;
 
-  // Count visible sentence end punctuation.
-  const endPunct = (text.match(/[.!?]/g) || []).length;
+  const sentences = text.split(/[.!?]+/).map(s => s.trim()).filter(Boolean);
 
-  // Split into "sentences" by end punctuation.
-  const parts = text.split(/[.!?]+/).map(s => s.trim()).filter(Boolean);
+  // Missing capitals: any new sentence starts lowercase
+  const missingCapitals = sentences.some(s => /^[a-z]/.test(s)) ? 1 : 0;
 
-  // Missing capitals: any sentence-start that begins with lowercase letter.
-  const missingCapitals = parts.some(s => /^[a-z]/.test(s)) ? 1 : 0;
+  // Missing punctuation: long text but too few end marks
+  const missingPunctuation = (text.length > 140 && endPunct === 0) ? 1 : 0;
 
-  // Missing punctuation heuristic - more aggressive detection
-  const wordCount = text.split(/\s+/).length;
-  const likelyMultiSentence = wordCount > 15 || text.length > 100;
-  const hasConjunctions = /\b(and|but|or|so|because|although|however|therefore|meanwhile)\b/i.test(text);
-  const hasVerbs = /\b(is|are|was|were|have|has|had|will|would|could|should|may|might)\b/i.test(text);
+  // Run-on: if ANY sentence chunk is too long (words threshold)
+  const wordCounts = sentences.map(s => (s.match(/\b[\w']+\b/g) || []).length);
+  const maxWordsInOneSentence = wordCounts.length ? Math.max(...wordCounts) : 0;
 
-  // Flag missing punctuation if: long text with multiple clauses but no end punctuation
-  const missingPunctuation = (likelyMultiSentence && endPunct === 0) ||
-                            (wordCount > 20 && endPunct <= 1 && (hasConjunctions || hasVerbs)) ? 1 : 0;
-
-  // Run-on heuristic - more aggressive detection
-  // Run-on if: very long text with minimal punctuation and multiple clauses
-  const runOnSentences = (wordCount > 25 && endPunct === 0) ||
-                        (wordCount > 30 && endPunct === 1) ||
-                        (wordCount > 20 && endPunct <= 1 && hasConjunctions && hasVerbs) ? 1 : 0;
+  // Tune threshold (works across grades better than checking only total punct)
+  const runOnSentences = (maxWordsInOneSentence >= 28) ? 1 : 0;
 
   return { runOnSentences, missingCapitals, missingPunctuation };
 }
@@ -810,6 +800,20 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // Normalize over-cancelled phrases (AI guardrail)
     extracted.transcription = normalizeOverCancelledPhrases(extracted.transcription);
 
+    // Re-classify uncertain cancellations with high confidence as confirmed
+    // If LLM is unsure but confidence >= 60, treat as confirmed
+    const highConfidenceUncertain = (extracted.uncertainCancellations || [])
+      .filter((c: any) => (c.confidence ?? 0) >= 60);
+
+    extracted.confirmedCancellations = [
+      ...(extracted.confirmedCancellations || []),
+      ...highConfidenceUncertain
+    ];
+
+    // Remove high-confidence items from uncertain list
+    extracted.uncertainCancellations = (extracted.uncertainCancellations || [])
+      .filter((c: any) => (c.confidence ?? 0) < 60);
+
     console.log('[Step 1] PARSED EVIDENCE:');
     console.log(JSON.stringify({
       transcription_preview: extracted.transcription?.slice(0, 100),
@@ -847,7 +851,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
 
     const norm      = getWpmNorm(grade_p);
 
-    // Filter spelling by confidence >= 85 and remove cancelled words using word-level matching
+    // Filter spelling by confidence >= 75 and remove cancelled words using word-level matching
     // Also filter out high-confidence confirmed cancellations
     const confirmedCancellationTexts = (extracted.confirmedCancellations || [])
       .filter((c: any) => (c.confidence ?? 0) >= 80)
@@ -890,7 +894,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     const wordChoiceWrittenSet = new Set(allWordChoiceMistakes.map(m => normalizeForMatch(m.written)));
 
     let spellingErrors = (extracted.spellingErrors || [])
-      .filter((e: any) => (e.confidence ?? 100) >= 85)
+      .filter((e: any) => (e.confidence ?? 100) >= 75)
       .filter((err: any) => {
         const w = normalizeForMatch(err.written || '');
         return w && !wordChoiceWrittenSet.has(w);
@@ -902,9 +906,6 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         return !errorWords.some(word => cancelledWordSet.has(word));
       })
       .map((e: any) => ({ written: e.written, intended: canonicalIntended(e.written, e.intended), gradeLevel: e.gradeLevel || '' }));
-
-    // Apply heuristics to catch LLM misses
-    spellingErrors = applySpellingHeuristics(extracted.transcription, spellingErrors);
 
     spellingErrors = spellingErrors
       .filter((err: any) => {
@@ -954,6 +955,19 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       Math.max(0, estimatedSentences - 1)
     );
 
+    // Override LLM values with deterministic heuristic calculation
+    const sb = computeSentenceBoundaryEvidence(extracted.transcription);
+
+    // Use heuristic values for more accurate sentence boundary detection
+    extracted.runOnSentences = sb.runOnSentences;
+    extracted.missingCapitals = sb.missingCapitals;
+    extracted.missingPunctuation = sb.missingPunctuation;
+
+    // IMPORTANT: Update local variables to use the heuristic values
+    const runOnSentencesFinal = extracted.runOnSentences;
+    const missingCapitalsFinal = extracted.missingCapitals;
+    const missingPunctuationFinal = extracted.missingPunctuation;
+
     // Deduplicate grammar mistakes
     const grammarMistakes = Array.from(
       new Map(
@@ -971,14 +985,15 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     const fixedTranscription = fixCancellationPatterns(extracted.transcription);
     const taggedTranscription = injectCancellationTags(
       fixedTranscription,
-      extracted.confirmedCancellations || []
+      extracted.confirmedCancellations || [],
+      extracted.uncertainCancellations || []
     );
 
     const fixedNormalizedTranscription = extracted.normalizedTranscription
       ? fixCancellationPatterns(extracted.normalizedTranscription)
       : undefined;
     const taggedNormalizedTranscription = fixedNormalizedTranscription
-      ? injectCancellationTags(fixedNormalizedTranscription, extracted.confirmedCancellations || [])
+      ? injectCancellationTags(fixedNormalizedTranscription, extracted.confirmedCancellations || [], extracted.uncertainCancellations || [])
       : undefined;
 
     // 2) Now remove headers from the FINAL tagged transcription (not the old one)
@@ -989,13 +1004,15 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       .replace(/Date:/gi, '');
 
     // 3) Persist final transcription used everywhere
+    // First capture raw before any modifications
+    const rawTranscription = taggedTranscription;
+
     extracted.transcription = taggedTranscription;
     if (extracted.normalizedTranscription) {
       extracted.normalizedTranscription = taggedNormalizedTranscription;
     }
 
     // 4) Multiple transcription storage for consistency
-    const rawTranscription = extracted.transcription;
 
     const displayTranscription = injectCancellationTags(
       fixCancellationPatterns(rawTranscription),
@@ -1014,14 +1031,21 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     extracted.displayTranscription = displayTranscription;
     extracted.countingTranscription = countingTranscription;
 
-    // Override LLM values with deterministic heuristic calculation
-    const sb = computeSentenceBoundaryEvidence(extracted.transcription);
+    // Apply heuristics to catch LLM misses (now using final displayTranscription)
+    spellingErrors = applySpellingHeuristics(extracted.transcription, spellingErrors);
 
-    // Use heuristic values for more accurate sentence boundary detection
-    // LLM tends to be too lenient with run-on sentences and punctuation
-    extracted.runOnSentences = sb.runOnSentences;
-    extracted.missingCapitals = sb.missingCapitals;
-    extracted.missingPunctuation = sb.missingPunctuation;
+    spellingErrors = spellingErrors
+      .filter((err: any) => {
+        const writtenLower = err.written?.toLowerCase();
+        // Check if any word in the spelling error matches a cancelled word
+        const errorWords = writtenLower.split(/\s+/).filter(w => w.length > 0);
+        return !errorWords.some(word => cancelledWordSet.has(word));
+      })
+      .map((e: any) => ({
+        written: e.written,
+        intended: canonicalIntended(e.written, e.intended),
+        gradeLevel: e.gradeLevel || ''
+      }));
 
     // 5) Word count must use countingTranscription
     const wordCount = countWordsDeterministic(countingTranscription);
@@ -1058,9 +1082,9 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       spellingErrors,
       wordChoiceMistakes:        allWordChoiceMistakes,
       grammarMistakes,
-      runOnSentences,
-      missingCapitals,
-      missingPunctuation,
+      runOnSentences:           runOnSentencesFinal,
+      missingCapitals:          missingCapitalsFinal,
+      missingPunctuation:       missingPunctuationFinal,
       pastTenseErrors:            extracted.pastTenseErrors || 0,
       letterFormationObservations: cleanObs(extracted.letterFormationObservations),
       observedLetterFormationLetters: (extracted.observedLetterFormationLetters || [])
