@@ -162,6 +162,9 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
   "spellingErrors": [
     { "written": "gettogether", "intended": "get-together", "confidence": 95, "reason": "written as one word without hyphen", "gradeLevel": "approx 2nd grade" }
   ],
+  "wordChoiceMistakes": [
+    { "written": "their", "intended": "there", "confidence": 95, "type": "homophone" }
+  ],
 
   "grammarMistakes": [
     { "type": "agreement|plural|syntax|other", "example": "exact phrase from transcription" }
@@ -306,7 +309,7 @@ After the report, append:
   "verticalAnalysis": "2-sentence vertical organisation observation",
   "wordCount": ${evidence.wordCount},
   "transcription": "${evidence.transcription.replace(/"/g, '\\"').replace(/\n/g, '\\n')}",
-  "displayTranscription": "${(evidence.normalizedTranscription || evidence.transcription).replace(/"/g, '\\"').replace(/\n/g, '\\n')}",
+  "displayTranscription": "${evidence.displayTranscription.replace(/"/g, '\\"').replace(/\n/g, '\\n')}",
   "fluencyAnalysis": "${fluencyLabel} — ${evidence.wpm} WPM vs norm ${norm.min}–${norm.max} WPM. 2-sentence qualitative assessment.",
   "wpm": ${evidence.wpm},
   "basalLevel": "2 sentences on consistently demonstrated skills",
@@ -316,7 +319,7 @@ After the report, append:
   "features": ${JSON.stringify(evidence.features || {})},
   "languageSkills": {
     "sentenceBoundaries": "2-3 sentence comment. Focus on observed issues: ${evidence.runOnSentences} run-on sentences${evidence.missingPunctuation > 0 ? `, ${evidence.missingPunctuation} missing punctuation` : ''}${evidence.missingCapitals > 0 ? `, ${evidence.missingCapitals} missing capitals` : ''}. Only mention missing capitals/punctuation if clearly visible in sample.",
-    "grammar": "2-3 sentence comment. Focus on verb form errors, syntax issues, and sentence structure. ${evidence.grammarMistakes.length} grammar issues observed. Do NOT include spelling errors in grammar analysis.",
+    "grammar": "2-3 sentence comment. Focus on verb form errors, syntax issues, and sentence structure. ${evidence.grammarMistakes.length} grammar issues observed. ${evidence.wordChoiceMistakes?.length || 0} word choice/homophone errors (e.g., 'their/there', 'to/too') that should be addressed in grammar instruction. Do NOT include spelling errors in grammar analysis.",
     "pastTenseUsage": "2-3 sentence comment. ${evidence.pastTenseErrors} errors observed"
   },
   "scores": {
@@ -499,6 +502,217 @@ function attachDeterministicSummary(reportText: string, summary: Record<string, 
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// HELPER FUNCTIONS
+// ══════════════════════════════════════════════════════════════════════════════
+
+function canonicalIntended(written: string, intended: string) {
+  const w = (written || '').toLowerCase().trim();
+  const i = (intended || '').toLowerCase().trim();
+
+  if (w === 'alot' && (!i || i === 'alot')) return 'a lot';
+  if (w === 'ad' && (!i || i === 'ad')) return 'and';
+  if (w === 'lifes' && (!i || i === 'lifes')) return 'lives';
+  return intended;
+}
+
+function normalizeWord(s: string) {
+  return (s || '').toLowerCase().trim();
+}
+
+type SpErr = { written: string; intended: string; gradeLevel?: string; confidence?: number; reason?: string };
+
+function hasError(spellingErrors: SpErr[], written: string, intended?: string) {
+  const w = normalizeWord(written);
+  const i = intended ? normalizeWord(intended) : '';
+  return spellingErrors.some(e => {
+    const ew = normalizeWord(e.written);
+    const ei = normalizeWord(e.intended);
+    if (ew !== w) return false;
+    return intended ? (ei === i) : true;
+  });
+}
+
+function applySpellingHeuristics(transcription: string, spellingErrors: SpErr[]): SpErr[] {
+  const t = (transcription || '').toLowerCase();
+
+  const add = (e: SpErr) => {
+    if (!hasError(spellingErrors, e.written, e.intended)) spellingErrors.push(e);
+  };
+
+  // "to met" -> should be "to meet"
+  if (/\bto\s+met\b/.test(t)) {
+    add({ written: 'met', intended: 'meet', reason: 'wrong verb form', gradeLevel: 'approx 3rd grade', confidence: 90 });
+  }
+
+  // together variants commonly produced by OCR
+  if (/\bgether\b/.test(t)) {
+    add({ written: 'gether', intended: 'together', reason: 'missing letters', gradeLevel: 'approx 2nd grade', confidence: 90 });
+  }
+
+  // "get to gether" split artifact -> together
+  if (/\bget\s+to\s+gether\b/.test(t)) {
+    add({ written: 'gether', intended: 'together', reason: 'OCR split', gradeLevel: 'approx 2nd grade', confidence: 85 });
+  }
+
+  // "togther" missing e
+  if (/\btogther\b/.test(t)) {
+    add({ written: 'togther', intended: 'together', reason: 'missing letter', gradeLevel: 'approx 2nd grade', confidence: 95 });
+  }
+
+  return spellingErrors;
+}
+
+function computeSentenceBoundaryEvidence(transcription: string) {
+  const text = (transcription || '').trim();
+
+  if (!text) {
+    return { runOnSentences: 0, missingCapitals: 0, missingPunctuation: 0 };
+  }
+
+  // Count visible sentence end punctuation.
+  const endPunct = (text.match(/[.!?]/g) || []).length;
+
+  // Split into "sentences" by end punctuation.
+  const parts = text.split(/[.!?]+/).map(s => s.trim()).filter(Boolean);
+
+  // Missing capitals: any sentence-start that begins with lowercase letter.
+  const missingCapitals = parts.some(s => /^[a-z]/.test(s)) ? 1 : 0;
+
+  // Missing punctuation heuristic:
+  // If the text has multiple clauses/lines but almost no end punctuation, flag 1.
+  const likelyMultiSentence = parts.length >= 2 || text.length > 120;
+  const missingPunctuation = (likelyMultiSentence && endPunct === 0) ? 1 : 0;
+
+  // Run-on heuristic:
+  // If there is 0-1 end punctuation but text is long, flag 1 run-on.
+  const runOnSentences = (text.length > 160 && endPunct <= 1) ? 1 : 0;
+
+  return { runOnSentences, missingCapitals, missingPunctuation };
+}
+
+function detectWordChoiceMistakes(transcription: string) {
+  const t = (transcription || '').toLowerCase();
+  const out: Array<{ written: string; intended: string; type: string; confidence: number }> = [];
+
+  if (/\btheir\s+are\b/.test(t)) {
+    out.push({ written: 'their are', intended: 'there are', type: 'homophone', confidence: 90 });
+  }
+  if (/\bto\s+too\b/.test(t)) {
+    out.push({ written: 'to too', intended: 'too', type: 'homophone', confidence: 85 });
+  }
+  if (/\byour\s+are\b/.test(t) && /\bhour\b/.test(t)) {
+    out.push({ written: 'our are', intended: 'we are', type: 'grammar', confidence: 85 });
+  }
+  return out;
+}
+
+function fixCancellationPatterns(text: string): string {
+  // Pattern: [CANCELLED: article/pronoun noun] -> article/pronoun [CANCELLED: noun]
+  return text
+    .replace(/\[CANCELLED:\s*(my|the|a|an|his|her|their|our|your)\s+(\w+)\s*\]/gi, '$1 [CANCELLED: $2]')
+    .replace(/\[CANCELLED:\s*(my|the|a|an|his|her|their|our|your)\s+(\w+)\s+(\w+)\s*\]/gi, '$1 [CANCELLED: $2] $3');
+}
+
+type CancellationItem = {
+  text: string;
+  confidence?: number;
+  occurrence?: number; // 1-based; if missing -> 1
+  status?: 'confirmed' | 'uncertain';
+};
+
+function normalizeForMatch(s: string): string {
+  return (s || '')
+    .toLowerCase()
+    .replace(/\u2019/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildPhraseRegex(phrase: string): RegExp | null {
+  const p = normalizeForMatch(phrase);
+  if (!p) return null;
+
+  const words = p.split(' ').filter(Boolean);
+  if (words.length === 0) return null;
+
+  const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // Allow spaces and light punctuation between words.
+  const joiner = `[\\s,.;:!?'"()\\-]+`;
+  const body = words.map(esc).join(joiner);
+
+  // Word boundaries on both ends to avoid partial matches.
+  return new RegExp(`\\b${body}\\b`, 'gi');
+}
+
+function replaceNth(
+  input: string,
+  re: RegExp,
+  nth: number,
+  replacement: (match: string) => string
+): string {
+  if (nth <= 0) nth = 1;
+
+  let idx = 0;
+  // Ensure global
+  const flags = re.flags.includes('g') ? re.flags : re.flags + 'g';
+  const rgx = new RegExp(re.source, flags);
+
+  return input.replace(rgx, (m) => {
+    idx += 1;
+    if (idx === nth) return replacement(m);
+    return m;
+  });
+}
+
+function injectCancellationTags(
+  transcription: string,
+  confirmedCancellations: CancellationItem[] = [],
+  uncertainCancellations: CancellationItem[] = []
+): string {
+  let result = transcription || '';
+  if (!result.trim()) return result;
+
+  const alreadyHasAnyTag = (text: string) =>
+    result.toLowerCase().includes(`[${text.toLowerCase()}:`);
+
+  const injectOne = (item: CancellationItem, tag: 'CANCELLED' | 'MAYBE-CANCELLED') => {
+    const rawText = (item?.text || '').trim();
+    if (!rawText) return;
+
+    const exactTag = `[${tag}: ${rawText}]`;
+    if (result.includes(exactTag)) return;
+
+    const re = buildPhraseRegex(rawText);
+    if (!re) return;
+
+    const safeLower = normalizeForMatch(rawText);
+    if (alreadyHasAnyTag('cancelled') || alreadyHasAnyTag('maybe-cancelled')) {
+      const taggedRegions = result.match(/\[(CANCELLED|MAYBE-CANCELLED):[^\]]+\]/gi) || [];
+      if (taggedRegions.some(tr => normalizeForMatch(tr).includes(safeLower))) return;
+    }
+
+    const nth = typeof item.occurrence === 'number' && item.occurrence > 0 ? item.occurrence : 1;
+    result = replaceNth(result, re, nth, (matched) => `[${tag}: ${matched}]`);
+  };
+
+  const sortByPhraseLengthDesc = (a: CancellationItem, b: CancellationItem) =>
+    normalizeForMatch(b.text).length - normalizeForMatch(a.text).length;
+
+  const confirmed = (confirmedCancellations || []).slice().sort(sortByPhraseLengthDesc);
+  const uncertain = (uncertainCancellations || []).slice().sort(sortByPhraseLengthDesc);
+
+  for (const c of confirmed) injectOne(c, 'CANCELLED');
+  for (const c of uncertain) injectOne(c, 'MAYBE-CANCELLED');
+
+  return result;
+}
+
+function escapeRegExp(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // CONTROLLER
 // ══════════════════════════════════════════════════════════════════════════════
 export async function analyzeHandler(req: AuthRequest, res: Response): Promise<void> {
@@ -638,20 +852,54 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         .flatMap(text => text.split(/\s+/))
         .filter(word => word.length > 0)
     );
-    
-    // Canonical intended spelling for common OCR errors
-    function canonicalIntended(written: string, intended: string) {
-      const w = (written || '').toLowerCase().trim();
-      const i = (intended || '').toLowerCase().trim();
 
-      if (w === 'alot' && (!i || i === 'alot')) return 'a lot';
-      if (w === 'ad' && (!i || i === 'ad')) return 'and';
-      if (w === 'lifes' && (!i || i === 'lifes')) return 'lives';
-      return intended;
-    }
+    // Word choice mistakes (homophones, etc.) - separate from spelling errors
+    type WordChoiceMistake = { written: string; intended: string; confidence?: number; type?: string };
 
-    const spellingErrors = (extracted.spellingErrors || [])
+    const wordChoiceMistakes: WordChoiceMistake[] = (extracted.wordChoiceMistakes || [])
+      .filter((m: any) => (m.confidence ?? 100) >= 80)
+      .map((m: any) => ({
+        written: String(m.written || '').trim(),
+        intended: String(m.intended || '').trim(),
+        confidence: m.confidence ?? 100,
+        type: m.type || 'homophone',
+      }))
+      .filter(m => m.written && m.intended);
+
+    const detectedWordChoiceMistakes = detectWordChoiceMistakes(extracted.transcription);
+
+    // Merge AI-detected with dynamically detected word choice mistakes
+    const allWordChoiceMistakes = [...wordChoiceMistakes, ...detectedWordChoiceMistakes]
+      .filter((m: any) => (m.confidence ?? 100) >= 80)
+      .map((m: any) => ({
+        written: String(m.written || '').trim(),
+        intended: String(m.intended || '').trim(),
+        confidence: m.confidence ?? 100,
+        type: m.type || 'homophone',
+      }))
+      .filter(m => m.written && m.intended);
+
+    // Remove word choice mistakes from spelling errors to avoid double penalty
+    const wordChoiceWrittenSet = new Set(allWordChoiceMistakes.map(m => normalizeForMatch(m.written)));
+
+    let spellingErrors = (extracted.spellingErrors || [])
       .filter((e: any) => (e.confidence ?? 100) >= 85)
+      .filter((err: any) => {
+        const w = normalizeForMatch(err.written || '');
+        return w && !wordChoiceWrittenSet.has(w);
+      })
+      .filter((err: any) => {
+        const writtenLower = err.written?.toLowerCase();
+        // Check if any word in the spelling error matches a cancelled word
+        const errorWords = writtenLower.split(/\s+/).filter(w => w.length > 0);
+        return !errorWords.some(word => cancelledWordSet.has(word));
+      })
+      .map((e: any) => ({ written: e.written, intended: canonicalIntended(e.written, e.intended), gradeLevel: e.gradeLevel || '' }));
+
+    // Apply heuristics to catch LLM misses
+    spellingErrors = applySpellingHeuristics(extracted.transcription, spellingErrors);
+
+    spellingErrors = spellingErrors
       .filter((err: any) => {
         const writtenLower = err.written?.toLowerCase();
         // Check if any word in the spelling error matches a cancelled word
@@ -711,41 +959,6 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // Post-process guardrail: Fix over-aggressive cancellation patterns
     // "[CANCELLED: my cousin]" -> "my [CANCELLED: cousin]"
     // "[CANCELLED: my cousin cousins]" -> "my [CANCELLED: cousin] cousins"
-    function fixCancellationPatterns(text: string): string {
-      // Pattern: [CANCELLED: article/pronoun noun] -> article/pronoun [CANCELLED: noun]
-      return text
-        .replace(/\[CANCELLED:\s*(my|the|a|an|his|her|their|our|your)\s+(\w+)\s*\]/gi, '$1 [CANCELLED: $2]')
-        .replace(/\[CANCELLED:\s*(my|the|a|an|his|her|their|our|your)\s+(\w+)\s+(\w+)\s*\]/gi, '$1 [CANCELLED: $2] $3');
-    }
-
-    // Post-process: Inject [CANCELLED: ...] tags based on confirmedCancellations array
-    // This ensures UI shows strikethrough and word count includes cancelled words consistently
-    function injectCancellationTags(transcription: string, confirmedCancellations: any[]): string {
-      if (!confirmedCancellations || confirmedCancellations.length === 0) {
-        return transcription;
-      }
-
-      let result = transcription;
-      for (const cancellation of confirmedCancellations) {
-        const cancelText = cancellation.text;
-        if (!cancelText) continue;
-
-        // Check if the cancellation text already appears with [CANCELLED: ...] tag
-        const alreadyTagged = result.includes(`[CANCELLED: ${cancelText}]`);
-        if (alreadyTagged) continue;
-
-        // Find the text in transcription and wrap it with [CANCELLED: ...]
-        // Use case-insensitive replacement to handle variations
-        const regex = new RegExp(`\\b${escapeRegExp(cancelText)}\\b`, 'gi');
-        result = result.replace(regex, `[CANCELLED: ${cancelText}]`);
-      }
-      return result;
-    }
-
-    // Helper function to escape special regex characters
-    function escapeRegExp(string: string): string {
-      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
 
     // 1) First fix + inject cancellations
     const fixedTranscription = fixCancellationPatterns(extracted.transcription);
@@ -774,11 +987,37 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       extracted.normalizedTranscription = taggedNormalizedTranscription;
     }
 
-    // 4) Word count must use transcriptionForCounting
-    const wordCount = countWordsDeterministic(transcriptionForCounting);
+    // 4) Multiple transcription storage for consistency
+    const rawTranscription = extracted.transcription;
+
+    const displayTranscription = injectCancellationTags(
+      fixCancellationPatterns(rawTranscription),
+      extracted.confirmedCancellations || [],
+      extracted.uncertainCancellations || []
+    );
+
+    const countingTranscription = displayTranscription
+      .replace(/Date:\s*\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
+      .replace(/\d{1,2}:\d{2}\s*(?:am|pm)?/gi, '')
+      .replace(/\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
+      .replace(/Date:/gi, '');
+
+    extracted.transcription = displayTranscription;
+    extracted.rawTranscription = rawTranscription;
+    extracted.displayTranscription = displayTranscription;
+    extracted.countingTranscription = countingTranscription;
+
+    // Override LLM values ONLY if LLM said everything perfect but our heuristic sees issues
+    const sb = computeSentenceBoundaryEvidence(extracted.transcription);
+    if ((extracted.runOnSentences ?? 0) === 0 && sb.runOnSentences > 0) extracted.runOnSentences = sb.runOnSentences;
+    if ((extracted.missingCapitals ?? 0) === 0 && sb.missingCapitals > 0) extracted.missingCapitals = sb.missingCapitals;
+    if ((extracted.missingPunctuation ?? 0) === 0 && sb.missingPunctuation > 0) extracted.missingPunctuation = sb.missingPunctuation;
+
+    // 5) Word count must use countingTranscription
+    const wordCount = countWordsDeterministic(countingTranscription);
 
     console.log('[INTERNAL DEBUG] Word Count Calculation:');
-    console.log(`Transcription: ${transcriptionForCounting.slice(0, 100)}...`);
+    console.log(`Transcription: ${countingTranscription.slice(0, 100)}...`);
     console.log(`Cancelled words included in total count`);
     console.log(`Visible word count: ${wordCount}`);
     console.log(`Final word count (includes cancelled): ${wordCount}`);
@@ -799,11 +1038,15 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
 
     const evidenceData: EvidenceData = {
       transcription:              extracted.transcription,
+      rawTranscription:            extracted.rawTranscription,
+      displayTranscription:       extracted.displayTranscription,
+      countingTranscription:      extracted.countingTranscription,
       normalizedTranscription:     extracted.normalizedTranscription || extracted.transcription,
       wordCount,
       confirmedCancellations:     extracted.confirmedCancellations || [],
       uncertainCancellations:    extracted.uncertainCancellations || [],
       spellingErrors,
+      wordChoiceMistakes:        allWordChoiceMistakes,
       grammarMistakes,
       runOnSentences,
       missingCapitals,

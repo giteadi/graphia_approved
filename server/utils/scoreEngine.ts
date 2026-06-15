@@ -3,13 +3,19 @@
 
 export interface EvidenceData {
   transcription: string;
+  rawTranscription?: string;           // Original AI output
+  displayTranscription?: string;     // After tag injection for UI
+  countingTranscription?: string;     // With headers removed for word count
   normalizedTranscription?: string;  // OCR-corrected version for display
-  wordCount: number;          // Node-counted, not AI
-  confirmedCancellations?: Array<{ text: string; confidence: number; occurrence?: number }>;
-  uncertainCancellations?: Array<{ text: string; confidence: number; reason: string; occurrence?: number }>;
+  wordCount: number;                 // Node-counted, not AI
+  confirmedCancellations?: Array<{ text: string; confidence: number; occurrence?: number; status?: 'confirmed' | 'uncertain' }>;
+  uncertainCancellations?: Array<{ text: string; confidence: number; reason: string; occurrence?: number; status?: 'confirmed' | 'uncertain' }>;
 
   // Spelling
   spellingErrors: Array<{ written: string; intended: string; gradeLevel: string }>;
+
+  // Word choice mistakes (homophones, etc.)
+  wordChoiceMistakes?: Array<{ written: string; intended: string; confidence?: number; type?: string }>;
 
   // Grammar
   grammarMistakes: Array<{ type: 'agreement' | 'plural' | 'syntax' | 'other'; example: string }>;
