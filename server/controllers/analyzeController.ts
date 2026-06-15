@@ -578,14 +578,21 @@ function computeSentenceBoundaryEvidence(transcription: string) {
   // Missing capitals: any sentence-start that begins with lowercase letter.
   const missingCapitals = parts.some(s => /^[a-z]/.test(s)) ? 1 : 0;
 
-  // Missing punctuation heuristic:
-  // If the text has multiple clauses/lines but almost no end punctuation, flag 1.
-  const likelyMultiSentence = parts.length >= 2 || text.length > 120;
-  const missingPunctuation = (likelyMultiSentence && endPunct === 0) ? 1 : 0;
+  // Missing punctuation heuristic - more aggressive detection
+  const wordCount = text.split(/\s+/).length;
+  const likelyMultiSentence = wordCount > 15 || text.length > 100;
+  const hasConjunctions = /\b(and|but|or|so|because|although|however|therefore|meanwhile)\b/i.test(text);
+  const hasVerbs = /\b(is|are|was|were|have|has|had|will|would|could|should|may|might)\b/i.test(text);
 
-  // Run-on heuristic:
-  // If there is 0-1 end punctuation but text is long, flag 1 run-on.
-  const runOnSentences = (text.length > 160 && endPunct <= 1) ? 1 : 0;
+  // Flag missing punctuation if: long text with multiple clauses but no end punctuation
+  const missingPunctuation = (likelyMultiSentence && endPunct === 0) ||
+                            (wordCount > 20 && endPunct <= 1 && (hasConjunctions || hasVerbs)) ? 1 : 0;
+
+  // Run-on heuristic - more aggressive detection
+  // Run-on if: very long text with minimal punctuation and multiple clauses
+  const runOnSentences = (wordCount > 25 && endPunct === 0) ||
+                        (wordCount > 30 && endPunct === 1) ||
+                        (wordCount > 20 && endPunct <= 1 && hasConjunctions && hasVerbs) ? 1 : 0;
 
   return { runOnSentences, missingCapitals, missingPunctuation };
 }
@@ -1007,11 +1014,14 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     extracted.displayTranscription = displayTranscription;
     extracted.countingTranscription = countingTranscription;
 
-    // Override LLM values ONLY if LLM said everything perfect but our heuristic sees issues
+    // Override LLM values with deterministic heuristic calculation
     const sb = computeSentenceBoundaryEvidence(extracted.transcription);
-    if ((extracted.runOnSentences ?? 0) === 0 && sb.runOnSentences > 0) extracted.runOnSentences = sb.runOnSentences;
-    if ((extracted.missingCapitals ?? 0) === 0 && sb.missingCapitals > 0) extracted.missingCapitals = sb.missingCapitals;
-    if ((extracted.missingPunctuation ?? 0) === 0 && sb.missingPunctuation > 0) extracted.missingPunctuation = sb.missingPunctuation;
+
+    // Use heuristic values for more accurate sentence boundary detection
+    // LLM tends to be too lenient with run-on sentences and punctuation
+    extracted.runOnSentences = sb.runOnSentences;
+    extracted.missingCapitals = sb.missingCapitals;
+    extracted.missingPunctuation = sb.missingPunctuation;
 
     // 5) Word count must use countingTranscription
     const wordCount = countWordsDeterministic(countingTranscription);
