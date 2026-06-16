@@ -85,6 +85,12 @@ Do not delete overwritten words unless a clear strike-through exists.
    - If a word is ambiguous, write your best read and add it to uncertainWords.
    - Use \\n for line breaks in transcription.
 
+   CRITICAL: Do NOT do word-choice correction unless letters are clearly distinguishable.
+   - Example: If student wrote "spot" vs "sport" is ambiguous (r vs missing r), keep the student's visible letters as written.
+   - If letter formation is unclear (e.g., missing r, extra letter, ambiguous stroke), keep the most-likely reading AND add to uncertainWords (NOT spellingErrors).
+   - Do NOT label "incorrect word choice" when the transcription itself is uncertain.
+   - Transcribe EXACTLY what you see, even if it seems "wrong" in context.
+
 5. OCR NORMALIZATION RULE:
    - normalizedTranscription must be identical to transcription EXCEPT:
      for uncertainWords with confidence >= 70, replace word with best possibleAlternative.
@@ -102,6 +108,12 @@ Do not delete overwritten words unless a clear strike-through exists.
 - Provide confidence (0-100), reason for each, AND approximate grade level (e.g., "approx 2nd grade", "approx 4th grade", "approx 6th grade")
 - IMPORTANT: Do NOT flag words that appear in cancelledWords as spelling errors. Cancelled words should only appear in the cancelledWords list, not in spellingErrors.
 - IMPORTANT: "met" is a correctly spelled word - if used incorrectly as tense, flag as grammar/syntax error, NOT spelling error.
+- OCCURRENCE TRACKING: For each spelling error, specify which occurrence (1-based) in the transcription. If the same word appears multiple times and only some are errors, specify the exact occurrence number. If unclear, use 1.
+
+   AMBIGUOUS LETTER PAIRS - EXTRA STRICT:
+   - For easily confused pairs (spot↔sport, were↔where, their↔there, to↔too, etc.), require 98%+ confidence to flag as spelling error.
+   - If confidence < 98% for ambiguous pairs, add to uncertainWords instead of spellingErrors.
+   - Common ambiguous pairs to watch: spot/sport, were/where, their/there, to/too/two, here/hear, write/right, no/know, new/knew.
 
 Grade context: ${grade}
 
@@ -160,7 +172,7 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
   "uncertainWords": [{ "word": "en", "confidence": 45, "possibleAlternatives": ["in"] }],
 
   "spellingErrors": [
-    { "written": "gettogether", "intended": "get-together", "confidence": 95, "reason": "written as one word without hyphen", "gradeLevel": "approx 2nd grade" }
+    { "written": "gettogether", "intended": "get-together", "confidence": 95, "reason": "written as one word without hyphen", "gradeLevel": "approx 2nd grade", "occurrence": 1 }
   ],
   "wordChoiceMistakes": [
     { "written": "their", "intended": "there", "confidence": 95, "type": "homophone" }
@@ -917,7 +929,12 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         const errorWords = writtenLower.split(/\s+/).filter(w => w.length > 0);
         return !errorWords.some(word => cancelledWordSet.has(word));
       })
-      .map((e: any) => ({ written: e.written, intended: canonicalIntended(e.written, e.intended), gradeLevel: e.gradeLevel || '' }));
+      .map((e: any) => ({
+        written: String(e.written || '').trim(),
+        intended: canonicalIntended(e.written, e.intended),
+        gradeLevel: e.gradeLevel || '',
+        confidence: e.confidence ?? 100
+      }));
 
     spellingErrors = spellingErrors
       .filter((err: any) => {
@@ -929,7 +946,8 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       .map((e: any) => ({
         written: e.written,
         intended: canonicalIntended(e.written, e.intended),
-        gradeLevel: e.gradeLevel || ''
+        gradeLevel: e.gradeLevel || '',
+        confidence: e.confidence ?? 100
       }));
 
     // Strip placeholder strings AI sometimes echoes from the prompt template
@@ -950,8 +968,8 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       };
 
       for (const uw of uncertainWords || []) {
-        const written = (uw.written || '').toLowerCase().trim();
-        const alternatives = uw.alternatives || [];
+        const written = String(uw.word || '').toLowerCase().trim();
+        const alternatives = uw.possibleAlternatives || [];
 
         if (highSignalConfusions[written] && alternatives.includes(highSignalConfusions[written])) {
           // Check if already in spelling errors to avoid duplicates
@@ -1082,6 +1100,65 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // Apply heuristics to catch LLM misses (now using final displayTranscription)
     spellingErrors = applySpellingHeuristics(extracted.transcription, spellingErrors);
 
+    // Filter out ambiguous letter pairs with low confidence
+    const ambiguousPairs: Record<string, string[]> = {
+      'spot': ['sport'],
+      'sport': ['spot'],
+      'were': ['where'],
+      'where': ['were'],
+      'their': ['there'],
+      'there': ['their'],
+      'to': ['too', 'two'],
+      'too': ['to', 'two'],
+      'two': ['to', 'too'],
+      'here': ['hear'],
+      'hear': ['here'],
+      'write': ['right'],
+      'right': ['write'],
+      'no': ['know'],
+      'know': ['no'],
+      'new': ['knew'],
+      'knew': ['new']
+    };
+
+    const filteredSpellingErrors: any[] = [];
+    const movedToUncertain: any[] = [];
+
+    for (const err of spellingErrors) {
+      const writtenLower = (err.written || '').toLowerCase();
+      const intendedLower = (err.intended || '').toLowerCase();
+      const confidence = err.confidence || 0;
+
+      // Check if this is an ambiguous pair
+      const isAmbiguous = ambiguousPairs[writtenLower]?.includes(intendedLower) ||
+                          ambiguousPairs[intendedLower]?.includes(writtenLower);
+
+      if (isAmbiguous && confidence < 98) {
+        // Move to uncertain words instead of spelling errors
+        movedToUncertain.push({
+          word: err.written,
+          possibleAlternatives: [err.intended],
+          confidence,
+          reason: 'ambiguous letter pair - low confidence'
+        });
+      } else {
+        filteredSpellingErrors.push(err);
+      }
+    }
+
+    // Add moved items to uncertain words if not already present
+    for (const moved of movedToUncertain) {
+      const alreadyExists = (extracted.uncertainWords || []).some(
+        (uw: any) => String(uw.word || '').toLowerCase() === String(moved.word || '').toLowerCase()
+      );
+      if (!alreadyExists) {
+        extracted.uncertainWords = extracted.uncertainWords || [];
+        extracted.uncertainWords.push(moved);
+      }
+    }
+
+    spellingErrors = filteredSpellingErrors;
+
     spellingErrors = spellingErrors
       .filter((err: any) => {
         const writtenLower = err.written?.toLowerCase();
@@ -1092,7 +1169,8 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       .map((e: any) => ({
         written: e.written,
         intended: canonicalIntended(e.written, e.intended),
-        gradeLevel: e.gradeLevel || ''
+        gradeLevel: e.gradeLevel || '',
+        occurrence: typeof e.occurrence === 'number' && e.occurrence > 0 ? e.occurrence : 1
       }));
 
     // 5) Word count must use countingTranscription

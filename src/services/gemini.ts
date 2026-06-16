@@ -1,6 +1,13 @@
 // API calls go through the local backend proxy (OpenAI) to avoid CORS issues
 const API_BASE = "/api";
 
+export interface SpellingError {
+  written: string;
+  intended: string;
+  gradeLevel: string;
+  occurrence: number;
+}
+
 export interface AnalysisResult {
   report: string;
   image?: string;
@@ -9,7 +16,7 @@ export interface AnalysisResult {
     lineQuality: string;
     lineFormation: string;
     mechanics: string;
-    spellingErrors: string[];
+    spellingErrors: SpellingError[];
     dysgraphiaIndicators: string[];
     assessmentRecommendation: string;
     probabilityEstimate: string;

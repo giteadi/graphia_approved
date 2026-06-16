@@ -85,7 +85,7 @@ const getProbabilityDisplayLabel = (probabilityEstimate = '') => {
   return 'LOW';
 };
 import ReactMarkdown from 'react-markdown';
-import { analyzeHandwriting, AnalysisResult, InterventionHistory } from './services/gemini';
+import { analyzeHandwriting, AnalysisResult, InterventionHistory, SpellingError } from './services/gemini';
 
 const GRADES = [
   ...Array.from({ length: 12 }, (_, i) => `Grade ${i + 1}`),
@@ -314,53 +314,6 @@ const TOUR_STEPS = [
 
 const DEFAULT_DISCLAIMER = "THIS REPORT WAS GENERATED USING AN AI-POWERED TOOL THAT ANALYZES HANDWRITING SAMPLES FOR CHARACTERISTICS ASSOCIATED WITH DYSGRAPHIA. PLEASE NOTE THAT THE HANDWRITING SAMPLES SUBMITTED FOR ANALYSIS MUST BE SUFFICIENTLY LEGIBLE FOR THE AI-POWERED TOOL TO PROCESS AND GENERATE AN ACCURATE REPORT. ILLEGIBLE OR UNCLEAR SAMPLES MAY AFFECT THE QUALITY AND RELIABILITY OF THE FINDINGS. BEFORE BEING SHARED, THE AI-GENERATED FINDINGS IN THIS REPORT WERE CAREFULLY REVIEWED AND VETTED BY A SPECIAL EDUCATOR-(LEARNING DISABILITIES SPECIALIST) TO ENSURE ACCURACY, CLINICAL RELEVANCE, AND APPROPRIATENESS.";
 
-const parseSpellingError = (errorStr: string) => {
-  let raw = errorStr;
-  let correct = "";
-  let discrepancy = "";
-  
-  // Try regex: matches "impatant (important) - level: 3rd grade" or "impatant (important) - approximate grade level: 3rd grade"
-  const parenMatch = errorStr.match(/^([^(]+)\s*\(([^)]+)\)\s*(?:-|:)\s*(.+)$/i);
-  if (parenMatch) {
-    raw = parenMatch[1].trim();
-    correct = parenMatch[2].trim();
-    discrepancy = parenMatch[3].trim();
-  } else {
-    const spaceParenMatch = errorStr.match(/^([^(]+)\s*\(([^)]+)\)/i);
-    if (spaceParenMatch) {
-      raw = spaceParenMatch[1].trim();
-      correct = spaceParenMatch[2].trim();
-      const after = errorStr.substring(spaceParenMatch[0].length);
-      discrepancy = after.replace(/^[^a-zA-Z0-9]+/, "").trim();
-    } else {
-      // Fallback split
-      const parts = errorStr.split(/[-:()]/);
-      if (parts.length >= 2) {
-        raw = parts[0].trim();
-        correct = parts[1].trim();
-        discrepancy = parts.slice(2).join(' ').trim();
-      }
-    }
-  }
-
-  // Clean discrepancy labels to look like screenshots (e.g. "Gr 3 below"):
-  let cleanDisc = discrepancy;
-  if (cleanDisc.toLowerCase().includes("grade") || cleanDisc.toLowerCase().includes("gr")) {
-    const numMatch = cleanDisc.match(/\b\d+\b/);
-    if (numMatch) {
-      cleanDisc = `Gr ${numMatch[0]} below`;
-    }
-  } else if (!cleanDisc) {
-    cleanDisc = "Below level";
-  }
-
-  return {
-    raw: raw.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, ""), // strip punctuation
-    correct: correct || raw,
-    discrepancy: cleanDisc
-  };
-};
-
 const DEFAULT_STRATEGIES = [
   "Provide lined paper or paper with raised tactile lines to help the student maintain a straight baseline and judge letter size.",
   "Allow the student to type assignments or use speech-to-text software for longer written tasks, so ideas are not blocked by the physical struggle of handwriting.",
@@ -368,17 +321,14 @@ const DEFAULT_STRATEGIES = [
   "Provide extended time for all written tasks, as the current writing speed requires more time to demonstrate knowledge adequately."
 ];
 
-const RenderTranscription = ({ text, spellingErrors = [] }: { text: string, spellingErrors?: string[] }) => {
+const RenderTranscription = ({ text, spellingErrors = [] }: { text: string, spellingErrors?: SpellingError[] }) => {
   if (!text) return null;
   
-  // Extract clean lowercase error words
-  const errorWords = spellingErrors.map((err) => {
-    const parsed = parseSpellingError(err);
-    return parsed.raw.toLowerCase().trim();
-  }).filter(Boolean);
+  // Track occurrence counts for each word
+  const wordOccurrenceTracker: Record<string, number> = {};
 
   // Split text by [cancelled: ...] or [CANCELLED: ...] or [MAYBE-CANCELLED: ...] blocks
-  const parts = text.split(/(\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):.*?\])/gi);
+  const parts = text.split(/(\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):[\s\S]*?\])/gi);
   
   return (
     <>
@@ -401,15 +351,20 @@ const RenderTranscription = ({ text, spellingErrors = [] }: { text: string, spel
               // Strip punctuation for matching
               const cleanWord = word.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, "").toLowerCase().trim();
               
-              const isError = errorWords.includes(cleanWord) || 
-                errorWords.some(errW => {
-                  if (errW.length > 2 && cleanWord.length > 2) {
-                    return errW === cleanWord || cleanWord === errW;
-                  }
-                  return false;
-                });
+              // Skip empty words
+              if (!cleanWord) return <span key={wordIdx}>{word}</span>;
               
-              if (isError && cleanWord.length > 0) {
+              // Track occurrence for this word
+              wordOccurrenceTracker[cleanWord] = (wordOccurrenceTracker[cleanWord] || 0) + 1;
+              const currentOccurrence = wordOccurrenceTracker[cleanWord];
+              
+              // Check if this word matches any spelling error with the correct occurrence
+              const matchingError = spellingErrors.find(err => {
+                const errWritten = (err.written || '').toLowerCase().trim();
+                return errWritten === cleanWord && err.occurrence === currentOccurrence;
+              });
+              
+              if (matchingError) {
                 return (
                   <span key={wordIdx} className="text-red-600 font-bold underline decoration-red-600/50 underline-offset-2">
                     {word}
@@ -795,7 +750,11 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
         lineQuality: "Heavy pressure and micro-tremors are present, indicating severe hand fatigue and pencil-grip tension.",
         lineFormation: "Letter sizes vary wildly. Lowercase and uppercase forms are mixed together.",
         mechanics: "Poor letter form fluidity. Slow letter reproduction leads to fatigue.",
-        spellingErrors: ["thouse (those) - Grade 4 level", "ciezens (citizens) - Grade 5 level", "plaiing (playing) - Grade 3 level"],
+        spellingErrors: [
+          { written: "thouse", intended: "those", gradeLevel: "Grade 4 level", occurrence: 1 },
+          { written: "ciezens", intended: "citizens", gradeLevel: "Grade 5 level", occurrence: 1 },
+          { written: "plaiing", intended: "playing", gradeLevel: "Grade 3 level", occurrence: 1 }
+        ],
         dysgraphiaIndicators: ["Wildly varying letter sizes", "Frequent line drifting", "Heavy pencil pressure", "Extremely slow WPM output"],
         assessmentRecommendation: "A formal Psycho-Educational Assessment is highly recommended as previous classroom-level interventions have not resulted in progress.",
         probabilityEstimate: "HIGH",
@@ -1529,7 +1488,7 @@ ${observationalNotes ? `**Assessor's Observational Notes:** ${observationalNotes
 ${result.summary.displayTranscription || result.summary.transcription}
 
 **Spelling Patterns & Grade Level Discrepancies:**
-${result.summary.spellingErrors.length > 0 ? result.summary.spellingErrors.map(e => `- ${e}`).join('\n') : "No significant patterns identified."}
+${result.summary.spellingErrors.length > 0 ? result.summary.spellingErrors.map(e => `- ${e.written} (${e.intended}) - ${e.gradeLevel}`).join('\n') : "No significant patterns identified."}
 
 **Date:** ${new Date().toLocaleDateString()}
 **Clinical Context:** ${context || "None provided"}
@@ -1569,7 +1528,7 @@ ${result.summary.probabilityEstimate}
 
 ## 4. DETECTED PATTERNS
 ### Spelling Patterns
-${result.summary.spellingErrors.length > 0 ? result.summary.spellingErrors.join(', ') : "No specific patterns identified."}
+${result.summary.spellingErrors.length > 0 ? result.summary.spellingErrors.map(e => e.written).join(', ') : "No specific patterns identified."}
 
 ### Dysgraphia Features
 ${result.summary.dysgraphiaIndicators.length > 0 
@@ -1928,9 +1887,8 @@ ${result.report}
               new Paragraph({
                 children: (() => {
                   const transcription = result.summary.displayTranscription || result.summary.transcription || '';
-                  const errorWords = (result.summary.spellingErrors || []).map((err: string) => {
-                    const m = err.match(/^([^\s(]+)/);
-                    return m ? m[1].toLowerCase() : '';
+                  const errorWords = (result.summary.spellingErrors || []).map((err: SpellingError) => {
+                    return err.written.toLowerCase();
                   }).filter(Boolean);
 
                   const runs: any[] = [];
@@ -1961,11 +1919,11 @@ ${result.report}
                    new TextRun({ text: "SPELLING PATTERNS & GRADE LEVEL DISCREPANCIES:", font: "Times New Roman", size: 22, bold: true, underline: {} }),
                 ],
               }),
-              ...result.summary.spellingErrors.map(err => {
+              ...result.summary.spellingErrors.map((err: SpellingError) => {
                 return new Paragraph({
                   bullet: { level: 0 },
                   children: [
-                    new TextRun({ text: err, font: "Times New Roman", size: 22 }),
+                    new TextRun({ text: `${err.written} (${err.intended}) - ${err.gradeLevel}`, font: "Times New Roman", size: 22 }),
                   ],
                 });
               }),
@@ -3799,12 +3757,11 @@ ${result.report}
                               </thead>
                               <tbody>
                                 {result.summary.spellingErrors.slice(0, 6).map((err, i) => {
-                                  const parsed = parseSpellingError(err);
                                   return (
                                     <tr key={i} className="border-b border-gray-300">
-                                      <td className="border border-gray-300 px-2 py-1.5 text-red-600 font-bold">{parsed.raw}</td>
-                                      <td className="border border-gray-300 px-2 py-1.5 text-gray-800 font-semibold">{parsed.correct}</td>
-                                      <td className="border border-gray-300 px-2 py-1.5 text-gray-500 italic text-[7.5pt]">{parsed.discrepancy}</td>
+                                      <td className="border border-gray-300 px-2 py-1.5 text-red-600 font-bold">{err.written}</td>
+                                      <td className="border border-gray-300 px-2 py-1.5 text-gray-800 font-semibold">{err.intended}</td>
+                                      <td className="border border-gray-300 px-2 py-1.5 text-gray-500 italic text-[7.5pt]">{err.gradeLevel}</td>
                                     </tr>
                                   );
                                 })}
