@@ -1,4 +1,5 @@
 import { calculateScoresWithNorm, calculateProbability, EvidenceData } from './scoreEngine.js';
+import { sanitizeEvidence } from './evidenceSanitizer.js';
 
 const g10ReferenceEvidence: EvidenceData = {
   transcription: 'Reference My Family sample',
@@ -68,3 +69,50 @@ for (const [key, value] of Object.entries(expected)) {
 }
 
 console.log('g10 reference score calibration passed:', JSON.stringify(actual));
+
+// ══════════════════════════════════════════════════════════════════════════════
+// REGRESSION TEST: Cancelled words should never be spelling errors
+// ══════════════════════════════════════════════════════════════════════════════
+
+const evidenceWithCancellationConflict = {
+  confirmedCancellations: [
+    { text: 'lego', confidence: 90, occurrence: 1 }
+  ],
+  spellingErrors: [
+    { written: 'lego', intended: 'lego', gradeLevel: 'approx 2nd grade', confidence: 95, occurrence: 1 }
+  ],
+  grammarMistakes: [
+    { type: 'unknown', example: 'which will can result' }
+  ],
+  wordChoiceMistakes: []
+};
+
+const sanitizedEvidence = sanitizeEvidence(evidenceWithCancellationConflict);
+
+if (sanitizedEvidence.spellingErrors.length !== 0) {
+  throw new Error('REGRESSION FAILED: Cancelled word "lego" should not appear in spellingErrors after sanitization');
+}
+
+if (sanitizedEvidence.grammarMistakes.length !== 1) {
+  throw new Error('REGRESSION FAILED: Grammar mistake should not be affected by word cancellation');
+}
+
+console.log('REGRESSION TEST PASSED: Cancelled words properly filtered from spelling errors');
+
+// Test occurrence-based cancellation
+const evidenceWithOccurrence = {
+  confirmedCancellations: [
+    { text: 'lego', confidence: 90, occurrence: 2 }
+  ],
+  spellingErrors: [
+    { written: 'lego', intended: 'lego', gradeLevel: 'approx 2nd grade', confidence: 95, occurrence: 1 }
+  ]
+};
+
+const sanitizedWithOccurrence = sanitizeEvidence(evidenceWithOccurrence);
+
+if (sanitizedWithOccurrence.spellingErrors.length !== 1) {
+  throw new Error('REGRESSION FAILED: First occurrence of "lego" should remain in spellingErrors when only second occurrence is cancelled');
+}
+
+console.log('REGRESSION TEST PASSED: Occurrence-based cancellation working correctly');

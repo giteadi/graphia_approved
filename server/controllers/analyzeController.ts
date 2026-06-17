@@ -12,6 +12,109 @@ import {
   countWordsDeterministic,
   getWpmNorm,
 } from '../utils/scoreEngine.js';
+import { sanitizeEvidence } from '../utils/evidenceSanitizer.js';
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VALIDATION LAYER - GPT Output Consistency Checks
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Validates GPT extraction for consistency issues
+ * Detects cases where transcription shows cancellations but GPT returned none
+ */
+function validateExtraction(evidence: any): any {
+  if (!evidence) return evidence;
+
+  const txt = evidence.transcription?.toLowerCase() || '';
+  const hasCancelledInText = txt.includes('[cancelled:') || txt.includes('[maybe-cancelled:');
+  const cancellationCount = evidence.confirmedCancellations?.length || 0;
+
+  if (hasCancelledInText && cancellationCount === 0) {
+    console.warn('[Validation] Cancellation mismatch detected:');
+    console.warn('  - Transcription contains [CANCELLED] tags but confirmedCancellations array is empty');
+    console.warn('  - This suggests AI missed visually crossed-out words');
+  }
+
+  const hasUncertainInText = txt.includes('[uncertain:');
+  const uncertainCount = evidence.uncertainWords?.length || 0;
+
+  if (hasUncertainInText && uncertainCount === 0) {
+    console.warn('[Validation] Uncertain word mismatch detected:');
+    console.warn('  - Transcription contains [UNCERTAIN] tags but uncertainWords array is empty');
+  }
+
+  return evidence;
+}
+
+/**
+ * Extracts the specific grammar target phrase from a larger example
+ * Instead of highlighting the entire sentence, highlights only the problematic phrase
+ */
+function extractGrammarTarget(phrase: string): string {
+  if (!phrase) return phrase;
+
+  const commonGrammarPatterns = [
+    'will can', 'can will',
+    'their are', 'are their',
+    'be decrease', 'decrease be',
+    'which will', 'will which',
+    'that will', 'will that'
+  ];
+
+  const lowerPhrase = phrase.toLowerCase();
+  
+  for (const pattern of commonGrammarPatterns) {
+    if (lowerPhrase.includes(pattern)) {
+      // Return the actual case-preserved match
+      const patternRegex = new RegExp(pattern, 'i');
+      const match = phrase.match(patternRegex);
+      if (match) {
+        return match[0];
+      }
+    }
+  }
+
+  return phrase;
+}
+
+/**
+ * Quality Gate - Detects suspicious AI extraction patterns
+ * Flags cases where AI likely missed visually obvious issues (e.g., Celena case)
+ */
+function qualityGate(evidence: any): any {
+  if (!evidence) return evidence;
+
+  const suspiciousConditions = [
+    // Zero cancellations but clear grammar issues suggest missed cross-outs
+    evidence.confirmedCancellations.length === 0 && 
+    evidence.grammarMistakes.some((g: any) => 
+      g.example?.toLowerCase().includes('will can') ||
+      g.example?.toLowerCase().includes('their are') ||
+      g.example?.toLowerCase().includes('be decrease')
+    ),
+    
+    // Zero cancellations but multiple overwrites in uncertainCancellations
+    evidence.confirmedCancellations.length === 0 && 
+    (evidence.uncertainCancellations?.length || 0) >= 3,
+    
+    // High spelling error count but zero cancellations (suspicious for crossed-out misspellings)
+    evidence.confirmedCancellations.length === 0 && 
+    (evidence.spellingErrors?.length || 0) >= 5
+  ];
+
+  const needsReview = suspiciousConditions.some(condition => condition);
+
+  if (needsReview) {
+    console.warn('[Quality Gate] Suspicious extraction pattern detected:');
+    console.warn('  - Confirmed cancellations:', evidence.confirmedCancellations.length);
+    console.warn('  - Grammar mistakes:', evidence.grammarMistakes?.length || 0);
+    console.warn('  - Spelling errors:', evidence.spellingErrors?.length || 0);
+    console.warn('  - This suggests AI may have missed visually crossed-out words');
+    evidence.needsReview = true;
+  }
+
+  return evidence;
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STEP 1 — GPT-4o: Evidence extraction only. No scores. No diagnosis.
@@ -129,6 +232,7 @@ MULTI-WORD STRIKE RULE:
 - Count EACH occurrence separately
 - If uncertain about a word, add to uncertainWords instead of spellingErrors
 - Provide confidence (0-100), reason for each, AND approximate grade level (e.g., "approx 2nd grade", "approx 4th grade", "approx 6th grade")
+- CRITICAL MUTUAL EXCLUSIVITY RULE: If a word is marked as [CANCELLED], it MUST NOT appear in spellingErrors, wordChoiceMistakes, or grammarMistakes. Cancelled words are mutually exclusive from all error classifications.
 - IMPORTANT: Do NOT flag words that appear in cancelledWords as spelling errors. Cancelled words should only appear in the cancelledWords list, not in spellingErrors.
 - IMPORTANT: "met" is a correctly spelled word - if used incorrectly as tense, flag as grammar/syntax error, NOT spelling error.
 - OCCURRENCE TRACKING: For each spelling error, specify which occurrence (1-based) in the transcription. If the same word appears multiple times and only some are errors, specify the exact occurrence number. If unclear, use 1.
@@ -687,7 +791,7 @@ function buildHighlightMap(params: {
 
   const redPhrases = uniqueNormalized(
     grammarMistakes
-      .map(item => item.example)
+      .map(item => extractGrammarTarget(item.example))
       .filter(Boolean)
   );
 
@@ -1066,6 +1170,9 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       return;
     }
 
+    // Validate GPT extraction consistency
+    extracted = validateExtraction(extracted);
+
     // Normalize over-cancelled phrases (AI guardrail)
     extracted.transcription = normalizeOverCancelledPhrases(extracted.transcription);
 
@@ -1086,6 +1193,12 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
 
     extracted.confirmedCancellations = cleanCancellationArray(rebucketedConfirmed);
     extracted.uncertainCancellations = cleanCancellationArray(rebucketedUncertain);
+
+    // Apply evidence sanitization - ensure cancelled words don't appear as spelling/grammar errors
+    extracted = sanitizeEvidence(extracted);
+
+    // Apply quality gate - detect suspicious AI extraction patterns
+    extracted = qualityGate(extracted);
 
     // Capture raw transcription immediately after Step-1 parse (before any modifications)
     const rawTranscription = extracted.transcription || '';

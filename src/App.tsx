@@ -337,6 +337,14 @@ const normalizeForUiMatch = (value: string): string =>
 const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// Token-based transcription rendering with single source of truth
+type AnnotationType = 'normal' | 'spelling' | 'grammar' | 'cancelled';
+
+interface Token {
+  text: string;
+  type: AnnotationType;
+}
+
 const RenderTranscription = ({
   text,
   highlightMap,
@@ -347,166 +355,138 @@ const RenderTranscription = ({
   if (!text) return null;
 
   const redWords = highlightMap?.redWords || [];
-  const redPhrases = [...(highlightMap?.redPhrases || [])].sort((a, b) => b.length - a.length);
-  const strikePhrases = [...(highlightMap?.strikePhrases || [])].sort((a, b) => b.length - a.length);
+  const redPhrases = highlightMap?.redPhrases || [];
+  const strikePhrases = highlightMap?.strikePhrases || [];
 
-  const inlineTaggedText = text;
-
-  const parts = inlineTaggedText.split(/(\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):[\s\S]*?\])/gi);
-
-  const splitByPhrases = (
-    input: string,
-    phrases: string[],
-    kind: 'strike' | 'grammar'
-  ): Array<{ text: string; kind: 'plain' | 'strike' | 'grammar' }> => {
-    let pieces: Array<{ text: string; kind: 'plain' | 'strike' | 'grammar' }> = [
-      { text: input, kind: 'plain' },
-    ];
-
-    for (const phrase of phrases) {
-      const pattern = new RegExp(`(\\b${escapeRegExp(phrase)}\\b)`, 'gi');
-      const next: Array<{ text: string; kind: 'plain' | 'strike' | 'grammar' }> = [];
-
-      for (const piece of pieces) {
-        if (piece.kind !== 'plain') {
-          next.push(piece);
-          continue;
+  // Tokenize the text into individual words with annotation types
+  const tokenizeText = (input: string): Token[] => {
+    const tokens: Token[] = [];
+    
+    // First, handle inline [CANCELLED: ...] tags
+    const parts = input.split(/(\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):[\s\S]*?\])/gi);
+    
+    for (const part of parts) {
+      const isTagged = /^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):/i.test(part) && part.endsWith(']');
+      if (isTagged) {
+        const content = part
+          .replace(/^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):\s*/i, '')
+          .replace(/\]$/, '')
+          .trim();
+        
+        if (content) {
+          tokens.push({ text: content, type: 'cancelled' });
         }
-
-        const chunks = piece.text.split(pattern);
-        for (const chunk of chunks) {
-          if (!chunk) continue;
-
-          if (normalizeForUiMatch(chunk) === normalizeForUiMatch(phrase)) {
-            next.push({ text: chunk, kind });
-          } else {
-            next.push({ text: chunk, kind: 'plain' });
+      } else if (part.trim()) {
+        // Split regular text into words
+        const words = part.split(/(\s+)/);
+        for (const word of words) {
+          if (word.trim()) {
+            tokens.push({ text: word, type: 'normal' });
+          } else if (word) {
+            tokens.push({ text: word, type: 'normal' }); // Preserve spacing
           }
         }
       }
-
-      pieces = next;
     }
-
-    return pieces;
+    
+    return tokens;
   };
 
-  const renderPlainWithRedWords = (value: string, keyPrefix: string) => {
-    const tokens = value.split(/(\s+)/);
-
-    return tokens.map((token, index) => {
-      const normalized = normalizeForUiMatch(token);
-      if (!normalized) return <span key={`${keyPrefix}-${index}`}>{token}</span>;
-
-      let isRed = redWords.some(word => normalizeForUiMatch(word) === normalized);
-
-      if (!isRed && token.includes('-')) {
-        isRed = redWords.some(word => {
-          const target = normalizeForUiMatch(word);
-          return target.length >= 2 && normalized.includes(target);
-        });
+  // Apply annotations based on priority
+  const applyAnnotations = (tokens: Token[]): Token[] => {
+    const annotatedTokens = [...tokens];
+    
+    // Helper to normalize text for matching
+    const normalize = (str: string) => str.toLowerCase().replace(/[^\w\s]/g, '').trim();
+    
+    // Apply spelling annotations (priority: 2)
+    for (let i = 0; i < annotatedTokens.length; i++) {
+      const token = annotatedTokens[i];
+      if (token.type === 'normal') {
+        const normalizedToken = normalize(token.text);
+        const isSpellingError = redWords.some(word => normalize(word) === normalizedToken);
+        if (isSpellingError) {
+          annotatedTokens[i] = { ...token, type: 'spelling' };
+        }
       }
-
-      if (!isRed) {
-        return <span key={`${keyPrefix}-${index}`}>{token}</span>;
+    }
+    
+    // Apply grammar phrase annotations (priority: 1)
+    for (const phrase of redPhrases) {
+      const normalizedPhrase = normalize(phrase);
+      let phraseStartIndex = -1;
+      let matchedTokens: Token[] = [];
+      
+      // Find matching sequence of tokens
+      for (let i = 0; i < annotatedTokens.length; i++) {
+        if (annotatedTokens[i].type === 'normal') {
+          const tokenText = annotatedTokens[i].text;
+          if (normalize(tokenText).includes(normalizedPhrase) || normalizedPhrase.includes(normalize(tokenText))) {
+            if (phraseStartIndex === -1) phraseStartIndex = i;
+            matchedTokens.push(annotatedTokens[i]);
+          }
+        }
       }
-
-      return (
-        <span
-          key={`${keyPrefix}-${index}`}
-          className="text-red-600 font-bold underline decoration-red-600/50 underline-offset-2"
-        >
-          {token}
-        </span>
-      );
-    });
+      
+      // If we found a match, mark all matched tokens as grammar
+      if (matchedTokens.length > 0) {
+        for (let i = phraseStartIndex; i < phraseStartIndex + matchedTokens.length; i++) {
+          if (i < annotatedTokens.length) {
+            annotatedTokens[i] = { ...annotatedTokens[i], type: 'grammar' };
+          }
+        }
+      }
+    }
+    
+    // Apply strike phrase annotations (priority: 3 - highest)
+    for (const phrase of strikePhrases) {
+      const normalizedPhrase = normalize(phrase);
+      for (let i = 0; i < annotatedTokens.length; i++) {
+        const token = annotatedTokens[i];
+        if (normalize(token.text) === normalizedPhrase) {
+          annotatedTokens[i] = { ...token, type: 'cancelled' };
+        }
+      }
+    }
+    
+    return annotatedTokens;
   };
 
-  // Track which words are already handled by inline [CANCELLED: ...] tags
-  // so strikePhrases doesn't double-strike them
-  const inlineHandledCounts: Record<string, number> = {};
-  parts.forEach(part => {
-    const isTag = /^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):/i.test(part) && part.endsWith(']');
-    if (isTag) {
-      const word = part
-        .replace(/^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):\s*/i, '')
-        .replace(/\]$/, '')
-        .trim()
-        .toLowerCase();
-      inlineHandledCounts[word] = (inlineHandledCounts[word] || 0) + 1;
-    }
-  });
+  const tokens = tokenizeText(text);
+  const annotatedTokens = applyAnnotations(tokens);
 
-  // strikePhrases se wahi hatao jo inline tags se already covered hain
-  const remainingStrikeCounts: Record<string, number> = { ...inlineHandledCounts };
-  const activeStrikePhrases = strikePhrases.filter(phrase => {
-    const key = phrase.toLowerCase();
-    if ((remainingStrikeCounts[key] || 0) > 0) {
-      remainingStrikeCounts[key]--;
-      return false; // inline tag ne handle kar liya, strikePhrases se skip
-    }
-    return true;
-  });
-
+  // Render tokens based on their type
   return (
     <>
-      {parts.map((part, partIndex) => {
-        const isTagged = /^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):/i.test(part) && part.endsWith(']');
-        if (isTagged) {
-          const content = part
-            .replace(/^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):\s*/i, '')
-            .replace(/\]$/, '');
-
-          return (
-            <span key={`tag-${partIndex}`} className="text-gray-500 italic line-through mr-1">
-              {content}
-            </span>
-          );
+      {annotatedTokens.map((token, index) => {
+        switch (token.type) {
+          case 'cancelled':
+            return (
+              <span key={`token-${index}`} className="text-gray-500 italic line-through">
+                {token.text}
+              </span>
+            );
+          case 'spelling':
+            return (
+              <span
+                key={`token-${index}`}
+                className="text-red-600 font-bold underline decoration-red-600/50 underline-offset-2"
+              >
+                {token.text}
+              </span>
+            );
+          case 'grammar':
+            return (
+              <span
+                key={`token-${index}`}
+                className="text-orange-600 font-semibold"
+              >
+                {token.text}
+              </span>
+            );
+          default:
+            return <span key={`token-${index}`}>{token.text}</span>;
         }
-
-        const strikeSplit = splitByPhrases(part, activeStrikePhrases, 'strike');
-
-        return (
-          <span key={`part-${partIndex}`}>
-            {strikeSplit.map((piece, strikeIndex) => {
-              if (piece.kind === 'strike') {
-                return (
-                  <span key={`strike-${partIndex}-${strikeIndex}`} className="text-gray-500 italic line-through">
-                    {piece.text}
-                  </span>
-                );
-              }
-
-              const grammarSplit = splitByPhrases(piece.text, redPhrases, 'grammar');
-
-              return (
-                <span key={`plain-${partIndex}-${strikeIndex}`}>
-                  {grammarSplit.map((grammarPiece, grammarIndex) => {
-                    if (grammarPiece.kind === 'grammar') {
-                      return (
-                        <span
-                          key={`grammar-${partIndex}-${strikeIndex}-${grammarIndex}`}
-                          className="text-red-600 font-bold underline decoration-red-600/50 underline-offset-2"
-                        >
-                          {grammarPiece.text}
-                        </span>
-                      );
-                    }
-
-                    return (
-                      <span key={`words-${partIndex}-${strikeIndex}-${grammarIndex}`}>
-                        {renderPlainWithRedWords(
-                          grammarPiece.text,
-                          `word-${partIndex}-${strikeIndex}-${grammarIndex}` 
-                        )}
-                      </span>
-                    );
-                  })}
-                </span>
-              );
-            })}
-          </span>
-        );
       })}
     </>
   );
