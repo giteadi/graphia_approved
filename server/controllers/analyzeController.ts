@@ -190,11 +190,37 @@ STRIKE-THROUGH CONFIDENCE RULE:
    - When student writes a word, then draws a line through it and writes replacement = 
      CANCELLED the original, keep replacement
    - Single underline = NOT a cancellation (could be emphasis)
+   - CRITICAL: Cancel ONLY words that have visible strike-through lines. 
+   - Do NOT cancel words just because they appear near other cancelled words.
+   - Do NOT cancel entire sentences or phrases unless the strike line physically passes through them.
+   - Use a HIGHER threshold (confidence >= 90) for short words (2-3 letters) to avoid false positives
 
 MULTI-WORD STRIKE RULE:
    - Check EVERY word independently for strike-through
    - Short words (be, to, se, fee, the, a) are commonly struck and commonly missed
    - If a 2-3 letter word has a horizontal line through it = CONFIRMED cancellation
+   - If you see a continuous line through "will be", "to the", "of the", etc., treat EACH word as cancelled
+   - Do NOT miss multi-word cancellations - this is a common OCR error
+   
+CANCELLATION EXAMPLES (critical for accuracy):
+   - "will be" struck together → cancel BOTH "will" AND "be"
+   - "to the" struck together → cancel BOTH "to" AND "the"  
+   - "of the" struck together → cancel BOTH "of" AND "the"
+   - "can be" struck together → cancel BOTH "can" AND "be"
+   - "my cousin" struck together → cancel BOTH "my" AND "cousin"
+   - If you miss ANY multi-word cancellation, you will produce incorrect results
+   
+CANCELLATION ACCURACY RULE:
+   - If you're unsure whether a word is cancelled, DO NOT mark it as cancelled
+   - It's better to miss a cancellation than to falsely cancel a word
+   - Only mark cancellations where the strike line is clearly visible
+   - Do NOT cancel words because they are "near" other cancelled words
+   - When in doubt: leave the word uncancelled rather than making a false positive
+   
+SECOND WORD RULE:
+   - If you cancel a word that commonly pairs with another (will→be, to→the, of→the, my→cousin), check the second word for strike-through too
+   - Common pairs to check: "will be", "to the", "of the", "can be", "my cousin"
+   - This is the #1 OCR mistake for cancellations
 
 2. HYPHENATED WORDS:
    - Treat hyphenated compounds as ONE word: "get-together" = 1 word
@@ -227,6 +253,12 @@ MULTI-WORD STRIKE RULE:
 - Do NOT flag correctly spelled English words used in context
 - Confidence threshold: flag anything 85%+ confident as a misspelling (stricter to avoid false positives)
 - Valid English words used correctly are NOT errors ("met", "had", "get", "we", "family", "fun", "talk")
+- CRITICAL: Cancellations should NOT affect spelling detection
+- If a word is cancelled, it should still be flagged as a spelling error if it is misspelled
+- The cancellation shows the word was struck, not that it's correctly spelled
+- GRAMMAR DETECTION: Continue detecting grammar errors normally
+- Grammar mistakes in cancelled text should still be flagged
+- The highlighting system will handle priority (cancelled > grammar > spelling)
 - BUT: wrong plural forms ("lifes"), missing letters, phonetic spellings, merged words, wrong tense forms — ALL must be flagged
 - Count EACH occurrence separately
 - If uncertain about a word, add to uncertainWords instead of spellingErrors
@@ -287,10 +319,14 @@ IMPORTANT:
 
 FINAL VALIDATION CHECKLIST (run before returning JSON):
 □ Did I check EVERY word for strike-through independently?
+□ Did I check for MULTI-WORD cancellations (will be, to the, of the, my cousin, etc.)?
 □ Did I read words till the last visible stroke (no truncation)?
 □ Are short struck words (be, to, se, fee, a) in confirmedCancellations?
-□ Is confidence >= 80 for clearly struck words?
+□ Is confidence >= 90 for short words (2-3 letters) to avoid false positives?
+□ Is confidence >= 80 for longer words with clear strike-through?
 □ Are all overwritten/rewritten words in uncertainCancellations only?
+□ If I see "will be" cancelled, did I cancel BOTH words?
+□ If I'm unsure about a cancellation, did I leave it uncancelled rather than making a false positive?
 
 RETURN ONLY THIS JSON (no markdown fences, no extra text):
 {
@@ -640,6 +676,13 @@ function normalizeOverCancelledPhrases(transcription: string): string {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// CONFIGURATION
+// ══════════════════════════════════════════════════════════════════════════════
+
+// MET highlighting policy configurable (sample-based)
+const MET_AS_SPELLING = process.env.MET_AS_SPELLING === 'true';
+
+// ══════════════════════════════════════════════════════════════════════════════
 // HIGHLIGHT MAP HELPERS
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -665,6 +708,7 @@ type HighlightTarget = {
   text: string;
   occurrence: number; // 1-based
   kind: 'spelling' | 'grammar' | 'cancelled' | 'maybe-cancelled';
+  tokenSpan?: number; // words count for phrase-level matching
 };
 
 type HighlightMap = {
@@ -798,17 +842,15 @@ function buildHighlightMap(params: {
       text: s.written,
       occurrence: s.occurrence || 1,
       kind: 'spelling' as const,
+      tokenSpan: 1 // spelling is always single word
     })),
     ...confirmedCancellations.map(c => ({
       text: c.text,
       occurrence: c.occurrence || 1,
       kind: 'cancelled' as const,
+      tokenSpan: (c.text || '').trim().split(/\s+/).length
     })),
-    ...(treatUncertainCancellationsAsStrike ? uncertainCancellations.map(c => ({
-      text: c.text,
-      occurrence: c.occurrence || 1,
-      kind: 'maybe-cancelled' as const,
-    })) : []),
+    // Uncertain cancellations excluded from targets
   ];
 
   return { redWords, redPhrases, strikePhrases, targets };
@@ -901,8 +943,8 @@ function applySpellingHeuristics(transcription: string, spellingErrors: SpErr[])
     if (!hasError(spellingErrors, e.written, e.intended)) spellingErrors.push(e);
   };
 
-  // "to met" -> should be "to meet"
-  if (/\bto\s+met\b/.test(t)) {
+  // "to met" -> should be "to meet" (conditional on MET_AS_SPELLING)
+  if (MET_AS_SPELLING && /\bto\s+met\b/.test(t)) {
     add({ written: 'met', intended: 'meet', reason: 'wrong verb form', gradeLevel: 'approx 3rd grade', confidence: 90 });
   }
 
@@ -972,8 +1014,8 @@ function detectWordChoiceMistakes(transcription: string) {
 
 function fixCancellationPatterns(text: string): string {
   return text
-    .replace(/\[(CANCELLED|MAYBE-CANCELLED):\s*(my|the|a|an|his|her|their|our|your|this|that|its)\s+(\w+)\s*\]/gi, '$2 [$1: $3]')
-    .replace(/\[(CANCELLED|MAYBE-CANCELLED):\s*(my|the|a|an|his|her|their|our|your|this|that|its)\s+(\w+)\s+(\w+)\s*\]/gi, '$2 [$1: $3] $4');
+    .replace(/\[(CANCELLED):\s*(my|the|a|an|his|her|their|our|your|this|that|its)\s+(\w+)\s*\]/gi, '$2 [$1: $3]')
+    .replace(/\[(CANCELLED):\s*(my|the|a|an|his|her|their|our|your|this|that|its)\s+(\w+)\s+(\w+)\s*\]/gi, '$2 [$1: $3] $4');
 }
 
 // ─── Helper: Clean cancellation array (preserve original text, no helper-word stripping) ───────────
@@ -1173,14 +1215,14 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // Normalize over-cancelled phrases (AI guardrail)
     extracted.transcription = normalizeOverCancelledPhrases(extracted.transcription);
 
-    // Rebucket cancellations: Confirmed = confidence >= 80 AND reason empty, else Uncertain
+    // Rebucket cancellations: Confirmed = confidence >= 90 AND reason empty, else Uncertain
     const rawConfirmed = extracted.confirmedCancellations || [];
     const rawUncertain = extracted.uncertainCancellations || [];
 
-    const rebucketedConfirmed = rawConfirmed.filter((c: any) => (c.confidence ?? 0) >= 80 && !c.reason);
+    const rebucketedConfirmed = rawConfirmed.filter((c: any) => (c.confidence ?? 0) >= 90 && !c.reason);
     const rebucketedUncertain = [
       ...rawUncertain,
-      ...rawConfirmed.filter((c: any) => !((c.confidence ?? 0) >= 80 && !c.reason)).map((c: any) => ({
+      ...rawConfirmed.filter((c: any) => !((c.confidence ?? 0) >= 90 && !c.reason)).map((c: any) => ({
         text: c.text,
         confidence: c.confidence ?? 0,
         reason: c.reason || 'low_confidence',
@@ -1240,7 +1282,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // Filter spelling by confidence >= 75 and remove cancelled words using word-level matching
     // Also filter out high-confidence confirmed cancellations
     const confirmedCancellationTexts = (extracted.confirmedCancellations || [])
-      .filter((c: any) => (c.confidence ?? 0) >= 80)
+      .filter((c: any) => (c.confidence ?? 0) >= 90)
       .map((c: any) => c.text?.toLowerCase() || '');
     
     // Create word-level set for matching (split phrases into individual words)
@@ -1254,7 +1296,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     type WordChoiceMistake = { written: string; intended: string; confidence?: number; type?: string };
 
     const wordChoiceMistakes: WordChoiceMistake[] = (extracted.wordChoiceMistakes || [])
-      .filter((m: any) => (m.confidence ?? 100) >= 80)
+      .filter((m: any) => (m.confidence ?? 100) >= 90)
       .map((m: any) => ({
         written: String(m.written || '').trim(),
         intended: String(m.intended || '').trim(),
@@ -1267,7 +1309,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
 
     // Merge AI-detected with dynamically detected word choice mistakes
     const allWordChoiceMistakes = [...wordChoiceMistakes, ...detectedWordChoiceMistakes]
-      .filter((m: any) => (m.confidence ?? 100) >= 80)
+      .filter((m: any) => (m.confidence ?? 100) >= 90)
       .map((m: any) => ({
         written: String(m.written || '').trim(),
         intended: String(m.intended || '').trim(),
@@ -1328,15 +1370,8 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // Deduplicate grammar mistakes
     const grammarMistakes = dedupeGrammarMistakes(extracted.grammarMistakes || []);
 
-    // Apply promotion of uncertain words to spelling errors
-    const promotedSpellingErrors = promoteUncertainWordsToSpellingErrors(
-      extracted.uncertainWords || [],
-      spellingErrors
-    );
-    spellingErrors = dedupeSpellingErrors([
-      ...(spellingErrors || []),
-      ...promotedSpellingErrors,
-    ]);
+    // Skip uncertain word promotion to spelling errors (to avoid extra red highlights)
+    spellingErrors = dedupeSpellingErrors(spellingErrors || []);
 
     extracted.grammarMistakes = grammarMistakes;
 
@@ -1344,19 +1379,22 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // "[CANCELLED: my cousin]" -> "my [CANCELLED: cousin]"
     // "[CANCELLED: my cousin cousins]" -> "my [CANCELLED: cousin] cousins"
 
-    // 1) First fix + inject cancellations
-    const fixedTranscription = fixCancellationPatterns(extracted.transcription);
-    const taggedTranscription = injectCancellationTags(
-      fixedTranscription,
-      extracted.confirmedCancellations || [],
-      extracted.uncertainCancellations || []
+    // 1) First fix + inject cancellations + re-normalize after injection (uncertain excluded)
+    const taggedTranscription = fixCancellationPatterns(
+      injectCancellationTags(
+        fixCancellationPatterns(extracted.transcription),
+        extracted.confirmedCancellations || [],
+        [] // uncertain cancellations excluded from inline injection
+      )
     );
 
     const fixedNormalizedTranscription = extracted.normalizedTranscription
       ? fixCancellationPatterns(extracted.normalizedTranscription)
       : undefined;
     const taggedNormalizedTranscription = fixedNormalizedTranscription
-      ? injectCancellationTags(fixedNormalizedTranscription, extracted.confirmedCancellations || [], extracted.uncertainCancellations || [])
+      ? fixCancellationPatterns(
+        injectCancellationTags(fixedNormalizedTranscription, extracted.confirmedCancellations || [], [])
+      )
       : undefined;
 
     // 2) Now remove headers from the FINAL tagged transcription (not the old one)
@@ -1375,10 +1413,12 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // 4) Multiple transcription storage for consistency
     extracted.rawTranscription = rawTranscription;
 
-    const displayTranscription = injectCancellationTags(
-      fixCancellationPatterns(rawTranscription),
-      extracted.confirmedCancellations || [],
-      extracted.uncertainCancellations || []
+    const displayTranscription = fixCancellationPatterns(
+      injectCancellationTags(
+        fixCancellationPatterns(rawTranscription),
+        extracted.confirmedCancellations || [],
+        [] // uncertain cancellations excluded from inline injection
+      )
     );
 
     // Detect cancellations that are missing from the display transcription
@@ -1485,9 +1525,9 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     const highlightMap = buildHighlightMap({
       spellingErrors: visibleSpellingErrors,
       grammarMistakes: grammarMistakes,
-      uncertainWords: extracted.uncertainWords || [],
+      uncertainWords: [], // strict mode: no uncertain words in highlight map
       confirmedCancellations: extracted.confirmedCancellations || [],
-      uncertainCancellations: extracted.uncertainCancellations || [],
+      uncertainCancellations: [],
       treatUncertainCancellationsAsStrike: false,
     });
 

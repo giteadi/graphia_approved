@@ -4,11 +4,33 @@
 // This layer ensures that cancelled words are never flagged as spelling/grammar errors
 // Rule: Cancelled > Grammar > Spelling (priority order)
 
+// Type definitions for this module
+type SpellingError = {
+  written: string;
+  intended?: string;
+  occurrence?: number;
+  confidence?: number;
+};
+
 export const PRIORITY = {
   cancelled: 3,
   spelling: 2,
   grammar: 1
 };
+
+/**
+ * Checks if a spelling error should be considered a visible word (not blank)
+ */
+function isNonBlankWord(e: SpellingError): boolean {
+  return String(e.written || '').trim().length > 0;
+}
+
+/**
+ * Filters out blank words from spelling errors to ensure word-fallback safety
+ */
+export function filterBlankWords(spellingErrors: SpellingError[]): SpellingError[] {
+  return spellingErrors.filter(isNonBlankWord);
+}
 
 /**
  * Builds an occurrence key for tracking specific word instances
@@ -49,18 +71,28 @@ export function sanitizeEvidence(evidence: any): any {
   );
 
   // Filter out spelling errors using occurrence-based matching when available
-  evidence.spellingErrors = (evidence.spellingErrors || []).filter((e: any) => {
-    const errorKey = buildOccurrenceKey(e.written, e.occurrence);
-    // If cancelledKeys has this specific occurrence, filter it out
-    if (cancelledKeys.has(errorKey)) return false;
-    // Otherwise fall back to word-level matching
-    return !cancelledWords.has(e.written?.toLowerCase().trim());
-  });
+  evidence.spellingErrors = (evidence.spellingErrors || [])
+    .filter((e: any) => String(e.written || '').trim().length > 0)
+    .filter((e: any) => {
+      const hasOccurrence = typeof e.occurrence === 'number' && e.occurrence > 0;
+      const errorKey = buildOccurrenceKey(e.written, e.occurrence);
 
-  // Filter out word choice mistakes using occurrence-based matching
+      // occurrence present -> strict occurrence check only
+      if (hasOccurrence) return !cancelledKeys.has(errorKey);
+
+      // no occurrence -> fallback word-level
+      return !cancelledWords.has(String(e.written || '').toLowerCase().trim());
+    });
+
+  // Filter out word choice mistakes using occurrence-based matching with conditional fallback
   evidence.wordChoiceMistakes = (evidence.wordChoiceMistakes || []).filter((e: any) => {
+    const hasOccurrence = typeof e.occurrence === 'number' && e.occurrence > 0;
     const errorKey = buildOccurrenceKey(e.written, e.occurrence);
-    if (cancelledKeys.has(errorKey)) return false;
+
+    // occurrence present -> strict occurrence check only
+    if (hasOccurrence) return !cancelledKeys.has(errorKey);
+
+    // no occurrence -> fallback word-level
     return !cancelledWords.has(e.written?.toLowerCase().trim());
   });
 

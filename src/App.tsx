@@ -325,6 +325,7 @@ type HighlightTarget = {
   text: string;
   occurrence: number; // 1-based
   kind: 'spelling' | 'grammar' | 'cancelled' | 'maybe-cancelled';
+  tokenSpan?: number; // words count for phrase-level matching
 };
 
 type HighlightMap = {
@@ -378,6 +379,9 @@ const RenderTranscription = ({
   const tokenizeText = (input: string): Token[] => {
     const tokens: Token[] = [];
     
+    // Optional: Set to true to enable maybe-cancelled rendering
+    const SHOW_MAYBE = false;
+    
     // First, handle inline [CANCELLED: ...] and [MAYBE-CANCELLED: ...] tags
     const parts = input.split(/(\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):[\s\S]*?\])/gi);
     
@@ -395,8 +399,8 @@ const RenderTranscription = ({
         continue;
       }
 
-      // Handle UNCERTAIN cancellations
-      if (/^\[(?:MAYBE-CANCELLED):/i.test(part) && part.endsWith(']')) {
+      // Handle UNCERTAIN cancellations (optional rendering)
+      if (SHOW_MAYBE && /^\[(?:MAYBE-CANCELLED):/i.test(part) && part.endsWith(']')) {
         const content = part
           .replace(/^\[(?:MAYBE-CANCELLED):\s*/i, '')
           .replace(/\]$/, '')
@@ -444,7 +448,7 @@ const RenderTranscription = ({
       }
     };
     
-    // Apply occurrence-based annotations from targets
+    // Apply occurrence-based annotations from targets with phrase-level tokenSpan support
     const targets = highlightMap?.targets || [];
     const occurrenceCounter: Record<string, number> = {};
     
@@ -456,12 +460,54 @@ const RenderTranscription = ({
       occurrenceCounter[key] = (occurrenceCounter[key] || 0) + 1;
       const occ = occurrenceCounter[key];
       
-      const hit = targets.find(x => normalize(x.text) === key && (x.occurrence || 1) === occ);
-      if (!hit) continue;
+      // Check for single-word matches first
+      const singleWordHit = targets.find(x => 
+        normalize(x.text) === key && 
+        (x.occurrence || 1) === occ && 
+        (x.tokenSpan || 1) === 1
+      );
       
-      if (hit.kind === 'cancelled') upgradeToken(i, 'cancelled');
-      if (hit.kind === 'maybe-cancelled') upgradeToken(i, 'maybeCancelled');
-      if (hit.kind === 'spelling') upgradeToken(i, 'spelling');
+      if (singleWordHit) {
+        if (singleWordHit.kind === 'cancelled') upgradeToken(i, 'cancelled');
+        if (singleWordHit.kind === 'maybe-cancelled') upgradeToken(i, 'maybeCancelled');
+        if (singleWordHit.kind === 'spelling') upgradeToken(i, 'spelling');
+        continue;
+      }
+      
+      // Check for phrase-level matches (multi-word targets)
+      const phraseHits = targets.filter(x => 
+        (x.tokenSpan || 1) > 1 && 
+        (x.occurrence || 1) === occ
+      );
+      
+      for (const phraseHit of phraseHits) {
+        const phraseWords = phraseHit.text.split(/\s+/).map(w => normalize(w));
+        if (phraseWords.length === 0) continue;
+        
+        // Check if this token could be the start of a phrase match
+        if (normalize(t.text) === phraseWords[0]) {
+          let match = true;
+          for (let j = 1; j < phraseWords.length; j++) {
+            if (i + j >= annotatedTokens.length || 
+                normalize(annotatedTokens[i + j].text) !== phraseWords[j]) {
+              match = false;
+              break;
+            }
+          }
+          
+          if (match) {
+            // Apply annotation to all tokens in the phrase
+            for (let j = 0; j < phraseWords.length; j++) {
+              const tokenIndex = i + j;
+              if (tokenIndex < annotatedTokens.length) {
+                if (phraseHit.kind === 'cancelled') upgradeToken(tokenIndex, 'cancelled');
+                if (phraseHit.kind === 'maybe-cancelled') upgradeToken(tokenIndex, 'maybeCancelled');
+              }
+            }
+            break; // Skip other phrase checks for this position
+          }
+        }
+      }
     }
     
     // Legacy fallback: if targets is empty, use old redWords + strikePhrases matching
@@ -2087,7 +2133,7 @@ ${result.report}
                   const strikePhrases = [...(highlightMap.strikePhrases || [])].sort((a, b) => b.length - a.length);
 
                   const runs: any[] = [];
-                  const parts = transcription.split(/(\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):.*?\])/gi);
+                  const parts = transcription.split(/(\[(?:cancelled|CANCELLED):.*?\])/gi);
 
                   const pushStyledText = (value: string, kind: 'plain' | 'red' | 'strike' | 'maybe') => {
                     if (!value) return;
@@ -2167,12 +2213,6 @@ ${result.report}
                     if (/^\[(?:cancelled|CANCELLED):/i.test(part)) {
                       const content = part.replace(/^\[(?:cancelled|CANCELLED):\s*/i, '').replace(/\]$/, '');
                       pushStyledText(content + ' ', 'strike');
-                      return;
-                    }
-
-                    if (/^\[(?:MAYBE-CANCELLED):/i.test(part)) {
-                      const content = part.replace(/^\[(?:MAYBE-CANCELLED):\s*/i, '').replace(/\]$/, '');
-                      pushStyledText(content + ' ', 'maybe');
                       return;
                     }
 
