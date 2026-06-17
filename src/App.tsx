@@ -3917,26 +3917,52 @@ ${result.report}
                                   label: "Sentence Boundaries",
                                   sub: "Capitals, punctuation, periods",
                                   score: result.summary.scores.sentenceBoundaries ?? 50,
-                                  comment: result.summary.languageSkills.sentenceBoundaries || "Punctuation and capitalization rules are not yet automatic. Run-on sentences frequent."
+                                  comment: result.summary.languageSkills.sentenceBoundaries || "Punctuation and capitalization rules are not yet automatic.",
+                                  issues: [
+                                    ...((result.summary.runOnSentences ?? 0) > 0
+                                      ? [`${result.summary.runOnSentences} run-on sentence — multiple ideas joined without a full stop.`]
+                                      : []),
+                                    ...((result.summary.missingCapitals ?? 0) > 0
+                                      ? [`${result.summary.missingCapitals} sentence starts without a capital letter.`]
+                                      : []),
+                                    ...((result.summary.missingPunctuation ?? 0) > 0
+                                      ? [`${result.summary.missingPunctuation} sentence ends without a full stop or question mark.`]
+                                      : []),
+                                  ],
                                 },
                                 {
                                   label: "Grammar",
                                   sub: "Structure, agreement, syntax",
                                   score: result.summary.scores.grammar ?? 60,
-                                  comment: result.summary.languageSkills.grammar || "Basic structures present, but complex syntax remains a challenge. Spacing issues noted."
+                                  comment: result.summary.languageSkills.grammar || "Grammar issues observed in the writing sample.",
+                                  issues: (result.summary.grammarMistakes || []).map((g: any) =>
+                                    g.type === 'agreement'
+                                      ? `Subject-verb mismatch — wrote "${g.example}"`
+                                      : g.type === 'syntax'
+                                      ? `Wrong verb form — wrote "${g.example}"`
+                                      : g.type === 'plural'
+                                      ? `Wrong plural — wrote "${g.example}"`
+                                      : `Grammar issue — "${g.example}"`
+                                  ),
                                 },
                                 {
                                   label: "Past Tense Usage",
                                   sub: "Regular and irregular past verbs",
                                   score: result.summary.scores.pastTenseUsage ?? 75,
-                                  comment: result.summary.languageSkills.pastTenseUsage || "Good basic understanding of past tense verb construction."
+                                  comment: result.summary.languageSkills.pastTenseUsage || "Past tense usage observed.",
+                                  issues: (result.summary.grammarMistakes || [])
+                                    .filter((g: any) => g.type === 'syntax')
+                                    .map((g: any) => `Past tense not applied correctly — wrote "${g.example}"`),
                                 },
                                 {
                                   label: "Academic Discrepancy",
                                   sub: "Grade-level gap analysis",
                                   score: null,
-                                  comment: result.summary.academicDiscrepancy || "The sample is at least two grade levels below in spelling accuracy, writing fluency, and grammar/punctuation. Ideation is a relative strength."
-                                }
+                                  comment: result.summary.academicDiscrepancy || "Comprehensive assessment recommended.",
+                                  issues: (result.summary.spellingErrors || []).slice(0, 3).map((e: any) =>
+                                    `Wrote "${e.written}" instead of "${e.intended}" — ${e.gradeLevel || 'below grade level'}`
+                                  ),
+                                },
                               ].map((row, idx) => (
                                 <tr key={idx} className="border-b border-gray-300">
                                   <td className="border border-gray-300 px-2 py-1.5 align-top">
@@ -3952,8 +3978,17 @@ ${result.report}
                                       <span className="text-gray-400 text-[7pt]">—</span>
                                     )}
                                   </td>
-                                  <td className="border border-gray-300 px-2 py-1.5 text-gray-700 italic text-[8pt] leading-normal align-top">
-                                    {row.comment}
+                                  <td className="border border-gray-300 px-2 py-1.5 text-gray-700 text-[8pt] leading-normal align-top">
+                                    <span className="italic">{row.comment}</span>
+                                    {row.issues.length > 0 && (
+                                      <ul className="mt-1.5 pt-1.5 border-t border-gray-100 space-y-0.5">
+                                        {row.issues.map((issue: string, i: number) => (
+                                          <li key={i} className="text-[7pt] text-red-700 not-italic font-mono leading-snug">
+                                            • {issue}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
                                   </td>
                                 </tr>
                               ))}

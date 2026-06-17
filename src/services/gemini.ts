@@ -60,6 +60,9 @@ export interface AnalysisResult {
       sentenceBoundaries: number;
       pastTenseUsage: number;
     };
+    runOnSentences?: number;
+    missingCapitals?: number;
+    missingPunctuation?: number;
   };
 }
 
