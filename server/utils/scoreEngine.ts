@@ -110,7 +110,7 @@ export function getWpmNorm(grade: string): { min: number; max: number } {
   return { min: 20, max: 30 };
 }
 
-// ─── Individual scorers (exact client formulas) ───────────────────────────────
+// ─── Individual scorers (Updated to Ratio-Based Formulas) ─────────────────────
 
 /** SPELLING: (correctly spelled words / total words) × 100, clamped 0-100 */
 function scoreSpelling(spellingErrors: number, totalWords: number): number {
@@ -120,15 +120,17 @@ function scoreSpelling(spellingErrors: number, totalWords: number): number {
   return Math.max(0, Math.min(100, percentage));
 }
 
-/** SENTENCE BOUNDARIES: 100 - runOn×15 - missingCapital×5 - missingPunct×5 (grade-adjusted) */
+/** SENTENCE BOUNDARIES: Error ratio adjusted by grade stringency */
 function scoreSentenceBoundaries(
   runOnSentences: number,
   missingCapitals: number,
   missingPunctuation: number,
-  grade: string
+  grade: string,
+  totalWords: number
 ): number {
+  if (totalWords <= 0) return 0;
+
   // Grade-based penalty multiplier
-  // Higher grades = stricter penalties, lower grades = more lenient
   const gradeNum = parseInt(grade.toLowerCase().replace(/[^0-9]/g, '')) || 6;
   let penaltyMultiplier = 1.0;
 
@@ -144,31 +146,51 @@ function scoreSentenceBoundaries(
     penaltyMultiplier = 1.1; // Slightly strict for upper high school/college
   }
 
-  const baseScore = 100 - (runOnSentences * 15) - (missingCapitals * 5) - (missingPunctuation * 5);
-  const adjustedScore = 100 - ((100 - baseScore) * penaltyMultiplier);
+  // Assuming an average sentence is roughly 10 words. 
+  // We calculate errors against estimated expected sentences.
+  const estimatedSentences = Math.max(1, totalWords / 10);
+  const totalBoundaryErrors = (runOnSentences * 1.5) + missingCapitals + missingPunctuation;
+  
+  const errorRate = (totalBoundaryErrors / estimatedSentences) * 100;
+  const adjustedDeduction = errorRate * penaltyMultiplier;
 
-  return Math.max(0, Math.min(100, adjustedScore));
+  return Math.max(0, Math.min(100, Math.round(100 - adjustedDeduction)));
 }
 
-/** GRAMMAR: 100 - agreement×15 - plural×15 - syntax×20 - other×10 */
+/** GRAMMAR: Ratio-based deduction normalized to total words */
 function scoreGrammar(
-  mistakes: Array<{ type: string; example: string }>
+  mistakes: Array<{ type: string; example: string }>,
+  totalWords: number
 ): number {
-  let deduction = 0;
+  if (totalWords <= 0) return 0;
+  if (mistakes.length === 0) return 100;
+
+  let errorWeight = 0;
   for (const m of mistakes) {
     switch (m.type) {
-      case 'agreement': deduction += 15; break;
-      case 'plural':    deduction += 15; break;
-      case 'syntax':    deduction += 20; break;
-      default:          deduction += 10;
+      case 'syntax':    errorWeight += 2.0; break;
+      case 'agreement': errorWeight += 1.5; break;
+      case 'plural':    errorWeight += 1.5; break;
+      default:          errorWeight += 1.0;
     }
   }
-  return Math.max(0, Math.min(100, 100 - deduction));
+
+  // Calculate error density per word, scaled for scoring
+  // A scaling multiplier (e.g., 10) adjusts how harsh the penalty is
+  const errorPercentage = (errorWeight / totalWords) * 100 * 10; 
+  return Math.max(0, Math.min(100, Math.round(100 - errorPercentage)));
 }
 
-/** PAST TENSE: 100 - errors×20 */
-function scorePastTense(pastTenseErrors: number): number {
-  return Math.max(0, Math.min(100, 100 - pastTenseErrors * 20));
+/** PAST TENSE: Error ratio based on total words (or ideally expected verbs) */
+function scorePastTense(pastTenseErrors: number, totalWords: number): number {
+  if (totalWords <= 0) return 0;
+  if (pastTenseErrors === 0) return 100;
+
+  // Assuming roughly 15% of words might be verbs in narrative writing
+  const estimatedVerbs = Math.max(1, totalWords * 0.15);
+  const errorRate = (pastTenseErrors / estimatedVerbs) * 100;
+
+  return Math.max(0, Math.min(100, Math.round(100 - errorRate)));
 }
 
 /**
@@ -230,9 +252,9 @@ export function calculateScores(e: EvidenceData, grade: string): Scores {
   const norm = getWpmNorm(''); // fallback — caller should set wpm against norm separately
 
   const spelling           = scoreSpelling(e.spellingErrors.length, e.wordCount);
-  const grammar            = scoreGrammar(e.grammarMistakes);
-  const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation, grade);
-  const pastTenseUsage     = scorePastTense(e.pastTenseErrors);
+  const grammar            = scoreGrammar(e.grammarMistakes, e.wordCount);
+  const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation, grade, e.wordCount);
+  const pastTenseUsage     = scorePastTense(e.pastTenseErrors, e.wordCount);
   const letterFormation    = scoreLetterFormation(e.letterFormationObservations);
   const alignment          = scoreAlignment(e.alignmentObservations);
   const spatialOrganisation = scoreSpatialOrganisation(e.spacingObservations);
@@ -261,9 +283,9 @@ export function calculateScoresWithNorm(e: EvidenceData, grade: string): Scores 
   const norm = getWpmNorm(grade);
 
   const spelling           = scoreSpelling(e.spellingErrors.length, e.wordCount);
-  const grammar            = scoreGrammar(e.grammarMistakes);
-  const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation, grade);
-  const pastTenseUsage     = scorePastTense(e.pastTenseErrors);
+  const grammar            = scoreGrammar(e.grammarMistakes, e.wordCount);
+  const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation, grade, e.wordCount);
+  const pastTenseUsage     = scorePastTense(e.pastTenseErrors, e.wordCount);
   const letterFormation    = scoreLetterFormation(e.letterFormationObservations);
   const alignment          = scoreAlignment(e.alignmentObservations);
   const spatialOrganisation = scoreSpatialOrganisation(e.spacingObservations);

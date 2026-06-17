@@ -67,7 +67,7 @@ Do not delete overwritten words unless a clear strike-through exists.
    - Example: "In my family we have get-together every month [CANCELLED: every sunday] we go out"
 
    - If a phrase is crossed out and then rewritten immediately after it, include the crossed phrase in uncertainCancellations even if partially legible.
-   - For overwritten phrases such as "talk about" rewritten as "met ad talk about", preserve the visible wrong text in transcription and also add the crossed phrase to uncertainCancellations.
+   - For overwritten phrases such as "went to" rewritten as "wanted to go", preserve the visible wrong text in transcription and also add the crossed phrase to uncertainCancellations.
    - Do not ignore crossed phrases just because a readable replacement appears nearby.
    - Also return confirmedCancellations separately in the array
    - This ensures both scoring accuracy (tags removed) and visual display (tags preserved)
@@ -530,8 +530,6 @@ function normalizeOverCancelledPhrases(transcription: string): string {
       const words = content.trim();
       return `the [CANCELLED: ${words}]`;
     })
-    .replace(/\[CANCELLED:\s*i get to met\]/gi, 'i get to [CANCELLED: met]')
-    .replace(/\[CANCELLED:\s*get to met\]/gi, 'get to [CANCELLED: met]')
     .replace(/\[CANCELLED:\s*i \w+\s*\w*\]/gi, (match, content) => {
       const words = content.replace(/i\s*/i, '').trim();
       return `i [CANCELLED: ${words}]`;
@@ -1365,7 +1363,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       uncertainWords: extracted.uncertainWords || [],
       confirmedCancellations: extracted.confirmedCancellations || [],
       uncertainCancellations: extracted.uncertainCancellations || [],
-      treatUncertainCancellationsAsStrike: true,
+      treatUncertainCancellationsAsStrike: false,
     });
 
     extracted.spellingErrors = visibleSpellingErrors;
