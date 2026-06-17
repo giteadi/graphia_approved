@@ -8,7 +8,6 @@ import {
   calculateScoresWithNorm,
   calculateProbability,
   getActionableStrategies,
-  countWords,
   countWordsDeterministic,
   getWpmNorm,
 } from '../utils/scoreEngine.js';
@@ -86,19 +85,19 @@ function qualityGate(evidence: any): any {
 
   const suspiciousConditions = [
     // Zero cancellations but clear grammar issues suggest missed cross-outs
-    evidence.confirmedCancellations.length === 0 && 
-    evidence.grammarMistakes.some((g: any) => 
+    (evidence.confirmedCancellations?.length || 0) === 0 && 
+    (evidence.grammarMistakes || []).some((g: any) => 
       g.example?.toLowerCase().includes('will can') ||
       g.example?.toLowerCase().includes('their are') ||
       g.example?.toLowerCase().includes('be decrease')
     ),
     
     // Zero cancellations but multiple overwrites in uncertainCancellations
-    evidence.confirmedCancellations.length === 0 && 
+    (evidence.confirmedCancellations?.length || 0) === 0 && 
     (evidence.uncertainCancellations?.length || 0) >= 3,
     
     // High spelling error count but zero cancellations (suspicious for crossed-out misspellings)
-    evidence.confirmedCancellations.length === 0 && 
+    (evidence.confirmedCancellations?.length || 0) === 0 && 
     (evidence.spellingErrors?.length || 0) >= 5
   ];
 
@@ -106,7 +105,7 @@ function qualityGate(evidence: any): any {
 
   if (needsReview) {
     console.warn('[Quality Gate] Suspicious extraction pattern detected:');
-    console.warn('  - Confirmed cancellations:', evidence.confirmedCancellations.length);
+    console.warn('  - Confirmed cancellations:', evidence.confirmedCancellations?.length || 0);
     console.warn('  - Grammar mistakes:', evidence.grammarMistakes?.length || 0);
     console.warn('  - Spelling errors:', evidence.spellingErrors?.length || 0);
     console.warn('  - This suggests AI may have missed visually crossed-out words');
@@ -662,10 +661,17 @@ type UncertainWord = {
   possibleAlternatives?: string[];
 };
 
+type HighlightTarget = {
+  text: string;
+  occurrence: number; // 1-based
+  kind: 'spelling' | 'grammar' | 'cancelled' | 'maybe-cancelled';
+};
+
 type HighlightMap = {
-  redWords: string[];
-  redPhrases: string[];
-  strikePhrases: string[];
+  redWords: string[];      // backward compatibility
+  redPhrases: string[];    // backward compatibility
+  strikePhrases: string[]; // backward compatibility
+  targets?: HighlightTarget[]; // optional for backward compatibility
 };
 
 function normalizeForUiMatch(value: string): string {
@@ -782,31 +788,30 @@ function buildHighlightMap(params: {
     treatUncertainCancellationsAsStrike = true,
   } = params;
 
-  const redWords = uniqueNormalized([
-    ...spellingErrors.map(item => item.written),
-    ...uncertainWords
-      .filter(item => (item.confidence || 0) >= 40)
-      .map(item => item.word),
-  ]);
+  const redWords = uniqueNormalized(spellingErrors.map(s => s.written)); // uncertainWords removed
+  const redPhrases = uniqueNormalized(grammarMistakes.map(g => extractGrammarTarget(g.example)).filter(Boolean));
+  const strikePhrases = uniqueNormalized(confirmedCancellations.map(c => c.text));
 
-  const redPhrases = uniqueNormalized(
-    grammarMistakes
-      .map(item => extractGrammarTarget(item.example))
-      .filter(Boolean)
-  );
+  // Build targets array with respect to treatUncertainCancellationsAsStrike flag
+  const targets: HighlightTarget[] = [
+    ...spellingErrors.map(s => ({
+      text: s.written,
+      occurrence: s.occurrence || 1,
+      kind: 'spelling' as const,
+    })),
+    ...confirmedCancellations.map(c => ({
+      text: c.text,
+      occurrence: c.occurrence || 1,
+      kind: 'cancelled' as const,
+    })),
+    ...(treatUncertainCancellationsAsStrike ? uncertainCancellations.map(c => ({
+      text: c.text,
+      occurrence: c.occurrence || 1,
+      kind: 'maybe-cancelled' as const,
+    })) : []),
+  ];
 
-  const strikePhrases = uniqueNormalized([
-    ...confirmedCancellations.map(item => item.text),
-    ...(treatUncertainCancellationsAsStrike
-      ? uncertainCancellations.map(item => item.text)
-      : []),
-  ]);
-
-  return {
-    redWords,
-    redPhrases,
-    strikePhrases,
-  };
+  return { redWords, redPhrases, strikePhrases, targets };
 }
 
 function countNormalizedOccurrences(text: string, phrase: string): number {
@@ -971,20 +976,12 @@ function fixCancellationPatterns(text: string): string {
     .replace(/\[(CANCELLED|MAYBE-CANCELLED):\s*(my|the|a|an|his|her|their|our|your|this|that|its)\s+(\w+)\s+(\w+)\s*\]/gi, '$2 [$1: $3] $4');
 }
 
-// ─── Helper: Strip leading pronouns/articles from cancellation text ───────────
-const HELPER_WORD_PATTERN = /^(my|the|a|an|his|her|their|our|your|this|that|its)\s+/i;
-
+// ─── Helper: Clean cancellation array (preserve original text, no helper-word stripping) ───────────
 function cleanCancellationArray(cancellations: any[]): any[] {
   if (!cancellations) return [];
-  return cancellations.map(c => {
-    if (!c.text) return c;
-    // Strip leading helper words (my, the, a, etc.)
-    const cleaned = c.text.replace(HELPER_WORD_PATTERN, '').trim();
-    if (cleaned && cleaned !== c.text) {
-      return { ...c, text: cleaned };
-    }
-    return c;
-  }).filter(c => c.text && c.text.length > 0);
+  return cancellations
+    .filter(c => c?.text && String(c.text).trim().length > 0)
+    .map(c => ({ ...c, text: String(c.text).trim() })); // no helper-word stripping
 }
 
 type CancellationItem = {
@@ -1047,8 +1044,8 @@ function injectCancellationTags(
   let result = transcription || '';
   if (!result.trim()) return result;
 
-  const alreadyHasAnyTag = (text: string) =>
-    result.toLowerCase().includes(`[${text.toLowerCase()}:`);
+  const hasTagType = (tagType: 'cancelled' | 'maybe-cancelled') =>
+    result.toLowerCase().includes(`[${tagType}:`);
 
   const injectOne = (item: CancellationItem, tag: 'CANCELLED' | 'MAYBE-CANCELLED') => {
     const rawText = (item?.text || '').trim();
@@ -1061,7 +1058,7 @@ function injectCancellationTags(
     if (!re) return;
 
     const safeLower = normalizeForMatch(rawText);
-    if (alreadyHasAnyTag('cancelled') || alreadyHasAnyTag('maybe-cancelled')) {
+    if (hasTagType('cancelled') || hasTagType('maybe-cancelled')) {
       const taggedRegions = result.match(/\[(CANCELLED|MAYBE-CANCELLED):[^\]]+\]/gi) || [];
       if (taggedRegions.some(tr => normalizeForMatch(tr).includes(safeLower))) return;
     }
@@ -1176,14 +1173,14 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // Normalize over-cancelled phrases (AI guardrail)
     extracted.transcription = normalizeOverCancelledPhrases(extracted.transcription);
 
-    // Rebucket cancellations: Confirmed = confidence >= 50 AND reason empty, else Uncertain
+    // Rebucket cancellations: Confirmed = confidence >= 80 AND reason empty, else Uncertain
     const rawConfirmed = extracted.confirmedCancellations || [];
     const rawUncertain = extracted.uncertainCancellations || [];
 
-    const rebucketedConfirmed = rawConfirmed.filter((c: any) => (c.confidence ?? 0) >= 50 && !c.reason);
+    const rebucketedConfirmed = rawConfirmed.filter((c: any) => (c.confidence ?? 0) >= 80 && !c.reason);
     const rebucketedUncertain = [
       ...rawUncertain,
-      ...rawConfirmed.filter((c: any) => !((c.confidence ?? 0) >= 50 && !c.reason)).map((c: any) => ({
+      ...rawConfirmed.filter((c: any) => !((c.confidence ?? 0) >= 80 && !c.reason)).map((c: any) => ({
         text: c.text,
         confidence: c.confidence ?? 0,
         reason: c.reason || 'low_confidence',

@@ -15,7 +15,16 @@ export const PRIORITY = {
  * Example: buildOccurrenceKey("lego", 2) → "lego#2"
  */
 export function buildOccurrenceKey(word: string, occurrence: number): string {
-  return `${word.toLowerCase().trim()}#${occurrence || 1}`;
+  const w = String(word || '').toLowerCase().trim();
+  return `${w}#${occurrence || 1}`;
+}
+
+/**
+ * Escapes special regex characters for safe pattern matching
+ * Prevents regex injection and ensures accurate word boundary matching
+ */
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -39,22 +48,31 @@ export function sanitizeEvidence(evidence: any): any {
       .filter(Boolean)
   );
 
-  // Filter out spelling errors that match cancelled words
-  evidence.spellingErrors = (evidence.spellingErrors || []).filter(
-    (e: any) => !cancelledWords.has(e.written?.toLowerCase().trim())
-  );
+  // Filter out spelling errors using occurrence-based matching when available
+  evidence.spellingErrors = (evidence.spellingErrors || []).filter((e: any) => {
+    const errorKey = buildOccurrenceKey(e.written, e.occurrence);
+    // If cancelledKeys has this specific occurrence, filter it out
+    if (cancelledKeys.has(errorKey)) return false;
+    // Otherwise fall back to word-level matching
+    return !cancelledWords.has(e.written?.toLowerCase().trim());
+  });
 
-  // Filter out word choice mistakes that match cancelled words
-  evidence.wordChoiceMistakes = (evidence.wordChoiceMistakes || []).filter(
-    (e: any) => !cancelledWords.has(e.written?.toLowerCase().trim())
-  );
+  // Filter out word choice mistakes using occurrence-based matching
+  evidence.wordChoiceMistakes = (evidence.wordChoiceMistakes || []).filter((e: any) => {
+    const errorKey = buildOccurrenceKey(e.written, e.occurrence);
+    if (cancelledKeys.has(errorKey)) return false;
+    return !cancelledWords.has(e.written?.toLowerCase().trim());
+  });
 
-  // Filter out grammar mistakes that contain cancelled words in their examples
-  evidence.grammarMistakes = (evidence.grammarMistakes || []).filter(
-    (g: any) => ![...cancelledWords].some(word =>
-      g.example?.toLowerCase()?.includes(word)
-    )
-  );
+  // Filter out grammar mistakes that contain cancelled words in their examples (word boundary matching)
+  evidence.grammarMistakes = (evidence.grammarMistakes || []).filter((g: any) => {
+    const example = g.example?.toLowerCase() || '';
+    return ![...cancelledWords].some((word: string) => {
+      // Word boundary matching to avoid false positives like "because" matching "be"
+      const regex = new RegExp(`\\b${escapeRegExp(word)}\\b`, 'i');
+      return regex.test(example);
+    });
+  });
 
   console.log('[Evidence Sanitizer] Applied priority rules:');
   console.log(`  - Cancelled words: ${cancelledWords.size}`);

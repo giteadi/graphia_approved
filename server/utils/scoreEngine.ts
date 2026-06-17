@@ -64,17 +64,6 @@ export interface Scores {
   mechanics: number;
 }
 
-// ─── Node word counter (reliable — not AI) ───────────────────────────────────
-export function countWords(transcription: string): number {
-  return transcription
-    .replace(/\[CANCELLED:[^\]]+\]/gi, ' ') // remove cancelled blocks with space (policy: exclude cancelled words from count)
-    .replace(/\n/g, ' ')                   // normalize line breaks
-    .trim()
-    .split(/\s+/)
-    .filter(w => w.length > 0)
-    .length;
-}
-
 // ─── Deterministic word counter (handles inline [CANCELLED: ...] tags) ─────
 export function countWordsDeterministic(transcription: string): number {
   let t = transcription

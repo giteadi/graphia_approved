@@ -321,10 +321,17 @@ const DEFAULT_STRATEGIES = [
   "Provide extended time for all written tasks, as the current writing speed requires more time to demonstrate knowledge adequately."
 ];
 
+type HighlightTarget = {
+  text: string;
+  occurrence: number; // 1-based
+  kind: 'spelling' | 'grammar' | 'cancelled' | 'maybe-cancelled';
+};
+
 type HighlightMap = {
-  redWords: string[];
-  redPhrases: string[];
-  strikePhrases: string[];
+  redWords: string[];      // backward compatibility
+  redPhrases: string[];    // backward compatibility
+  strikePhrases: string[]; // backward compatibility
+  targets?: HighlightTarget[]; // optional for backward compatibility
 };
 
 const normalizeForUiMatch = (value: string): string =>
@@ -338,12 +345,21 @@ const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Token-based transcription rendering with single source of truth
-type AnnotationType = 'normal' | 'spelling' | 'grammar' | 'cancelled';
+type AnnotationType = 'normal' | 'spelling' | 'grammar' | 'cancelled' | 'maybeCancelled';
 
 interface Token {
   text: string;
   type: AnnotationType;
 }
+
+// Priority system for annotation types (higher = overrides lower)
+const TOKEN_PRIORITY: Record<AnnotationType, number> = {
+  cancelled: 3,       // Highest priority
+  maybeCancelled: 2,  // Medium priority (uncertain)
+  spelling: 2,
+  grammar: 1,
+  normal: 0
+};
 
 const RenderTranscription = ({
   text,
@@ -362,21 +378,38 @@ const RenderTranscription = ({
   const tokenizeText = (input: string): Token[] => {
     const tokens: Token[] = [];
     
-    // First, handle inline [CANCELLED: ...] tags
+    // First, handle inline [CANCELLED: ...] and [MAYBE-CANCELLED: ...] tags
     const parts = input.split(/(\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):[\s\S]*?\])/gi);
     
     for (const part of parts) {
-      const isTagged = /^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):/i.test(part) && part.endsWith(']');
-      if (isTagged) {
+      // Handle CONFIRMED cancellations
+      if (/^\[(?:cancelled|CANCELLED):/i.test(part) && part.endsWith(']')) {
         const content = part
-          .replace(/^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):\s*/i, '')
+          .replace(/^\[(?:cancelled|CANCELLED):\s*/i, '')
           .replace(/\]$/, '')
           .trim();
         
         if (content) {
           tokens.push({ text: content, type: 'cancelled' });
         }
-      } else if (part.trim()) {
+        continue;
+      }
+
+      // Handle UNCERTAIN cancellations
+      if (/^\[(?:MAYBE-CANCELLED):/i.test(part) && part.endsWith(']')) {
+        const content = part
+          .replace(/^\[(?:MAYBE-CANCELLED):\s*/i, '')
+          .replace(/\]$/, '')
+          .trim();
+        
+        if (content) {
+          tokens.push({ text: content, type: 'maybeCancelled' });
+        }
+        continue;
+      }
+
+      // Handle regular text
+      if (part.trim()) {
         // Split regular text into words
         const words = part.split(/(\s+)/);
         for (const word of words) {
@@ -392,59 +425,95 @@ const RenderTranscription = ({
     return tokens;
   };
 
-  // Apply annotations based on priority
+  // Apply annotations based on priority system
   const applyAnnotations = (tokens: Token[]): Token[] => {
     const annotatedTokens = [...tokens];
     
     // Helper to normalize text for matching
     const normalize = (str: string) => str.toLowerCase().replace(/[^\w\s]/g, '').trim();
     
-    // Apply spelling annotations (priority: 2)
+    // Helper to safely upgrade annotation type based on priority
+    const upgradeToken = (tokenIndex: number, newType: AnnotationType) => {
+      const currentType = annotatedTokens[tokenIndex].type;
+      const currentPriority = TOKEN_PRIORITY[currentType];
+      const newPriority = TOKEN_PRIORITY[newType];
+      
+      // Only upgrade if new type has higher priority
+      if (newPriority > currentPriority) {
+        annotatedTokens[tokenIndex] = { ...annotatedTokens[tokenIndex], type: newType };
+      }
+    };
+    
+    // Apply occurrence-based annotations from targets
+    const targets = highlightMap?.targets || [];
+    const occurrenceCounter: Record<string, number> = {};
+    
     for (let i = 0; i < annotatedTokens.length; i++) {
-      const token = annotatedTokens[i];
-      if (token.type === 'normal') {
-        const normalizedToken = normalize(token.text);
-        const isSpellingError = redWords.some(word => normalize(word) === normalizedToken);
-        if (isSpellingError) {
-          annotatedTokens[i] = { ...token, type: 'spelling' };
-        }
-      }
+      const t = annotatedTokens[i];
+      if (!t.text.trim()) continue;
+      
+      const key = normalize(t.text);
+      occurrenceCounter[key] = (occurrenceCounter[key] || 0) + 1;
+      const occ = occurrenceCounter[key];
+      
+      const hit = targets.find(x => normalize(x.text) === key && (x.occurrence || 1) === occ);
+      if (!hit) continue;
+      
+      if (hit.kind === 'cancelled') upgradeToken(i, 'cancelled');
+      if (hit.kind === 'maybe-cancelled') upgradeToken(i, 'maybeCancelled');
+      if (hit.kind === 'spelling') upgradeToken(i, 'spelling');
     }
     
-    // Apply grammar phrase annotations (priority: 1)
-    for (const phrase of redPhrases) {
-      const normalizedPhrase = normalize(phrase);
-      let phraseStartIndex = -1;
-      let matchedTokens: Token[] = [];
-      
-      // Find matching sequence of tokens
-      for (let i = 0; i < annotatedTokens.length; i++) {
-        if (annotatedTokens[i].type === 'normal') {
-          const tokenText = annotatedTokens[i].text;
-          if (normalize(tokenText).includes(normalizedPhrase) || normalizedPhrase.includes(normalize(tokenText))) {
-            if (phraseStartIndex === -1) phraseStartIndex = i;
-            matchedTokens.push(annotatedTokens[i]);
-          }
-        }
-      }
-      
-      // If we found a match, mark all matched tokens as grammar
-      if (matchedTokens.length > 0) {
-        for (let i = phraseStartIndex; i < phraseStartIndex + matchedTokens.length; i++) {
-          if (i < annotatedTokens.length) {
-            annotatedTokens[i] = { ...annotatedTokens[i], type: 'grammar' };
-          }
-        }
-      }
-    }
-    
-    // Apply strike phrase annotations (priority: 3 - highest)
-    for (const phrase of strikePhrases) {
-      const normalizedPhrase = normalize(phrase);
+    // Legacy fallback: if targets is empty, use old redWords + strikePhrases matching
+    if (!targets.length) {
+      // spelling fallback
       for (let i = 0; i < annotatedTokens.length; i++) {
         const token = annotatedTokens[i];
-        if (normalize(token.text) === normalizedPhrase) {
-          annotatedTokens[i] = { ...token, type: 'cancelled' };
+        if (!token.text.trim()) continue;
+        const normalizedToken = normalize(token.text);
+        const isSpellingError = redWords.some(word => normalize(word) === normalizedToken);
+        if (isSpellingError) upgradeToken(i, 'spelling');
+      }
+  
+      // cancelled fallback
+      for (const phrase of strikePhrases) {
+        const normalizedPhrase = normalize(phrase);
+        for (let i = 0; i < annotatedTokens.length; i++) {
+          const token = annotatedTokens[i];
+          if (normalize(token.text) === normalizedPhrase) {
+            upgradeToken(i, 'cancelled');
+          }
+        }
+      }
+    }
+    
+    // Fallback: Apply grammar phrase annotations (sequence-based matching) for backward compatibility
+    const findPhraseSequence = (phrase: string, tokenArray: Token[]): number => {
+      const phraseWords = phrase.split(/\s+/).map(w => normalize(w));
+      if (phraseWords.length === 0) return -1;
+      
+      for (let i = 0; i <= tokenArray.length - phraseWords.length; i++) {
+        let match = true;
+        for (let j = 0; j < phraseWords.length; j++) {
+          if (normalize(tokenArray[i + j].text) !== phraseWords[j]) {
+            match = false;
+            break;
+          }
+        }
+        if (match) return i;
+      }
+      return -1;
+    };
+    
+    for (const phrase of redPhrases) {
+      const sequenceStart = findPhraseSequence(phrase, annotatedTokens);
+      if (sequenceStart !== -1) {
+        const phraseWords = phrase.split(/\s+/);
+        for (let i = 0; i < phraseWords.length; i++) {
+          const tokenIndex = sequenceStart + i;
+          if (tokenIndex < annotatedTokens.length) {
+            upgradeToken(tokenIndex, 'grammar');
+          }
         }
       }
     }
@@ -463,6 +532,12 @@ const RenderTranscription = ({
           case 'cancelled':
             return (
               <span key={`token-${index}`} className="text-gray-500 italic line-through">
+                {token.text}
+              </span>
+            );
+          case 'maybeCancelled':
+            return (
+              <span key={`token-${index}`} className="text-gray-500 italic underline decoration-gray-400/70 underline-offset-2">
                 {token.text}
               </span>
             );
@@ -2006,7 +2081,7 @@ ${result.report}
               new Paragraph({
                 children: (() => {
                   const transcription = result.summary.displayTranscription || result.summary.transcription || '';
-                  const highlightMap = result.summary.highlightMap || { redWords: [], redPhrases: [], strikePhrases: [] };
+                  const highlightMap = result.summary.highlightMap || { redWords: [], redPhrases: [], strikePhrases: [], targets: [] };
                   const redWords = highlightMap.redWords || [];
                   const redPhrases = [...(highlightMap.redPhrases || [])].sort((a, b) => b.length - a.length);
                   const strikePhrases = [...(highlightMap.strikePhrases || [])].sort((a, b) => b.length - a.length);
@@ -2014,7 +2089,7 @@ ${result.report}
                   const runs: any[] = [];
                   const parts = transcription.split(/(\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):.*?\])/gi);
 
-                  const pushStyledText = (value: string, kind: 'plain' | 'red' | 'strike') => {
+                  const pushStyledText = (value: string, kind: 'plain' | 'red' | 'strike' | 'maybe') => {
                     if (!value) return;
                     runs.push(new TextRun({
                       text: value,
@@ -2023,6 +2098,7 @@ ${result.report}
                       italics: true,
                       ...(kind === 'red' ? { bold: true, color: 'CC0000' } : {}),
                       ...(kind === 'strike' ? { strike: true, color: '888888' } : {}),
+                      ...(kind === 'maybe' ? { underline: {}, color: '777777' } : {}),
                     }));
                   };
 
@@ -2088,9 +2164,15 @@ ${result.report}
                   };
 
                   parts.forEach((part: string) => {
-                    if (/^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):/i.test(part)) {
-                      const content = part.replace(/^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):\s*/i, '').replace(/\]$/, '');
+                    if (/^\[(?:cancelled|CANCELLED):/i.test(part)) {
+                      const content = part.replace(/^\[(?:cancelled|CANCELLED):\s*/i, '').replace(/\]$/, '');
                       pushStyledText(content + ' ', 'strike');
+                      return;
+                    }
+
+                    if (/^\[(?:MAYBE-CANCELLED):/i.test(part)) {
+                      const content = part.replace(/^\[(?:MAYBE-CANCELLED):\s*/i, '').replace(/\]$/, '');
+                      pushStyledText(content + ' ', 'maybe');
                       return;
                     }
 
