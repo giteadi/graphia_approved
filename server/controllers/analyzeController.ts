@@ -862,10 +862,25 @@ function detectWordChoiceMistakes(transcription: string) {
 }
 
 function fixCancellationPatterns(text: string): string {
-  // Pattern: [CANCELLED: article/pronoun noun] -> article/pronoun [CANCELLED: noun]
   return text
-    .replace(/\[CANCELLED:\s*(my|the|a|an|his|her|their|our|your)\s+(\w+)\s*\]/gi, '$1 [CANCELLED: $2]')
-    .replace(/\[CANCELLED:\s*(my|the|a|an|his|her|their|our|your)\s+(\w+)\s+(\w+)\s*\]/gi, '$1 [CANCELLED: $2] $3');
+    .replace(/\[(CANCELLED|MAYBE-CANCELLED):\s*(my|the|a|an|his|her|their|our|your|this|that|its)\s+(\w+)\s*\]/gi, '$2 [$1: $3]')
+    .replace(/\[(CANCELLED|MAYBE-CANCELLED):\s*(my|the|a|an|his|her|their|our|your|this|that|its)\s+(\w+)\s+(\w+)\s*\]/gi, '$2 [$1: $3] $4');
+}
+
+// ─── Helper: Strip leading pronouns/articles from cancellation text ───────────
+const HELPER_WORD_PATTERN = /^(my|the|a|an|his|her|their|our|your|this|that|its)\s+/i;
+
+function cleanCancellationArray(cancellations: any[]): any[] {
+  if (!cancellations) return [];
+  return cancellations.map(c => {
+    if (!c.text) return c;
+    // Strip leading helper words (my, the, a, etc.)
+    const cleaned = c.text.replace(HELPER_WORD_PATTERN, '').trim();
+    if (cleaned && cleaned !== c.text) {
+      return { ...c, text: cleaned };
+    }
+    return c;
+  }).filter(c => c.text && c.text.length > 0);
 }
 
 type CancellationItem = {
@@ -1069,8 +1084,8 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       }))
     ];
 
-    extracted.confirmedCancellations = rebucketedConfirmed;
-    extracted.uncertainCancellations = rebucketedUncertain;
+    extracted.confirmedCancellations = cleanCancellationArray(rebucketedConfirmed);
+    extracted.uncertainCancellations = cleanCancellationArray(rebucketedUncertain);
 
     // Capture raw transcription immediately after Step-1 parse (before any modifications)
     const rawTranscription = extracted.transcription || '';
