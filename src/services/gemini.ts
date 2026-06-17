@@ -17,6 +17,13 @@ export interface AnalysisResult {
     lineFormation: string;
     mechanics: string;
     spellingErrors: SpellingError[];
+    grammarMistakes?: Array<{ type: 'agreement' | 'plural' | 'syntax' | 'other'; example: string }>;
+    uncertainWords?: Array<{ word: string; confidence: number; possibleAlternatives: string[] }>;
+    highlightMap?: {
+      redWords: string[];
+      redPhrases: string[];
+      strikePhrases: string[];
+    };
     dysgraphiaIndicators: string[];
     assessmentRecommendation: string;
     probabilityEstimate: string;
@@ -156,16 +163,20 @@ export async function analyzeHandwriting(
 
     console.log('[gemini.ts] Response OK:', response.status);
 
-    const data = await response.json() as { choices: { message: { content: string } }[] };
+    const data = await response.json() as { 
+      choices: { message: { content: string } }[];
+      summary?: any;
+    };
+    
     const text = data.choices[0]?.message?.content || "";
+    const backendSummary = data.summary;
     
     if (!text.trim()) {
       throw new Error("AI returned an empty response. This may be due to safety filters or image clarity issues.");
     }
     
-    // Extract JSON summary
-    const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
-    let summary = {
+    // Use backend-provided summary if available, otherwise fall back to parsing JSON from report
+    let summary = backendSummary || {
       alignment: "Not analyzed",
       lineQuality: "Not analyzed",
       lineFormation: "Not analyzed",
@@ -205,11 +216,15 @@ export async function analyzeHandwriting(
       },
     };
 
-    if (jsonMatch) {
-      try {
-        summary = JSON.parse(jsonMatch[1]);
-      } catch (e) {
-        console.error("Failed to parse summary JSON", e);
+    // Fallback: Extract JSON summary from report text if backend didn't provide it
+    if (!backendSummary) {
+      const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        try {
+          summary = JSON.parse(jsonMatch[1]);
+        } catch (e) {
+          console.error("Failed to parse summary JSON", e);
+        }
       }
     }
 

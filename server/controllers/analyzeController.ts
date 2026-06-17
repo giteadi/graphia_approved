@@ -65,6 +65,10 @@ Do not delete overwritten words unless a clear strike-through exists.
    TRANSCRIPTION REQUIREMENT:
    - Include confirmed cancellations inline in transcription as [CANCELLED: text]
    - Example: "In my family we have get-together every month [CANCELLED: every sunday] we go out"
+
+   - If a phrase is crossed out and then rewritten immediately after it, include the crossed phrase in uncertainCancellations even if partially legible.
+   - For overwritten phrases such as "talk about" rewritten as "met ad talk about", preserve the visible wrong text in transcription and also add the crossed phrase to uncertainCancellations.
+   - Do not ignore crossed phrases just because a readable replacement appears nearby.
    - Also return confirmedCancellations separately in the array
    - This ensures both scoring accuracy (tags removed) and visual display (tags preserved)
 
@@ -508,6 +512,219 @@ function normalizeOverCancelledPhrases(transcription: string): string {
     });
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// HIGHLIGHT MAP HELPERS
+// ══════════════════════════════════════════════════════════════════════════════
+
+type SpellingError = {
+  written: string;
+  intended: string;
+  gradeLevel: string;
+  occurrence?: number;
+};
+
+type GrammarMistake = {
+  type: 'agreement' | 'plural' | 'syntax' | 'other';
+  example: string;
+};
+
+type UncertainWord = {
+  word: string;
+  confidence: number;
+  possibleAlternatives?: string[];
+};
+
+type HighlightMap = {
+  redWords: string[];
+  redPhrases: string[];
+  strikePhrases: string[];
+};
+
+function normalizeForUiMatch(value: string): string {
+  return (value || '')
+    .toLowerCase()
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function uniqueNormalized(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    const normalized = normalizeForUiMatch(value);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(value.trim());
+  }
+
+  return result;
+}
+
+function dedupeGrammarMistakes(grammarMistakes: GrammarMistake[] = []): GrammarMistake[] {
+  const seen = new Set<string>();
+  const result: GrammarMistake[] = [];
+
+  for (const item of grammarMistakes) {
+    const key = `${item.type}:${normalizeForUiMatch(item.example)}`;
+    if (!item.example || seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+
+  return result;
+}
+
+function dedupeSpellingErrors(spellingErrors: SpellingError[] = []): SpellingError[] {
+  const seen = new Set<string>();
+  const result: SpellingError[] = [];
+
+  for (const item of spellingErrors) {
+    const key = `${normalizeForUiMatch(item.written)}::${item.occurrence || 1}`;
+    if (!item.written || seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+
+  return result;
+}
+
+function promoteUncertainWordsToSpellingErrors(
+  uncertainWords: UncertainWord[] = [],
+  existingSpellingErrors: SpellingError[] = []
+): SpellingError[] {
+  const existing = new Set(
+    existingSpellingErrors.map(item => normalizeForUiMatch(item.written))
+  );
+
+  const promotionMap: Record<string, string> = {
+    ad: 'and',
+    en: 'in',
+    ar: 'are',
+    n: 'in',
+    bcuz: 'because',
+    cuz: 'because',
+  };
+
+  const promoted: SpellingError[] = [];
+
+  for (const item of uncertainWords) {
+    const word = normalizeForUiMatch(item.word);
+    if (!word) continue;
+    if (existing.has(word)) continue;
+
+    const intended =
+      promotionMap[word] ||
+      (item.possibleAlternatives && item.possibleAlternatives[0]) ||
+      '';
+
+    if (!intended) continue;
+    if ((item.confidence || 0) < 40) continue;
+
+    promoted.push({
+      written: item.word,
+      intended,
+      gradeLevel: 'approx 1st grade',
+      occurrence: 1,
+    });
+  }
+
+  return promoted;
+}
+
+function buildHighlightMap(params: {
+  spellingErrors?: SpellingError[];
+  grammarMistakes?: GrammarMistake[];
+  uncertainWords?: UncertainWord[];
+  confirmedCancellations?: CancellationItem[];
+  uncertainCancellations?: CancellationItem[];
+  treatUncertainCancellationsAsStrike?: boolean;
+}): HighlightMap {
+  const {
+    spellingErrors = [],
+    grammarMistakes = [],
+    uncertainWords = [],
+    confirmedCancellations = [],
+    uncertainCancellations = [],
+    treatUncertainCancellationsAsStrike = true,
+  } = params;
+
+  const redWords = uniqueNormalized([
+    ...spellingErrors.map(item => item.written),
+    ...uncertainWords
+      .filter(item => (item.confidence || 0) >= 40)
+      .map(item => item.word),
+  ]);
+
+  const redPhrases = uniqueNormalized(
+    grammarMistakes
+      .map(item => item.example)
+      .filter(Boolean)
+  );
+
+  const strikePhrases = uniqueNormalized([
+    ...confirmedCancellations.map(item => item.text),
+    ...(treatUncertainCancellationsAsStrike
+      ? uncertainCancellations.map(item => item.text)
+      : []),
+  ]);
+
+  return {
+    redWords,
+    redPhrases,
+    strikePhrases,
+  };
+}
+
+function countNormalizedOccurrences(text: string, phrase: string): number {
+  const normalizedText = normalizeForUiMatch(text || '');
+  const normalizedPhrase = normalizeForUiMatch(phrase || '');
+
+  if (!normalizedText || !normalizedPhrase) return 0;
+
+  const pattern = new RegExp(`\\b${escapeRegExp(normalizedPhrase)}\\b`, 'g');
+  return (normalizedText.match(pattern) || []).length;
+}
+
+function filterVisibleSpellingErrors(
+  transcription: string,
+  spellingErrors: SpellingError[] = []
+): SpellingError[] {
+  return spellingErrors.filter((err) => {
+    const visibleCount = countNormalizedOccurrences(transcription, err.written);
+    const requiredOccurrence = err.occurrence || 1;
+    return visibleCount >= requiredOccurrence;
+  });
+}
+
+function findUnplacedCancellations(
+  displayTranscription: string,
+  cancellations: any[]
+): any[] {
+  const unplaced: any[] = [];
+
+  const transcriptionNormalized = normalizeForUiMatch(displayTranscription || '');
+
+  for (const c of cancellations || []) {
+    const textNormalized = normalizeForUiMatch(c.text || '');
+    if (textNormalized && !transcriptionNormalized.includes(textNormalized)) {
+      unplaced.push({
+        text: c.text,
+        confidence: c.confidence ?? 0,
+        reason: c.reason || 'unplaced',
+        occurrence: c.occurrence
+      });
+    }
+  }
+
+  return unplaced;
+}
+
 function attachDeterministicSummary(reportText: string, summary: Record<string, any>): string {
   const cleanReport = stripSummaryBlock(reportText);
   return `${cleanReport}\n\n\`\`\`json\n${JSON.stringify(summary, null, 2)}\n\`\`\``;
@@ -720,10 +937,6 @@ function injectCancellationTags(
   for (const c of uncertain) injectOne(c, 'MAYBE-CANCELLED');
 
   return result;
-}
-
-function escapeRegExp(string: string): string {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -955,72 +1168,6 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       /^(write actual|specific visual|specific observable|e\.g\.|no examples)/i.test(s.trim());
     const cleanObs = (arr: string[]) => (arr || []).filter(s => !isPlaceholder(s));
 
-    // Promote high-signal uncertain words to spelling errors (ad->and, en->in, ar->are)
-    function promoteUncertainWordsToSpellingErrors(
-      uncertainWords: any[],
-      existingSpellingErrors: any[]
-    ): any[] {
-      const promoted: any[] = [];
-      const highSignalConfusions: Record<string, string> = {
-        'ad': 'and',
-        'en': 'in',
-        'ar': 'are'
-      };
-
-      for (const uw of uncertainWords || []) {
-        const written = String(uw.word || '').toLowerCase().trim();
-        const alternatives = uw.possibleAlternatives || [];
-
-        if (highSignalConfusions[written] && alternatives.includes(highSignalConfusions[written])) {
-          // Check if already in spelling errors to avoid duplicates
-          const alreadyExists = existingSpellingErrors.some(
-            (e: any) => (e.written || '').toLowerCase() === written
-          );
-          if (!alreadyExists) {
-            promoted.push({
-              written: written,
-              intended: highSignalConfusions[written],
-              gradeLevel: 'approx 1st grade',
-              confidence: uw.confidence || 70,
-              reason: 'promoted from uncertain words'
-            });
-          }
-        }
-      }
-
-      return promoted;
-    }
-
-    // Find cancellations that are missing from the display transcription
-    function findUnplacedCancellations(
-      displayTranscription: string,
-      cancellations: any[]
-    ): any[] {
-      const unplaced: any[] = [];
-      const transcriptionLower = (displayTranscription || '').toLowerCase();
-
-      for (const c of cancellations || []) {
-        const text = (c.text || '').toLowerCase().trim();
-        if (text && !transcriptionLower.includes(text)) {
-          unplaced.push({
-            text: c.text,
-            confidence: c.confidence ?? 0,
-            reason: c.reason || 'unplaced',
-            occurrence: c.occurrence
-          });
-        }
-      }
-
-      return unplaced;
-    }
-
-    // Apply promotion of uncertain words to spelling errors
-    const promotedSpellingErrors = promoteUncertainWordsToSpellingErrors(
-      extracted.uncertainWords || [],
-      spellingErrors
-    );
-    spellingErrors = [...spellingErrors, ...promotedSpellingErrors];
-
     // Override LLM values with deterministic heuristic calculation
     const sb = computeSentenceBoundaryEvidence(extracted.transcription);
 
@@ -1030,13 +1177,19 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     extracted.missingPunctuation = sb.missingPunctuation;
 
     // Deduplicate grammar mistakes
-    const grammarMistakes = Array.from(
-      new Map(
-        (extracted.grammarMistakes || []).map((g: any) =>
-          [`${g.type}-${g.example}`, g]
-        )
-      ).values()
-    ) as { type: "agreement" | "plural" | "syntax" | "other"; example: string }[];
+    const grammarMistakes = dedupeGrammarMistakes(extracted.grammarMistakes || []);
+
+    // Apply promotion of uncertain words to spelling errors
+    const promotedSpellingErrors = promoteUncertainWordsToSpellingErrors(
+      extracted.uncertainWords || [],
+      spellingErrors
+    );
+    spellingErrors = dedupeSpellingErrors([
+      ...(spellingErrors || []),
+      ...promotedSpellingErrors,
+    ]);
+
+    extracted.grammarMistakes = grammarMistakes;
 
     // Post-process guardrail: Fix over-aggressive cancellation patterns
     // "[CANCELLED: my cousin]" -> "my [CANCELLED: cousin]"
@@ -1173,6 +1326,25 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         occurrence: typeof e.occurrence === 'number' && e.occurrence > 0 ? e.occurrence : 1
       }));
 
+    // Build final spelling errors and highlight map after all post-processing
+    const finalSpellingErrors = dedupeSpellingErrors(spellingErrors);
+    const visibleSpellingErrors = filterVisibleSpellingErrors(
+      extracted.displayTranscription || extracted.transcription || '',
+      finalSpellingErrors
+    );
+
+    const highlightMap = buildHighlightMap({
+      spellingErrors: visibleSpellingErrors,
+      grammarMistakes: grammarMistakes,
+      uncertainWords: extracted.uncertainWords || [],
+      confirmedCancellations: extracted.confirmedCancellations || [],
+      uncertainCancellations: extracted.uncertainCancellations || [],
+      treatUncertainCancellationsAsStrike: true,
+    });
+
+    extracted.spellingErrors = visibleSpellingErrors;
+    extracted.highlightMap = highlightMap;
+
     // 5) Word count must use countingTranscription
     const wordCount = countWordsDeterministic(countingTranscription);
 
@@ -1206,7 +1378,11 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       confirmedCancellations:     extracted.confirmedCancellations || [],
       uncertainCancellations:    extracted.uncertainCancellations || [],
       unplacedCancellations:      unplacedCancellations || [],
-      spellingErrors,
+      spellingErrors: visibleSpellingErrors.map(err => ({
+        written: err.written,
+        intended: err.intended,
+        gradeLevel: err.gradeLevel || 'unknown'
+      })),
       wordChoiceMistakes:        allWordChoiceMistakes,
       grammarMistakes,
       runOnSentences:           extracted.runOnSentences,
@@ -1303,7 +1479,23 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       );
     }
 
-    res.json(step3);
+    // Construct response with summary data including highlightMap
+    const responseData = {
+      ...step3,
+      summary: {
+        ...deterministicSummary,
+        transcription: extracted.transcription,
+        displayTranscription: extracted.displayTranscription,
+        spellingErrors: visibleSpellingErrors,
+        grammarMistakes: grammarMistakes,
+        uncertainWords: extracted.uncertainWords || [],
+        confirmedCancellations: extracted.confirmedCancellations || [],
+        uncertainCancellations: extracted.uncertainCancellations || [],
+        highlightMap: highlightMap,
+      }
+    };
+
+    res.json(responseData);
 
   } catch (error: any) {
     console.error('[analyzeController] Error:', error?.message);

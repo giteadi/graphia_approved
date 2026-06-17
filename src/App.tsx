@@ -321,57 +321,189 @@ const DEFAULT_STRATEGIES = [
   "Provide extended time for all written tasks, as the current writing speed requires more time to demonstrate knowledge adequately."
 ];
 
-const RenderTranscription = ({ text, spellingErrors = [] }: { text: string, spellingErrors?: SpellingError[] }) => {
-  if (!text) return null;
-  
-  // Track occurrence counts for each word
-  const wordOccurrenceTracker: Record<string, number> = {};
+type HighlightMap = {
+  redWords: string[];
+  redPhrases: string[];
+  strikePhrases: string[];
+};
 
-  // Split text by [cancelled: ...] or [CANCELLED: ...] or [MAYBE-CANCELLED: ...] blocks
-  const parts = text.split(/(\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):[\s\S]*?\])/gi);
-  
+const normalizeForUiMatch = (value: string): string =>
+  (value || '')
+    .toLowerCase()
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const RenderTranscription = ({
+  text,
+  highlightMap,
+}: {
+  text: string;
+  highlightMap?: HighlightMap;
+}) => {
+  if (!text) return null;
+
+  const redWords = highlightMap?.redWords || [];
+  const redPhrases = [...(highlightMap?.redPhrases || [])].sort((a, b) => b.length - a.length);
+  const strikePhrases = [...(highlightMap?.strikePhrases || [])].sort((a, b) => b.length - a.length);
+
+  const inlineTaggedText = text;
+
+  const parts = inlineTaggedText.split(/(\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):[\s\S]*?\])/gi);
+
+  const splitByPhrases = (
+    input: string,
+    phrases: string[],
+    kind: 'strike' | 'grammar'
+  ): Array<{ text: string; kind: 'plain' | 'strike' | 'grammar' }> => {
+    let pieces: Array<{ text: string; kind: 'plain' | 'strike' | 'grammar' }> = [
+      { text: input, kind: 'plain' },
+    ];
+
+    for (const phrase of phrases) {
+      const pattern = new RegExp(`(\\b${escapeRegExp(phrase)}\\b)`, 'gi');
+      const next: Array<{ text: string; kind: 'plain' | 'strike' | 'grammar' }> = [];
+
+      for (const piece of pieces) {
+        if (piece.kind !== 'plain') {
+          next.push(piece);
+          continue;
+        }
+
+        const chunks = piece.text.split(pattern);
+        for (const chunk of chunks) {
+          if (!chunk) continue;
+
+          if (normalizeForUiMatch(chunk) === normalizeForUiMatch(phrase)) {
+            next.push({ text: chunk, kind });
+          } else {
+            next.push({ text: chunk, kind: 'plain' });
+          }
+        }
+      }
+
+      pieces = next;
+    }
+
+    return pieces;
+  };
+
+  const renderPlainWithRedWords = (value: string, keyPrefix: string) => {
+    const tokens = value.split(/(\s+)/);
+
+    return tokens.map((token, index) => {
+      const normalized = normalizeForUiMatch(token);
+      if (!normalized) return <span key={`${keyPrefix}-${index}`}>{token}</span>;
+
+      let isRed = redWords.some(word => normalizeForUiMatch(word) === normalized);
+
+      if (!isRed && token.includes('-')) {
+        isRed = redWords.some(word => {
+          const target = normalizeForUiMatch(word);
+          return target.length >= 2 && normalized.includes(target);
+        });
+      }
+
+      if (!isRed) {
+        return <span key={`${keyPrefix}-${index}`}>{token}</span>;
+      }
+
+      return (
+        <span
+          key={`${keyPrefix}-${index}`}
+          className="text-red-600 font-bold underline decoration-red-600/50 underline-offset-2"
+        >
+          {token}
+        </span>
+      );
+    });
+  };
+
+  // Track which words are already handled by inline [CANCELLED: ...] tags
+  // so strikePhrases doesn't double-strike them
+  const inlineHandledCounts: Record<string, number> = {};
+  parts.forEach(part => {
+    const isTag = /^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):/i.test(part) && part.endsWith(']');
+    if (isTag) {
+      const word = part
+        .replace(/^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):\s*/i, '')
+        .replace(/\]$/, '')
+        .trim()
+        .toLowerCase();
+      inlineHandledCounts[word] = (inlineHandledCounts[word] || 0) + 1;
+    }
+  });
+
+  // strikePhrases se wahi hatao jo inline tags se already covered hain
+  const remainingStrikeCounts: Record<string, number> = { ...inlineHandledCounts };
+  const activeStrikePhrases = strikePhrases.filter(phrase => {
+    const key = phrase.toLowerCase();
+    if ((remainingStrikeCounts[key] || 0) > 0) {
+      remainingStrikeCounts[key]--;
+      return false; // inline tag ne handle kar liya, strikePhrases se skip
+    }
+    return true;
+  });
+
   return (
     <>
-      {parts.map((part, idx) => {
-        if (part && /^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):/i.test(part) && part.endsWith(']')) {
-          const isMaybeCancelled = part.toLowerCase().includes('maybe-cancelled');
-          const content = part.replace(/^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):\s*/i, '').replace(/\]$/, '');
+      {parts.map((part, partIndex) => {
+        const isTagged = /^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):/i.test(part) && part.endsWith(']');
+        if (isTagged) {
+          const content = part
+            .replace(/^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):\s*/i, '')
+            .replace(/\]$/, '');
+
           return (
-            <span key={idx} className={`mr-1 font-sans italic ${isMaybeCancelled ? 'text-orange-400' : 'text-gray-400 line-through'}`}>
+            <span key={`tag-${partIndex}`} className="text-gray-500 italic line-through mr-1">
               {content}
             </span>
           );
         }
-        
-        // Otherwise, split normal text into words
-        const words = part.split(/(\s+)/);
+
+        const strikeSplit = splitByPhrases(part, activeStrikePhrases, 'strike');
+
         return (
-          <span key={idx}>
-            {words.map((word, wordIdx) => {
-              // Strip punctuation for matching
-              const cleanWord = word.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, "").toLowerCase().trim();
-              
-              // Skip empty words
-              if (!cleanWord) return <span key={wordIdx}>{word}</span>;
-              
-              // Track occurrence for this word
-              wordOccurrenceTracker[cleanWord] = (wordOccurrenceTracker[cleanWord] || 0) + 1;
-              const currentOccurrence = wordOccurrenceTracker[cleanWord];
-              
-              // Check if this word matches any spelling error with the correct occurrence
-              const matchingError = spellingErrors.find(err => {
-                const errWritten = (err.written || '').toLowerCase().trim();
-                return errWritten === cleanWord && err.occurrence === currentOccurrence;
-              });
-              
-              if (matchingError) {
+          <span key={`part-${partIndex}`}>
+            {strikeSplit.map((piece, strikeIndex) => {
+              if (piece.kind === 'strike') {
                 return (
-                  <span key={wordIdx} className="text-red-600 font-bold underline decoration-red-600/50 underline-offset-2">
-                    {word}
+                  <span key={`strike-${partIndex}-${strikeIndex}`} className="text-gray-500 italic line-through">
+                    {piece.text}
                   </span>
                 );
               }
-              return <span key={wordIdx}>{word}</span>;
+
+              const grammarSplit = splitByPhrases(piece.text, redPhrases, 'grammar');
+
+              return (
+                <span key={`plain-${partIndex}-${strikeIndex}`}>
+                  {grammarSplit.map((grammarPiece, grammarIndex) => {
+                    if (grammarPiece.kind === 'grammar') {
+                      return (
+                        <span
+                          key={`grammar-${partIndex}-${strikeIndex}-${grammarIndex}`}
+                          className="text-red-600 font-bold underline decoration-red-600/50 underline-offset-2"
+                        >
+                          {grammarPiece.text}
+                        </span>
+                      );
+                    }
+
+                    return (
+                      <span key={`words-${partIndex}-${strikeIndex}-${grammarIndex}`}>
+                        {renderPlainWithRedWords(
+                          grammarPiece.text,
+                          `word-${partIndex}-${strikeIndex}-${grammarIndex}` 
+                        )}
+                      </span>
+                    );
+                  })}
+                </span>
+              );
             })}
           </span>
         );
@@ -1887,28 +2019,114 @@ ${result.report}
               new Paragraph({
                 children: (() => {
                   const transcription = result.summary.displayTranscription || result.summary.transcription || '';
-                  const errorWords = (result.summary.spellingErrors || []).map((err: SpellingError) => {
-                    return err.written.toLowerCase();
-                  }).filter(Boolean);
+                  const highlightMap = result.summary.highlightMap || { redWords: [], redPhrases: [], strikePhrases: [] };
+                  const redWords = highlightMap.redWords || [];
+                  const redPhrases = [...(highlightMap.redPhrases || [])].sort((a, b) => b.length - a.length);
+                  const strikePhrases = [...(highlightMap.strikePhrases || [])].sort((a, b) => b.length - a.length);
 
                   const runs: any[] = [];
-                  const parts = transcription.split(/(\[(?:cancelled|CANCELLED):.*?\])/gi);
+                  const parts = transcription.split(/(\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):.*?\])/gi);
+
+                  const pushStyledText = (value: string, kind: 'plain' | 'red' | 'strike') => {
+                    if (!value) return;
+                    runs.push(new TextRun({
+                      text: value,
+                      font: "Times New Roman",
+                      size: 22,
+                      italics: true,
+                      ...(kind === 'red' ? { bold: true, color: 'CC0000' } : {}),
+                      ...(kind === 'strike' ? { strike: true, color: '888888' } : {}),
+                    }));
+                  };
+
+                  const splitByPhrases = (
+                    input: string,
+                    phrases: string[],
+                    kind: 'red' | 'strike'
+                  ): Array<{ text: string; kind: 'plain' | 'red' | 'strike' }> => {
+                    let pieces: Array<{ text: string; kind: 'plain' | 'red' | 'strike' }> = [
+                      { text: input, kind: 'plain' }
+                    ];
+
+                    for (const phrase of phrases) {
+                      const pattern = new RegExp(`(\\b${escapeRegExp(phrase)}\\b)`, 'gi');
+                      const next: Array<{ text: string; kind: 'plain' | 'red' | 'strike' }> = [];
+
+                      for (const piece of pieces) {
+                        if (piece.kind !== 'plain') {
+                          next.push(piece);
+                          continue;
+                        }
+
+                        const chunks = piece.text.split(pattern);
+                        for (const chunk of chunks) {
+                          if (!chunk) continue;
+
+                          if (normalizeForUiMatch(chunk) === normalizeForUiMatch(phrase)) {
+                            next.push({ text: chunk, kind });
+                          } else {
+                            next.push({ text: chunk, kind: 'plain' });
+                          }
+                        }
+                      }
+
+                      pieces = next;
+                    }
+
+                    return pieces;
+                  };
+
+                  const renderPlainWords = (value: string) => {
+                    const words = value.split(/(\s+)/);
+
+                    words.forEach((word: string) => {
+                      const normalized = normalizeForUiMatch(word);
+
+                      if (!normalized) {
+                        pushStyledText(word, 'plain');
+                        return;
+                      }
+
+                      let isRed = redWords.some(item => normalizeForUiMatch(item) === normalized);
+
+                      if (!isRed && word.includes('-')) {
+                        isRed = redWords.some(item => {
+                          const target = normalizeForUiMatch(item);
+                          return target.length >= 2 && normalized.includes(target);
+                        });
+                      }
+
+                      pushStyledText(word, isRed ? 'red' : 'plain');
+                    });
+                  };
+
                   parts.forEach((part: string) => {
-                    if (/^\[(?:cancelled|CANCELLED):/i.test(part)) {
-                      const content = part.replace(/^\[(?:cancelled|CANCELLED):\s*/i, '').replace(/\]$/, '');
-                      runs.push(new TextRun({ text: content + ' ', font: "Times New Roman", size: 22, italics: true, strike: true, color: '888888' }));
-                    } else {
-                      const words = part.split(/(\s+)/);
-                      words.forEach((w: string) => {
-                        const clean = w.replace(/[.,!?;:'"()]/g, '').toLowerCase();
-                        if (errorWords.includes(clean) && clean.length > 0) {
-                          runs.push(new TextRun({ text: w, font: "Times New Roman", size: 22, italics: true, bold: true, color: 'CC0000' }));
+                    if (/^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):/i.test(part)) {
+                      const content = part.replace(/^\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):\s*/i, '').replace(/\]$/, '');
+                      pushStyledText(content + ' ', 'strike');
+                      return;
+                    }
+
+                    const strikeSplit = splitByPhrases(part, strikePhrases, 'strike');
+
+                    strikeSplit.forEach(piece => {
+                      if (piece.kind === 'strike') {
+                        pushStyledText(piece.text, 'strike');
+                        return;
+                      }
+
+                      const redSplit = splitByPhrases(piece.text, redPhrases, 'red');
+
+                      redSplit.forEach(redPiece => {
+                        if (redPiece.kind === 'red') {
+                          pushStyledText(redPiece.text, 'red');
                         } else {
-                          runs.push(new TextRun({ text: w, font: "Times New Roman", size: 22, italics: true }));
+                          renderPlainWords(redPiece.text);
                         }
                       });
-                    }
+                    });
                   });
+
                   return runs;
                 })(),
               }),
@@ -3581,7 +3799,9 @@ ${result.report}
                             OCR TRANSCRIPTION
                           </h3>
                           <div className="border border-gray-200 p-3.5 bg-[#FAFAFA] rounded-sm text-[9.5pt] leading-relaxed text-gray-800 italic block max-h-[180px] overflow-y-auto">
-                            "<RenderTranscription text={result.summary.displayTranscription || result.summary.transcription} spellingErrors={result.summary.spellingErrors} />"
+                            <span>"</span>
+                            <RenderTranscription text={result.summary.displayTranscription || result.summary.transcription} highlightMap={result.summary.highlightMap} />
+                            <span>"</span>
                           </div>
                         </div>
 
