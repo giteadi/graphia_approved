@@ -75,6 +75,25 @@ Do not delete overwritten words unless a clear strike-through exists.
    Do NOT classify struck words as uncertain.
    When in doubt, KEEP word in transcription + add to uncertainCancellations.
 
+PARTIAL WORD RULE:
+   - If a word appears cut off or truncated (e.g., "cheape" when "cheaper" is clearly written), 
+     transcribe the FULL visible word. Do not truncate words mid-letter.
+   - Common truncation errors to avoid: "cheape"→"cheaper", "Costlye"→"Costlyer", 
+     "bepe"→"before", "incresse"→"increase". Always read till the last visible stroke.
+
+STRIKE-THROUGH CONFIDENCE RULE:
+   - A horizontal line clearly passing THROUGH a word = CONFIRMED cancellation (confidence >= 80)
+   - Overwriting/rewriting on top = uncertainCancellation
+   - Messy strokes around = uncertainCancellation  
+   - When student writes a word, then draws a line through it and writes replacement = 
+     CANCELLED the original, keep replacement
+   - Single underline = NOT a cancellation (could be emphasis)
+
+MULTI-WORD STRIKE RULE:
+   - Check EVERY word independently for strike-through
+   - Short words (be, to, se, fee, the, a) are commonly struck and commonly missed
+   - If a 2-3 letter word has a horizontal line through it = CONFIRMED cancellation
+
 2. HYPHENATED WORDS:
    - Treat hyphenated compounds as ONE word: "get-together" = 1 word
    - Even if written as two words with a space (e.g., "get together"), count as written — do NOT merge or split differently than what is on the page.
@@ -162,6 +181,13 @@ IMPORTANT:
 - Be thorough — this directly affects scoring
 - If handwriting is unclear, make your best judgment based on visible punctuation and capitalization
 - BE STRICT: If there are multiple clauses without punctuation, count each as a potential run-on
+
+FINAL VALIDATION CHECKLIST (run before returning JSON):
+□ Did I check EVERY word for strike-through independently?
+□ Did I read words till the last visible stroke (no truncation)?
+□ Are short struck words (be, to, se, fee, a) in confirmedCancellations?
+□ Is confidence >= 80 for clearly struck words?
+□ Are all overwritten/rewritten words in uncertainCancellations only?
 
 RETURN ONLY THIS JSON (no markdown fences, no extra text):
 {
@@ -1402,6 +1428,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       dsm5Traits:                 cleanObs(extracted.dsm5Traits),
       features:                   extracted.features || {},
       ocrConfidence:              extracted.ocrConfidence || 80,
+     
       dysgraphiaIndicators:       cleanObs(extracted.dsm5Traits),
     };
 
@@ -1492,6 +1519,9 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         confirmedCancellations: extracted.confirmedCancellations || [],
         uncertainCancellations: extracted.uncertainCancellations || [],
         highlightMap: highlightMap,
+        runOnSentences: extracted.runOnSentences ?? 0,
+        missingCapitals: extracted.missingCapitals ?? 0,
+        missingPunctuation: extracted.missingPunctuation ?? 0,
       }
     };
 

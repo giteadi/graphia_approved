@@ -297,6 +297,9 @@ export function calculateProbability(
   const { spelling, writingSpeed, letterFormation, alignment } = scores;
   const norm = getWpmNorm(grade);
 
+  // HIGH: Grammar < 20 (severe grammar impairment)
+  if (scores.grammar < 20) return 'HIGH';
+
   // Count visual/mechanics impaired domains (score <= 60)
   const visualImpairedCount =
     (scores.letterFormation <= 60 ? 1 : 0) +

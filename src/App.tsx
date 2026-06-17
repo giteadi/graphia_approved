@@ -521,6 +521,7 @@ const getGradeSpeedNorm = (gradeStr: string): string => {
   if (num === 3) return "10-15";
   if (num === 4) return "12-18";
   if (num === 5) return "15-20";
+  if (num >= 13) return "30-40"; // College years
   return "20-30"; // 6-12
 };
 
@@ -570,7 +571,13 @@ const getActionableStrategies = (reportText: string): string[] => {
 
   const cleanStrategies = strategies
     .map(s => s.trim())
-    .filter(s => s.length > 10 && !s.startsWith('#') && !s.toLowerCase().includes('disclaimer') && !s.toLowerCase().includes('copyright'));
+    .filter(s => s.length > 10)
+    .filter(s => !s.startsWith('#'))
+    .filter(s => !s.toLowerCase().includes('disclaimer'))
+    .filter(s => !s.toLowerCase().includes('copyright'))
+    .filter(s => !s.toLowerCase().includes('probability estimate:'))
+    .filter(s => !s.toLowerCase().includes('clinical interpretation'))
+    .filter(s => !s.match(/^\*\*/));
 
   if (cleanStrategies.length >= 3) {
     return cleanStrategies;
