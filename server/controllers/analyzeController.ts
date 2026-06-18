@@ -115,13 +115,17 @@ function qualityGate(evidence: any): any {
 // STEP 1 — GPT-4o: Evidence extraction only. No scores. No diagnosis.
 // ══════════════════════════════════════════════════════════════════════════════
 function buildExtractionPrompt(grade: string): string {
-  return `You are a forensic OCR specialist analyzing a handwritten document.
+  return `You are a forensic OCR specialist analyzing a handwritten document for DYSGRAPHIA SCREENING.
 
-YOUR PRIMARY JOB: Accurate verbatim transcription. Then extract clinical evidence.
+STRICT CLINICAL RULES:
+1. TRANSCRIPTION MUST BE VERBATIM - This is clinical data, not a document cleanup task.
+2. If the text is messy, cross-outs, or has spelling errors, transcribe the MISTAKES exactly as they appear.
+3. DO NOT FIX SPELLING, DO NOT FIX GRAMMAR, DO NOT REWRITE SENTENCES.
+4. If a word is crossed out (e.g. strike through), tag it as [CANCELLED: word].
+5. If handwriting is illegible, do NOT guess. Mark as [UNCERTAIN: ...].
 
-The transcription is the scoring source of truth. Do not rewrite the student's
-language into correct English. Preserve the visible writing exactly, even when it
-looks like a normal word was intended.
+YOUR GOAL IS NOT CLEAN TEXT; YOUR GOAL IS CLINICAL DATA FOR DYSGRAPHIA SCREENING.
+Any autocorrection will fail the clinical validity of the report.
 
 ═══ STRICT OCR RULES (follow exactly) ═══
 
@@ -1321,17 +1325,20 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // 3. Synchronize the confirmedCancellations array with the fixed tags
     if (extracted.confirmedCancellations) {
       const updatedCancellations = [];
+      
       for (const tagText of inlineConfirmedTags) {
         // Find matching original to keep confidence/occurrence data
         const original = extracted.confirmedCancellations.find((c: any) =>
           c.text.toLowerCase().includes(tagText.toLowerCase())
         );
+        
         updatedCancellations.push({
           text: tagText,
           confidence: original?.confidence ?? 90,
           occurrence: original?.occurrence ?? 1
         });
       }
+      
       extracted.confirmedCancellations = updatedCancellations;
     }
 
@@ -1440,12 +1447,11 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
 
     extracted.grammarMistakes = grammarMistakes;
 
-    // SIMPLIFIED: As-is OCR approach - use plain transcription with confirmed cancellations only
-    // Don't trust model's [CANCELLED: ...] tags blindly
+    // As-is OCR approach with uncertain cancellations for scribbles/overwrites
     const displayTranscription = injectCancellationTags(
       plainTranscription,
       extracted.confirmedCancellations || [],
-      [] // uncertain cancellations excluded from inline injection
+      extracted.uncertainCancellations || [] // FIX: Scribbles and overwrites now show in UI
     );
 
     // Remove headers for counting
@@ -1492,33 +1498,36 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         occurrence: typeof e.occurrence === 'number' && e.occurrence > 0 ? e.occurrence : 1
       }));
 
+    // Promote uncertain words (like 'en', 'ad', 'ar') to spelling errors for highlighting
+    const promotedWords = promoteUncertainWordsToSpellingErrors(
+      extracted.uncertainWords || [],
+      spellingErrors
+    );
+    spellingErrors = [...spellingErrors, ...promotedWords];
+
     // Build final spelling errors and highlight map after all post-processing
     const finalSpellingErrors = dedupeSpellingErrors(spellingErrors);
-    const visibleSpellingErrors = filterVisibleSpellingErrors(
-      extracted.displayTranscription || extracted.transcription || '',
-      finalSpellingErrors
-    );
-
+    
+    // FIX: Removed filterVisibleSpellingErrors so autocorrected words don't get deleted from the error list.
+    
     const highlightMap = buildHighlightMap({
-      spellingErrors: visibleSpellingErrors,
-      grammarMistakes: grammarMistakes, // Keep for score calculation
-      uncertainWords: [], // strict mode: no uncertain words in highlight map
+      spellingErrors: finalSpellingErrors,
+      grammarMistakes: extracted.grammarMistakes || [], // FIX: Restored grammar highlights (orange color)
+      uncertainWords: extracted.uncertainWords || [],
       confirmedCancellations: extracted.confirmedCancellations || [],
-      uncertainCancellations: [],
-      treatUncertainCancellationsAsStrike: false,
+      uncertainCancellations: extracted.uncertainCancellations || [],
+      treatUncertainCancellationsAsStrike: true,
     });
 
-    extracted.spellingErrors = visibleSpellingErrors;
+    extracted.spellingErrors = finalSpellingErrors;
     extracted.highlightMap = highlightMap;
 
-    // 5) Word count must use countingTranscription
+    // 5) Word count must use countingTranscription - includes cancelled words
     const wordCount = countWordsDeterministic(countingTranscription);
 
     console.log('[INTERNAL DEBUG] Word Count Calculation:');
     console.log(`Transcription: ${countingTranscription.slice(0, 100)}...`);
-    console.log(`Cancelled words included in total count`);
-    console.log(`Visible word count: ${wordCount}`);
-    console.log(`Final word count (includes cancelled): ${wordCount}`);
+    console.log(`Word count (includes cancelled): ${wordCount}`);
     console.log(`Transcription has cancellation tags: ${extracted.transcription.includes('[CANCELLED:')}`);
     
     // Enhanced debug logging for future dispute resolution
@@ -1544,7 +1553,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       confirmedCancellations:     extracted.confirmedCancellations || [],
       uncertainCancellations:    extracted.uncertainCancellations || [],
       unplacedCancellations:      unplacedCancellations || [],
-      spellingErrors: visibleSpellingErrors.map(err => ({
+      spellingErrors: finalSpellingErrors.map(err => ({
         written: err.written,
         intended: err.intended,
         gradeLevel: err.gradeLevel || 'unknown'
@@ -1664,7 +1673,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         ...deterministicSummary,
         transcription: extracted.displayTranscription || extracted.transcription,
         displayTranscription: extracted.displayTranscription || extracted.transcription,
-        spellingErrors: visibleSpellingErrors,
+        spellingErrors: finalSpellingErrors,
         grammarMistakes: grammarMistakes,
         uncertainWords: extracted.uncertainWords || [],
         confirmedCancellations: extracted.confirmedCancellations || [],
@@ -1691,5 +1700,73 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
   } catch (error: any) {
     console.error('[analyzeController] Error:', error?.message);
     res.status(error?.status || 500).json({ error: error?.message || 'Internal server error' });
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RECALCULATE HANDLER - For edited OCR transcription
+// ══════════════════════════════════════════════════════════════════════════════
+export async function recalculateHandler(req: AuthRequest, res: Response): Promise<void> {
+  console.log('\n═══════════════════════════════════════════════');
+  console.log('[analyzeController] POST /api/recalculate — user:', req.userEmail);
+
+  const { 
+    evidenceData, 
+    editedTranscription,
+    grade,
+    wpm,
+    timeTaken,
+    rtiImprovement
+  } = req.body;
+
+  if (!evidenceData || !editedTranscription) {
+    res.status(400).json({ error: 'evidenceData and editedTranscription are required' });
+    return;
+  }
+
+  try {
+    console.log('[Recalculate] Processing edited transcription...');
+    
+    // Update evidence with new transcription
+    const updatedEvidence = {
+      ...evidenceData,
+      transcription: editedTranscription
+    };
+
+    // Re-calculate scores with updated transcription
+    const norm = getWpmNorm(grade || '6');
+    const scores = calculateScoresWithNorm(updatedEvidence, grade || '6');
+    const probability = calculateProbability(scores, rtiImprovement || false, wpm || 0, grade || '6');
+    const actionableStrategies = getActionableStrategies(scores, rtiImprovement || false);
+
+    // Recalculate word count
+    const wordCount = countWordsDeterministic(editedTranscription);
+
+    const spellingLabel = scores.spelling < 50 ? 'Significantly Below Grade Level'
+      : scores.spelling < 70 ? 'Below Grade Level'
+      : scores.spelling < 85 ? 'At Grade Level' : 'Above Grade Level';
+
+    const fluencyLabel = wpm < norm.min ? 'Slow/Labored'
+      : wpm <= norm.max ? 'Developing' : 'Fluent';
+
+    console.log('[Recalculate] Updated scores:', scores);
+    console.log('[Recalculate] Updated probability:', probability);
+    console.log('[Recalculate] Updated word count:', wordCount);
+
+    res.json({
+      success: true,
+      scores: {
+        ...scores,
+        probability,
+        spellingLabel,
+        fluencyLabel
+      },
+      wordCount,
+      norm
+    });
+
+  } catch (error: any) {
+    console.error('[Recalculate] Error:', error?.message);
+    res.status(500).json({ error: error?.message || 'Internal server error' });
   }
 }

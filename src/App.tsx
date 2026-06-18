@@ -389,7 +389,7 @@ const RenderTranscription = ({
     const tokens: Token[] = [];
     
     // Optional: Set to true to enable maybe-cancelled rendering
-    const SHOW_MAYBE = false;
+    const SHOW_MAYBE = true; // FIX: Enable uncertain cancellation display for scribbles/overwrites
     
     // First, handle inline [CANCELLED: ...] and [MAYBE-CANCELLED: ...] tags
     const parts = input.split(/(\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):[\s\S]*?\])/gi);
@@ -809,6 +809,11 @@ export default function App({ user, onLogout, reportTabMode = false }: AppProps)
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  
+  // Editable OCR transcription state
+  const [isEditingTranscription, setIsEditingTranscription] = useState(false);
+  const [editedTranscription, setEditedTranscription] = useState('');
+  const [isRecalculating, setIsRecalculating] = useState(false);
   const [context, setContext] = useState('');
   const [selectedObservations, setSelectedObservations] = useState<string[]>([]);
   const [selectedDataSources, setSelectedDataSources] = useState<string[]>([]);
@@ -1758,6 +1763,81 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
       }
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const handleRecalculate = async () => {
+    if (!result || !editedTranscription) return;
+    
+    setIsRecalculating(true);
+    setError(null);
+    
+    try {
+      // Get the user info from localStorage
+      const userInfo = JSON.parse(localStorage.getItem('graphia_user') || '{}');
+      
+      const response = await fetch('/api/recalculate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userInfo.email || 'anonymous',
+          'x-user-email': userInfo.email || 'anonymous'
+        },
+        body: JSON.stringify({
+          evidenceData: {
+            transcription: result.summary.transcription || '',
+            displayTranscription: result.summary.displayTranscription || result.summary.transcription || '',
+            wordCount: result.summary.wordCount || 0,
+            wpm: result.summary.wpm || 0,
+            spellingErrors: Array.isArray(result.summary.spellingErrors) ? result.summary.spellingErrors : [],
+            grammarMistakes: Array.isArray(result.summary.grammarMistakes) ? result.summary.grammarMistakes : [],
+            runOnSentences: (result.summary as any).runOnSentences || 0,
+            missingCapitals: (result.summary as any).missingCapitals || 0,
+            missingPunctuation: (result.summary as any).missingPunctuation || 0,
+            pastTenseErrors: (result.summary as any).pastTenseErrors || 0,
+            letterFormationObservations: Array.isArray((result.summary as any).letterFormationObservations) ? (result.summary as any).letterFormationObservations : [],
+            alignmentObservations: Array.isArray((result.summary as any).alignmentObservations) ? (result.summary as any).alignmentObservations : [],
+            spacingObservations: Array.isArray((result.summary as any).spacingObservations) ? (result.summary as any).spacingObservations : [],
+            lineQualityObservations: Array.isArray((result.summary as any).lineQualityObservations) ? (result.summary as any).lineQualityObservations : [],
+            confirmedCancellations: Array.isArray((result.summary as any).confirmedCancellations) ? (result.summary as any).confirmedCancellations : [],
+            uncertainCancellations: Array.isArray((result.summary as any).uncertainCancellations) ? (result.summary as any).uncertainCancellations : [],
+            uncertainWords: Array.isArray((result.summary as any).uncertainWords) ? (result.summary as any).uncertainWords : [],
+            dsm5Traits: Array.isArray((result.summary as any).dsm5Traits) ? (result.summary as any).dsm5Traits : []
+          },
+          editedTranscription: editedTranscription,
+          grade: grade,
+          wpm: result.summary.wpm || 0,
+          timeTaken: timeTaken ? parseFloat(timeTaken) : undefined,
+          rtiImprovement: interventionTried
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Recalculation failed');
+      }
+
+      const data = await response.json();
+      
+      // Update the result with recalculated scores
+      setResult({
+        ...result,
+        summary: {
+          ...result.summary,
+          transcription: editedTranscription,
+          displayTranscription: editedTranscription,
+          scores: data.scores,
+          wordCount: data.wordCount
+        }
+      });
+
+      setIsEditingTranscription(false);
+      console.log('[Recalculate] Scores updated successfully');
+      
+    } catch (err: any) {
+      console.error('[Recalculate] Error:', err);
+      setError('Failed to recalculate scores. Please try again.');
+    } finally {
+      setIsRecalculating(false);
     }
   };
 
@@ -3983,26 +4063,66 @@ ${result.report}
                         </div>
 
                         <div>
-                          <p className="text-[7.5pt] text-gray-400 italic font-mono mb-1">Note: Words in bold = spelling errors. Strikethrough = student cancellations.</p>
+                          <div className="flex justify-between items-center mb-1">
+                            <p className="text-[7.5pt] text-gray-400 italic font-mono">Note: Words in bold = spelling errors. Strikethrough = student cancellations.</p>
+                            <button
+                              onClick={() => {
+                                setIsEditingTranscription(!isEditingTranscription);
+                                if (!isEditingTranscription) {
+                                  setEditedTranscription(result.summary.displayTranscription || result.summary.transcription || '');
+                                }
+                              }}
+                              className="text-[7.5pt] text-[#0C2340] font-bold hover:underline flex items-center gap-1"
+                            >
+                              {isEditingTranscription ? 'Cancel' : 'Edit OCR'}
+                            </button>
+                          </div>
                           <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-2">
                             OCR TRANSCRIPTION
                           </h3>
-                          <div className="border border-gray-200 p-3.5 bg-[#FAFAFA] rounded-sm text-[9.5pt] leading-relaxed text-gray-800 italic block max-h-[180px] overflow-y-auto">
-                            <span>"</span>
-                            {(() => {
-                              console.log('[App.tsx] RenderTranscription props:');
-                              console.log('  - text length:', (result.summary.displayTranscription || result.summary.transcription)?.length || 0);
-                              console.log('  - text has [CANCELLED]?:', (result.summary.displayTranscription || result.summary.transcription)?.includes('[CANCELLED'));
-                              console.log('  - text preview:', (result.summary.displayTranscription || result.summary.transcription)?.slice(0, 150));
-                              console.log('  - highlightMap:', result.summary.highlightMap);
-                              console.log('  - highlightMap redWords:', result.summary.highlightMap?.redWords?.length || 0);
-                              console.log('  - highlightMap redPhrases:', result.summary.highlightMap?.redPhrases?.length || 0);
-                              console.log('  - highlightMap strikePhrases:', result.summary.highlightMap?.strikePhrases?.length || 0);
-                              return null;
-                            })()}
-                            <RenderTranscription text={result.summary.displayTranscription || result.summary.transcription} highlightMap={result.summary.highlightMap} />
-                            <span>"</span>
-                          </div>
+                          
+                          {isEditingTranscription ? (
+                            <div className="border border-gray-200 p-3.5 bg-white rounded-sm">
+                              <textarea
+                                value={editedTranscription}
+                                onChange={(e) => setEditedTranscription(e.target.value)}
+                                className="w-full h-[150px] p-2 text-[9.5pt] leading-relaxed text-gray-800 border border-gray-300 rounded-sm focus:outline-none focus:border-[#0C2340] resize-none font-mono"
+                                placeholder="Edit the OCR transcription here. Use [CANCELLED: word] for crossed-out words."
+                              />
+                              <div className="mt-2 flex gap-2">
+                                <button
+                                  onClick={() => handleRecalculate()}
+                                  disabled={isRecalculating}
+                                  className="text-[8pt] bg-[#0C2340] text-white px-3 py-1 rounded-sm hover:bg-[#0a1d2f] disabled:opacity-50 flex items-center gap-1"
+                                >
+                                  {isRecalculating ? 'Recalculating...' : 'Recalculate Scores'}
+                                </button>
+                                <button
+                                  onClick={() => setIsEditingTranscription(false)}
+                                  className="text-[8pt] bg-gray-200 text-gray-700 px-3 py-1 rounded-sm hover:bg-gray-300"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="border border-gray-200 p-3.5 bg-[#FAFAFA] rounded-sm text-[9.5pt] leading-relaxed text-gray-800 italic block max-h-[180px] overflow-y-auto">
+                              <span>"</span>
+                              {(() => {
+                                console.log('[App.tsx] RenderTranscription props:');
+                                console.log('  - text length:', (result.summary.displayTranscription || result.summary.transcription)?.length || 0);
+                                console.log('  - text has [CANCELLED]?:', (result.summary.displayTranscription || result.summary.transcription)?.includes('[CANCELLED'));
+                                console.log('  - text preview:', (result.summary.displayTranscription || result.summary.transcription)?.slice(0, 150));
+                                console.log('  - highlightMap:', result.summary.highlightMap);
+                                console.log('  - highlightMap redWords:', result.summary.highlightMap?.redWords?.length || 0);
+                                console.log('  - highlightMap redPhrases:', result.summary.highlightMap?.redPhrases?.length || 0);
+                                console.log('  - highlightMap strikePhrases:', result.summary.highlightMap?.strikePhrases?.length || 0);
+                                return null;
+                              })()}
+                              <RenderTranscription text={result.summary.displayTranscription || result.summary.transcription} highlightMap={result.summary.highlightMap} />
+                              <span>"</span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Domain Scores Cards */}

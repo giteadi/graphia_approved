@@ -66,24 +66,25 @@ export interface Scores {
 
 // ─── Deterministic word counter (handles inline [CANCELLED: ...] tags) ─────
 export function countWordsDeterministic(transcription: string): number {
-  let t = transcription
-    // include cancelled words in total written words
+  // 1. Header aur non-body text ko remove karein
+  const bodyText = transcription
+    .replace(/Date:\s*\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
+    .replace(/\d{1,2}:\d{2}\s*to\s*\d{1,2}(?:am|pm)?/gi, '')
+    // Include cancelled words in count, but remove tags
     .replace(/\[CANCELLED:\s*([^\]]+)\]/gi, ' $1 ')
+    .replace(/\[MAYBE-CANCELLED:\s*[^\]]+\]/gi, '') // Remove uncertain cancellations entirely
     .replace(/\n/g, ' ')
     .trim();
 
-  // Counting-only normalization (do NOT use this for display text)
-  t = t
-    // hyphen as separator for counting ("get-together" => "get together")
+  // 2. Sirf readable words count karein (cancelled words included)
+  return bodyText
     .replace(/-/g, ' ')
-    // OCR splits/merges around together
     .replace(/\bget\s+to\s+gether\b/gi, 'get together')
     .replace(/\bgettogther\b/gi, 'get together')
-    .replace(/\bget\s*togther\b/gi, 'get together')
-    .replace(/\btogther\b/gi, 'together')
-    .replace(/\bgether\b/gi, 'together');
-
-  return t.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean).length;
+    .replace(/\bgether\b/gi, 'together')
+    .split(/\s+/)
+    .filter(word => word.length > 0) // Empty strings filter out
+    .length;
 }
 
 // ─── WPM grade norms ──────────────────────────────────────────────────────────
@@ -167,9 +168,10 @@ function scoreGrammar(
   // CLINICAL METHOD: Calculate Errors per 100 words (Error Density)
   const errorRatePer100Words = (errorWeight / totalWords) * 100;
 
+  // FIX: Increased the multiplier from 4 to 6 for better clinical sensitivity.
+  // Ab 2 badi galtiyon par score lagbhag 84 aayega, jo zyada realistic hai.
   // Clinically, 10-12 errors per 100 words indicates a severe impairment.
-  // We use a multiplier of 4 so that 10 errors deduct 40 points.
-  const clinicalDeduction = errorRatePer100Words * 4;
+  const clinicalDeduction = errorRatePer100Words * 6;
 
   return Math.max(0, Math.min(100, Math.round(100 - clinicalDeduction)));
 }
@@ -190,24 +192,27 @@ function scorePastTense(pastTenseErrors: number, totalWords: number): number {
  * LETTER FORMATION:
  * 0 issues = 90 | 1 = 80 | 2 = 70 | 3+ = 65
  */
+/**
+ * LETTER FORMATION
+ */
 function scoreLetterFormation(observations: string[]): number {
-  const n = observations.length;
-  if (n === 0) return 90;
-  if (n === 1) return 80;
-  if (n === 2) return 70;
-  return 65;
+  if (observations.length === 0) return 90;
+  const text = observations.join(' ').toLowerCase();
+  if (text.includes('severe') || text.includes('illegible') || text.includes('poor')) return 40;
+  if (text.includes('inconsistent') || text.includes('irregular') || text.includes('cross-out') || text.includes('overwriting') || observations.length >= 3) return 55;
+  if (text.includes('mild') || observations.length === 2) return 70;
+  return 80;
 }
 
 /**
- * ALIGNMENT:
- * stable/none = 90 | minor = 75 | moderate = 60 | severe = 40
+ * ALIGNMENT
  */
 function scoreAlignment(observations: string[]): number {
   if (observations.length === 0) return 90;
   const text = observations.join(' ').toLowerCase();
   if (text.includes('severe') || text.includes('erratic')) return 40;
-  if (text.includes('moderate') || observations.length >= 3)  return 60;
-  if (text.includes('minor') || text.includes('slight') || observations.length >= 1) return 75;
+  if (text.includes('moderate') || text.includes('drift') || text.includes('inconsistent') || observations.length >= 2)  return 55;
+  if (text.includes('minor') || text.includes('slight') || observations.length === 1) return 75;
   return 90;
 }
 
@@ -223,10 +228,11 @@ function scoreSpatialOrganisation(observations: string[]): number {
 
 /** LINE QUALITY */
 function scoreLineQuality(observations: string[]): number {
-  if (observations.length === 0) return 88;
-  if (observations.length === 1) return 75;
-  if (observations.length <= 3)  return 60;
-  return 40;
+  if (observations.length === 0) return 90;
+  const text = observations.join(' ').toLowerCase();
+  if (text.includes('severe') || text.includes('heavy') || text.includes('poor')) return 40;
+  if (text.includes('tremor') || text.includes('uneven') || text.includes('variable') || observations.length >= 2) return 55;
+  return 75;
 }
 
 /** WRITING SPEED relative to grade norm */
@@ -382,6 +388,7 @@ export function calculateProbability(
     scores.pastTenseUsage < 60,
     visualImpairedCount >= 1,
     scores.writingSpeed < 60,
+    scores.mechanics < 65 // FIX: Mechanics score kam hone par probability badhaein
   ].filter(Boolean).length;
 
   if (impaired >= 2) return 'HIGH';
