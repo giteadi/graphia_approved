@@ -1310,8 +1310,31 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     }
 
     // Create 3 transcription versions for proper pipeline
-    const modelTranscription = extracted.transcription || '';
+    let modelTranscription = extracted.transcription || '';
+
+    // 1. AI guardrail: Fix over-cancelled phrases FIRST (fixes the string)
+    modelTranscription = normalizeOverCancelledPhrases(modelTranscription);
+
+    // 2. NOW extract the true tags from the FIXED transcription
     const inlineConfirmedTags = extractInlineCancellationTags(modelTranscription);
+
+    // 3. Synchronize the confirmedCancellations array with the fixed tags
+    if (extracted.confirmedCancellations) {
+      const updatedCancellations = [];
+      for (const tagText of inlineConfirmedTags) {
+        // Find matching original to keep confidence/occurrence data
+        const original = extracted.confirmedCancellations.find((c: any) =>
+          c.text.toLowerCase().includes(tagText.toLowerCase())
+        );
+        updatedCancellations.push({
+          text: tagText,
+          confidence: original?.confidence ?? 90,
+          occurrence: original?.occurrence ?? 1
+        });
+      }
+      extracted.confirmedCancellations = updatedCancellations;
+    }
+
     const plainTranscription = stripCancellationTags(modelTranscription);
 
     console.log('[Step 1] Extraction completed. Initial data:');
@@ -1327,7 +1350,8 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     }
 
     // SIMPLIFIED: Use extraction as-is, minimal processing
-    // Removed: validateExtraction, normalizeOverCancelledPhrases, rebucketing, sanitizeConfirmedCancellations, demote logic, sanitizeEvidence, qualityGate
+    // Removed: validateExtraction, rebucketing, sanitizeConfirmedCancellations, demote logic, sanitizeEvidence, qualityGate
+    // KEPT: normalizeOverCancelledPhrases (AI grouping guardrail - fixes "my cousin cousin" -> "my [CANCELLED: cousin] cousin")
 
     // Capture raw transcription immediately after Step-1 parse (before any modifications)
     const rawTranscription = extracted.transcription || '';
