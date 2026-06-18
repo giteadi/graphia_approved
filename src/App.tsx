@@ -494,7 +494,8 @@ const RenderTranscription = ({
         if (singleWordHit.kind === 'cancelled') upgradeToken(i, 'cancelled');
         if (singleWordHit.kind === 'maybe-cancelled') upgradeToken(i, 'maybeCancelled');
         if (singleWordHit.kind === 'spelling') upgradeToken(i, 'spelling');
-        if (singleWordHit.kind === 'grammar') upgradeToken(i, 'grammar');
+        // Skip grammar highlights in UI (score calculation still works in backend)
+        // if (singleWordHit.kind === 'grammar') upgradeToken(i, 'grammar');
         continue;
       }
 
@@ -531,7 +532,8 @@ const RenderTranscription = ({
               const tokenIndex = wordTokens[wi + j].idx;
               if (phraseHit.kind === 'cancelled') upgradeToken(tokenIndex, 'cancelled');
               if (phraseHit.kind === 'maybe-cancelled') upgradeToken(tokenIndex, 'maybeCancelled');
-              if (phraseHit.kind === 'grammar') upgradeToken(tokenIndex, 'grammar');
+              // Skip grammar highlights in UI (score calculation still works in backend)
+              // if (phraseHit.kind === 'grammar') upgradeToken(tokenIndex, 'grammar');
               if (phraseHit.kind === 'spelling') upgradeToken(tokenIndex, 'spelling');
             }
             break; // Phrase matched, move to next phraseHit

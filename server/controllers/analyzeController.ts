@@ -1501,7 +1501,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
 
     const highlightMap = buildHighlightMap({
       spellingErrors: visibleSpellingErrors,
-      grammarMistakes: grammarMistakes,
+      grammarMistakes: grammarMistakes, // Keep for score calculation
       uncertainWords: [], // strict mode: no uncertain words in highlight map
       confirmedCancellations: extracted.confirmedCancellations || [],
       uncertainCancellations: [],

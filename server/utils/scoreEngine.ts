@@ -146,7 +146,7 @@ function scoreSentenceBoundaries(
   return Math.max(0, Math.min(100, Math.round(100 - adjustedDeduction)));
 }
 
-/** GRAMMAR: Ratio-based deduction normalized to total words */
+/** GRAMMAR: Clinical Error Density Method (Errors per 100 words) */
 function scoreGrammar(
   mistakes: Array<{ type: string; example: string }>,
   totalWords: number
@@ -164,10 +164,14 @@ function scoreGrammar(
     }
   }
 
-  // Calculate error density per word, scaled for scoring
-  // A scaling multiplier (e.g., 10) adjusts how harsh the penalty is
-  const errorPercentage = (errorWeight / totalWords) * 100 * 10; 
-  return Math.max(0, Math.min(100, Math.round(100 - errorPercentage)));
+  // CLINICAL METHOD: Calculate Errors per 100 words (Error Density)
+  const errorRatePer100Words = (errorWeight / totalWords) * 100;
+
+  // Clinically, 10-12 errors per 100 words indicates a severe impairment.
+  // We use a multiplier of 4 so that 10 errors deduct 40 points.
+  const clinicalDeduction = errorRatePer100Words * 4;
+
+  return Math.max(0, Math.min(100, Math.round(100 - clinicalDeduction)));
 }
 
 /** PAST TENSE: Error ratio based on total words (or ideally expected verbs) */
