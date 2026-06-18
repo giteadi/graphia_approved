@@ -64,23 +64,23 @@ export interface Scores {
   mechanics: number;
 }
 
-// ─── Deterministic word counter (handles inline [CANCELLED: ...] tags) ─────
+// ─── Deterministic word counter (handles headers and inline tags) ───────────
 export function countWordsDeterministic(transcription: string): number {
-  // 1. Header aur non-body text ko remove karein
+  // 1. Header aur non-body text ko remove karein, sath hi cancellations ko exclude karein
   const bodyText = transcription
     .replace(/Date:\s*\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
     .replace(/\d{1,2}:\d{2}\s*to\s*\d{1,2}(?:am|pm)?/gi, '')
-    // Include cancelled words in count, but remove tags
-    .replace(/\[CANCELLED:\s*([^\]]+)\]/gi, ' $1 ')
-    .replace(/\[MAYBE-CANCELLED:\s*[^\]]+\]/gi, '') // Remove uncertain cancellations entirely
+    .replace(/\[(?:CANCELLED|MAYBE-CANCELLED):\s*[^\]]+\]/gi, '') // Cancelled words count mein nahi aayenge
     .replace(/\n/g, ' ')
     .trim();
 
-  // 2. Sirf readable words count karein (cancelled words included)
+  // 2. Sirf readable (visible) words count karein
   return bodyText
     .replace(/-/g, ' ')
     .replace(/\bget\s+to\s+gether\b/gi, 'get together')
     .replace(/\bgettogther\b/gi, 'get together')
+    .replace(/\bget\s*togther\b/gi, 'get together')
+    .replace(/\btogther\b/gi, 'together')
     .replace(/\bgether\b/gi, 'together')
     .split(/\s+/)
     .filter(word => word.length > 0) // Empty strings filter out
@@ -100,17 +100,19 @@ export function getWpmNorm(grade: string): { min: number; max: number } {
   return { min: 20, max: 30 };
 }
 
-// ─── Individual scorers (Updated to Ratio-Based Formulas) ─────────────────────
+// ─── Individual scorers (Strict Clinical Ratio-Based Formulas) ────────────────
 
-/** SPELLING: (correctly spelled words / total words) × 100, clamped 0-100 */
+/** SPELLING: Clinical Error Density Penalty */
 function scoreSpelling(spellingErrors: number, totalWords: number): number {
   if (totalWords <= 0) return 0;
-  const correctlySpelled = totalWords - spellingErrors;
-  const percentage = Math.round((correctlySpelled / totalWords) * 100);
-  return Math.max(0, Math.min(100, percentage));
+  if (spellingErrors === 0) return 100;
+  
+  const errorRate = (spellingErrors / totalWords) * 100;
+  const clinicalDeduction = errorRate * 4.5; // Strict multiplier
+  return Math.max(0, Math.min(100, Math.round(100 - clinicalDeduction)));
 }
 
-/** SENTENCE BOUNDARIES: Error ratio adjusted by grade stringency */
+/** SENTENCE BOUNDARIES: Increased strictness based on Grade */
 function scoreSentenceBoundaries(
   runOnSentences: number,
   missingCapitals: number,
@@ -120,26 +122,19 @@ function scoreSentenceBoundaries(
 ): number {
   if (totalWords <= 0) return 0;
 
-  // Grade-based penalty multiplier
   const gradeNum = parseInt(grade.toLowerCase().replace(/[^0-9]/g, '')) || 6;
   let penaltyMultiplier = 1.0;
 
-  if (gradeNum <= 2) {
-    penaltyMultiplier = 0.5; // Very lenient for early elementary
-  } else if (gradeNum <= 5) {
-    penaltyMultiplier = 0.7; // Lenient for elementary
+  if (gradeNum <= 5) {
+    penaltyMultiplier = 0.8;
   } else if (gradeNum <= 8) {
-    penaltyMultiplier = 0.85; // Lenient for middle school
-  } else if (gradeNum <= 11) {
-    penaltyMultiplier = 1.0; // Standard for high school
+    penaltyMultiplier = 1.2;
   } else {
-    penaltyMultiplier = 1.1; // Slightly strict for upper high school/college
+    penaltyMultiplier = 1.5; // High school/College ke liye strict penalty
   }
 
-  // Assuming an average sentence is roughly 10 words. 
-  // We calculate errors against estimated expected sentences.
   const estimatedSentences = Math.max(1, totalWords / 10);
-  const totalBoundaryErrors = (runOnSentences * 1.5) + missingCapitals + missingPunctuation;
+  const totalBoundaryErrors = (runOnSentences * 2.0) + missingCapitals + missingPunctuation;
   
   const errorRate = (totalBoundaryErrors / estimatedSentences) * 100;
   const adjustedDeduction = errorRate * penaltyMultiplier;
@@ -147,7 +142,7 @@ function scoreSentenceBoundaries(
   return Math.max(0, Math.min(100, Math.round(100 - adjustedDeduction)));
 }
 
-/** GRAMMAR: Clinical Error Density Method (Errors per 100 words) */
+/** GRAMMAR: Ultra Strict Clinical Multiplier */
 function scoreGrammar(
   mistakes: Array<{ type: string; example: string }>,
   totalWords: number
@@ -165,74 +160,65 @@ function scoreGrammar(
     }
   }
 
-  // CLINICAL METHOD: Calculate Errors per 100 words (Error Density)
   const errorRatePer100Words = (errorWeight / totalWords) * 100;
-
-  // FIX: Increased the multiplier from 4 to 6 for better clinical sensitivity.
-  // Ab 2 badi galtiyon par score lagbhag 84 aayega, jo zyada realistic hai.
-  // Clinically, 10-12 errors per 100 words indicates a severe impairment.
-  const clinicalDeduction = errorRatePer100Words * 6;
+  
+  // Strict clinical deduction (Multiplier 8.5)
+  // Severe grammar impairment is penalized appropriately.
+  const clinicalDeduction = errorRatePer100Words * 8.5;
 
   return Math.max(0, Math.min(100, Math.round(100 - clinicalDeduction)));
 }
 
-/** PAST TENSE: Error ratio based on total words (or ideally expected verbs) */
+/** PAST TENSE: Error ratio based on estimated verbs */
 function scorePastTense(pastTenseErrors: number, totalWords: number): number {
   if (totalWords <= 0) return 0;
   if (pastTenseErrors === 0) return 100;
 
-  // Assuming roughly 15% of words might be verbs in narrative writing
   const estimatedVerbs = Math.max(1, totalWords * 0.15);
   const errorRate = (pastTenseErrors / estimatedVerbs) * 100;
 
   return Math.max(0, Math.min(100, Math.round(100 - errorRate)));
 }
 
-/**
- * LETTER FORMATION:
- * 0 issues = 90 | 1 = 80 | 2 = 70 | 3+ = 65
- */
-/**
- * LETTER FORMATION
- */
+/** VISUAL MECHANICS: Crashing scores on severe traits */
+
 function scoreLetterFormation(observations: string[]): number {
   if (observations.length === 0) return 90;
   const text = observations.join(' ').toLowerCase();
-  if (text.includes('severe') || text.includes('illegible') || text.includes('poor')) return 40;
-  if (text.includes('inconsistent') || text.includes('irregular') || text.includes('cross-out') || text.includes('overwriting') || observations.length >= 3) return 55;
-  if (text.includes('mild') || observations.length === 2) return 70;
+  
+  if (text.includes('severe') || text.includes('illegible') || text.includes('poor') || observations.length >= 4) return 35;
+  if (text.includes('inconsistent') || text.includes('irregular') || text.includes('cross-out') || text.includes('overwriting') || observations.length >= 3) return 45;
+  if (text.includes('mild') || observations.length === 2) return 60;
   return 80;
 }
 
-/**
- * ALIGNMENT
- */
 function scoreAlignment(observations: string[]): number {
   if (observations.length === 0) return 90;
   const text = observations.join(' ').toLowerCase();
-  if (text.includes('severe') || text.includes('erratic')) return 40;
-  if (text.includes('moderate') || text.includes('drift') || text.includes('inconsistent') || observations.length >= 2)  return 55;
-  if (text.includes('minor') || text.includes('slight') || observations.length === 1) return 75;
+  
+  if (text.includes('severe') || text.includes('erratic') || observations.length >= 3) return 35;
+  if (text.includes('moderate') || text.includes('drift') || text.includes('inconsistent') || observations.length === 2)  return 45;
+  if (text.includes('minor') || text.includes('slight') || observations.length === 1) return 65;
   return 90;
 }
 
-/** SPATIAL ORGANISATION: similar to alignment */
 function scoreSpatialOrganisation(observations: string[]): number {
   if (observations.length === 0) return 88;
   const text = observations.join(' ').toLowerCase();
-  if (text.includes('severe') || text.includes('crowded')) return 35;
-  if (observations.length >= 3 || text.includes('frequent')) return 58;
-  if (observations.length >= 1) return 75;
+  
+  if (text.includes('severe') || text.includes('crowded') || observations.length >= 3) return 35;
+  if (text.includes('frequent') || text.includes('irregular') || observations.length === 2) return 45;
+  if (observations.length === 1) return 65;
   return 88;
 }
 
-/** LINE QUALITY */
 function scoreLineQuality(observations: string[]): number {
   if (observations.length === 0) return 90;
   const text = observations.join(' ').toLowerCase();
-  if (text.includes('severe') || text.includes('heavy') || text.includes('poor')) return 40;
-  if (text.includes('tremor') || text.includes('uneven') || text.includes('variable') || observations.length >= 2) return 55;
-  return 75;
+  
+  if (text.includes('severe') || text.includes('heavy') || text.includes('poor') || observations.length >= 3) return 35;
+  if (text.includes('tremor') || text.includes('uneven') || text.includes('variable') || observations.length === 2) return 45;
+  return 65;
 }
 
 /** WRITING SPEED relative to grade norm */
@@ -248,50 +234,15 @@ function scoreWritingSpeed(wpm: number, normMin: number, normMax: number): numbe
 
 // ─── Main calculator ──────────────────────────────────────────────────────────
 export function calculateScores(e: EvidenceData, grade: string): Scores {
-  const norm = getWpmNorm(grade);
-
-  const spelling           = scoreSpelling(e.spellingErrors.length, e.wordCount);
-  const grammar            = scoreGrammar(e.grammarMistakes, e.wordCount);
-  const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation, grade, e.wordCount);
-  const pastTenseUsage     = scorePastTense(e.pastTenseErrors, e.wordCount);
-  const letterFormation    = scoreLetterFormation(e.letterFormationObservations);
-  const alignment          = scoreAlignment(e.alignmentObservations);
-  const spatialOrganisation = scoreSpatialOrganisation(e.spacingObservations);
-  const lineQuality        = scoreLineQuality(e.lineQualityObservations);
-  const writingSpeed       = scoreWritingSpeed(e.wpm, norm.min, norm.max);
-
-  const horizontal = Math.round((spatialOrganisation + alignment) / 2);
-  const vertical   = Math.round((alignment + lineQuality) / 2);
-  const mechanics  = Math.round(
-    letterFormation    * 0.25 +
-    alignment          * 0.20 +
-    spatialOrganisation * 0.20 +
-    lineQuality        * 0.15 +
-    writingSpeed       * 0.20
-  );
-
-  const scores = {
-    spelling, grammar, sentenceBoundaries, pastTenseUsage,
-    letterFormation, alignment, spatialOrganisation, writingSpeed,
-    lineQuality, horizontal, vertical, mechanics,
-  };
-
-  console.log('[Score Engine] Calculated scores:', scores);
-
-  return scores;
+  return calculateScoresWithNorm(e, grade);
 }
 
 // ─── calculateScoresWithNorm (main entry point) ───────────────────────────────
 export function calculateScoresWithNorm(e: EvidenceData, grade: string): Scores {
   console.log('[Score Engine] Calculating scores for grade:', grade);
   console.log('  - wordCount:', e.wordCount);
-  console.log('  - transcription length:', e.transcription?.length || 0);
-  console.log('  - displayTranscription length:', e.displayTranscription?.length || 0);
   console.log('  - spellingErrors:', e.spellingErrors?.length || 0);
   console.log('  - grammarMistakes:', e.grammarMistakes?.length || 0);
-  console.log('  - runOnSentences:', e.runOnSentences);
-  console.log('  - missingCapitals:', e.missingCapitals);
-  console.log('  - missingPunctuation:', e.missingPunctuation);
   console.log('  - confirmedCancellations:', e.confirmedCancellations?.length || 0);
   console.log('  - wpm:', e.wpm);
 
@@ -301,10 +252,10 @@ export function calculateScoresWithNorm(e: EvidenceData, grade: string): Scores 
   const grammar            = scoreGrammar(e.grammarMistakes, e.wordCount);
   const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation, grade, e.wordCount);
   const pastTenseUsage     = scorePastTense(e.pastTenseErrors, e.wordCount);
-  const letterFormation    = scoreLetterFormation(e.letterFormationObservations);
-  const alignment          = scoreAlignment(e.alignmentObservations);
-  const spatialOrganisation = scoreSpatialOrganisation(e.spacingObservations);
-  const lineQuality        = scoreLineQuality(e.lineQualityObservations);
+  const letterFormation    = scoreLetterFormation(e.letterFormationObservations || []);
+  const alignment          = scoreAlignment(e.alignmentObservations || []);
+  const spatialOrganisation = scoreSpatialOrganisation(e.spacingObservations || []);
+  const lineQuality        = scoreLineQuality(e.lineQualityObservations || []);
   const writingSpeed       = scoreWritingSpeed(e.wpm, norm.min, norm.max);
 
   const horizontal = Math.round((spatialOrganisation + alignment) / 2);
@@ -388,7 +339,7 @@ export function calculateProbability(
     scores.pastTenseUsage < 60,
     visualImpairedCount >= 1,
     scores.writingSpeed < 60,
-    scores.mechanics < 65 // FIX: Mechanics score kam hone par probability badhaein
+    scores.mechanics < 65 // Visual mechanics poor fallback
   ].filter(Boolean).length;
 
   if (impaired >= 2) return 'HIGH';

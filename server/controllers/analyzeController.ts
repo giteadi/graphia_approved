@@ -567,7 +567,7 @@ After the report, append:
   "languageSkills": {
     "sentenceBoundaries": "2-3 sentence comment. Focus on observed issues: ${evidence.runOnSentences} run-on sentences${evidence.missingPunctuation > 0 ? `, ${evidence.missingPunctuation} missing punctuation` : ''}${evidence.missingCapitals > 0 ? `, ${evidence.missingCapitals} missing capitals` : ''}. Only mention missing capitals/punctuation if clearly visible in sample.",
     "grammar": "2-3 sentence comment. Focus on verb form errors, syntax issues, and sentence structure. ${evidence.grammarMistakes.length} grammar issues observed. ${evidence.wordChoiceMistakes?.length || 0} word choice/homophone errors (e.g., 'their/there', 'to/too') that should be addressed in grammar instruction. Do NOT include spelling errors in grammar analysis.",
-    "pastTenseUsage": "2-3 sentence comment. ${evidence.pastTenseErrors} errors observed"
+    "pastTenseUsage": "${evidence.pastTenseErrors === 0 ? '0 past-tense errors observed. The student demonstrated correct past tense usage.' : `2-3 sentence comment. ${evidence.pastTenseErrors} errors observed.`}"
   },
   "scores": {
     "alignment": ${scores.alignment},
@@ -703,7 +703,7 @@ function buildDeterministicSummary(params: {
     languageSkills: {
       sentenceBoundaries: languageSkills.sentenceBoundaries || `Focus on observed issues: ${evidence.runOnSentences} run-on sentences${evidence.missingPunctuation > 0 ? `, ${evidence.missingPunctuation} missing punctuation` : ''}${evidence.missingCapitals > 0 ? `, ${evidence.missingCapitals} missing capitals` : ''}. Only mention missing capitals/punctuation if clearly visible in sample.`,
       grammar: languageSkills.grammar || `Focus on verb form errors, syntax issues, and sentence structure. ${evidence.grammarMistakes.length} grammar issue${evidence.grammarMistakes.length === 1 ? '' : 's'} observed. Do NOT include spelling errors in grammar analysis.`,
-      pastTenseUsage: languageSkills.pastTenseUsage || `${evidence.pastTenseErrors} past-tense error${evidence.pastTenseErrors === 1 ? '' : 's'} observed.`,
+      pastTenseUsage: languageSkills.pastTenseUsage || (evidence.pastTenseErrors === 0 ? '0 past-tense errors observed. The student demonstrated correct past tense usage.' : `${evidence.pastTenseErrors} past-tense error${evidence.pastTenseErrors === 1 ? '' : 's'} observed.`),
     },
     scores: {
       alignment: scores.alignment,

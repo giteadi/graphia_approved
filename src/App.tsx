@@ -4142,7 +4142,18 @@ ${result.report}
                             ].map((card, idx) => {
                               const isFluency = card.d === "fluency";
                               const norm = parseInt(getGradeSpeedNorm(grade).split('-')[0]) || 20;
-                              const passes = isFluency ? card.val >= norm : card.val >= 70;
+                              
+                              // FIX: Adding 'Excellent' for scores >= 90
+                              let statusLabel = 'Needs Support';
+                              let statusColor = 'text-red-500';
+                              
+                              if (isFluency) {
+                                if (card.val >= norm) { statusLabel = 'Average'; statusColor = 'text-green-600'; }
+                              } else {
+                                if (card.val >= 90) { statusLabel = 'Excellent'; statusColor = 'text-blue-600'; }
+                                else if (card.val >= 70) { statusLabel = 'Average'; statusColor = 'text-green-600'; }
+                              }
+
                               return (
                                 <div key={idx} className="p-1.5 bg-white flex flex-col items-center justify-between h-20">
                                   <div className="text-[6.5pt] font-medium leading-normal text-gray-500 font-sans tracking-tight uppercase text-center">
@@ -4151,8 +4162,8 @@ ${result.report}
                                   <div className="text-[15pt] font-black text-[#0c2340] leading-none my-0.5">
                                     {card.val}
                                   </div>
-                                  <div className={`text-[6.5pt] font-bold uppercase font-sans tracking-tight leading-none ${passes ? 'text-green-600' : 'text-red-500'}`}>
-                                    {passes ? 'Average' : 'Needs Support'}
+                                  <div className={`text-[6.5pt] font-bold uppercase font-sans tracking-tight leading-none ${statusColor}`}>
+                                    {statusLabel}
                                   </div>
                                 </div>
                               );
@@ -4394,12 +4405,9 @@ ${result.report}
                             {[
                               { label: "Letter Formation", val: result.summary.lineFormation || result.summary.mechanics },
                               { label: "Alignment", val: result.summary.alignment },
-                              { label: "Spatial Organisation", val: result.summary.verticalAnalysis || result.summary.horizontalAnalysis },
-                              { label: "Writing Speed", val: result.summary.fluencyAnalysis || `Writing speed of ${reportWpm} words per minute, falls significantly below peers.` },
-                              { label: "Horizontal Spatial", val: result.summary.horizontalAnalysis },
-                              { label: "Vertical Spatial", val: result.summary.verticalAnalysis },
+                              { label: "Spatial Organisation", val: result.summary.horizontalAnalysis || result.summary.verticalAnalysis },
                               { label: "Line Quality", val: result.summary.lineQuality },
-                              { label: "Line Formation", val: result.summary.lineFormation }
+                              { label: "Writing Speed", val: result.summary.fluencyAnalysis || `Writing speed of ${reportWpm} words per minute, falls significantly below peers.` }
                             ].map((mechanic, i) => (
                               <li key={i} className="flex gap-2 items-start list-none pl-0">
                                 <span className="text-[#0C2340] font-bold text-[10pt] shrink-0 leading-none mt-0.5">•</span>
