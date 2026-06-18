@@ -166,12 +166,16 @@ export async function analyzeHandwriting(
 
     console.log('[gemini.ts] Response OK:', response.status);
 
-    const data = await response.json() as { 
-      choices: { message: { content: string } }[];
+    const data = await response.json() as {
+      choices?: { message: { content: string } }[];
       summary?: any;
+      output_text?: string;
     };
-    
-    const text = data.choices[0]?.message?.content || "";
+
+    const text =
+      (data as any).output_text ||
+      (data as any).choices?.[0]?.message?.content ||
+      "";
     const backendSummary = data.summary;
     
     if (!text.trim()) {

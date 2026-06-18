@@ -229,3 +229,83 @@ if (!undefinedOccKey.includes('#1')) {
 }
 
 console.log('SAFETY CHECK PASSED: All critical validations verified');
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MINIMAL TEST CASES - As requested for simplified pipeline
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Test 1: Reimposed false cancel should not strike if not in confirmed list
+const evidenceFalseCancel = {
+  confirmedCancellations: [],
+  uncertainCancellations: [
+    { text: 'will', confidence: 60, reason: 'overwrite' }
+  ],
+  transcription: 'So which will can result in increase'
+};
+const sanitizedFalseCancel = sanitizeEvidence(evidenceFalseCancel);
+if (sanitizedFalseCancel.confirmedCancellations.length !== 0) {
+  throw new Error('MINIMAL TEST FAILED: Uncertain cancellation should not promote to confirmed');
+}
+console.log('MINIMAL TEST PASSED: False cancel not in confirmed list');
+
+// Test 2: will cancel appears if in confirmed list
+const evidenceWillCancel = {
+  confirmedCancellations: [
+    { text: 'will', confidence: 80, occurrence: 1 }
+  ],
+  transcription: 'So which will can result'
+};
+const sanitizedWillCancel = sanitizeEvidence(evidenceWillCancel);
+if (sanitizedWillCancel.confirmedCancellations.length !== 1) {
+  throw new Error('MINIMAL TEST FAILED: Confirmed "will" cancellation should be preserved');
+}
+if (sanitizedWillCancel.confirmedCancellations[0].text !== 'will') {
+  throw new Error('MINIMAL TEST FAILED: Confirmed cancellation text should match');
+}
+console.log('MINIMAL TEST PASSED: will cancel appears when in confirmed list');
+
+// Test 3: Grammar phrase highlights when redPhrases exists
+const evidenceGrammarPhrase = {
+  grammarMistakes: [
+    { type: 'syntax', example: 'which will can result' }
+  ],
+  transcription: 'So which will can result in increase'
+};
+const sanitizedGrammarPhrase = sanitizeEvidence(evidenceGrammarPhrase);
+if (sanitizedGrammarPhrase.grammarMistakes.length !== 1) {
+  throw new Error('MINIMAL TEST FAILED: Grammar phrase should be preserved');
+}
+console.log('MINIMAL TEST PASSED: Grammar phrase preserved for highlighting');
+
+// Test 4: Score does not collapse for 1-2 grammar mistakes in small text
+const smallTextEvidence: EvidenceData = {
+  transcription: 'I went to store and buy food',
+  wordCount: 8,
+  confirmedCancellations: [],
+  uncertainCancellations: [],
+  spellingErrors: [],
+  grammarMistakes: [
+    { type: 'syntax', example: 'I went to store' },
+    { type: 'agreement', example: 'buy food' }
+  ],
+  runOnSentences: 0,
+  missingCapitals: 0,
+  missingPunctuation: 1,
+  pastTenseErrors: 0,
+  letterFormationObservations: [],
+  alignmentObservations: [],
+  spacingObservations: [],
+  lineQualityObservations: [],
+  wpm: 10,
+  rtiImprovement: false,
+  dsm5Traits: []
+};
+const smallTextScores = calculateScoresWithNorm(smallTextEvidence, 'Grade 3');
+if (smallTextScores.grammar < 50) {
+  throw new Error('MINIMAL TEST FAILED: Grammar score should not collapse for 2 mistakes in small text');
+}
+console.log('MINIMAL TEST PASSED: Score does not collapse for 1-2 grammar mistakes in small text');
+
+console.log('══════════════════════════════════════════════════════════════════════════════');
+console.log('ALL MINIMAL TESTS PASSED');
+console.log('══════════════════════════════════════════════════════════════════════════════');

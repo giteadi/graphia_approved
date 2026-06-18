@@ -238,37 +238,6 @@ function scoreWritingSpeed(wpm: number, normMin: number, normMax: number): numbe
 
 // ─── Main calculator ──────────────────────────────────────────────────────────
 export function calculateScores(e: EvidenceData, grade: string): Scores {
-  const norm = getWpmNorm(''); // fallback — caller should set wpm against norm separately
-
-  const spelling           = scoreSpelling(e.spellingErrors.length, e.wordCount);
-  const grammar            = scoreGrammar(e.grammarMistakes, e.wordCount);
-  const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation, grade, e.wordCount);
-  const pastTenseUsage     = scorePastTense(e.pastTenseErrors, e.wordCount);
-  const letterFormation    = scoreLetterFormation(e.letterFormationObservations);
-  const alignment          = scoreAlignment(e.alignmentObservations);
-  const spatialOrganisation = scoreSpatialOrganisation(e.spacingObservations);
-  const lineQuality        = scoreLineQuality(e.lineQualityObservations);
-  const writingSpeed       = scoreWritingSpeed(e.wpm, norm.min, norm.max);
-
-  const horizontal = Math.round((spatialOrganisation + alignment) / 2);
-  const vertical   = Math.round((alignment + lineQuality) / 2);
-  const mechanics  = Math.round(
-    letterFormation    * 0.25 +
-    alignment          * 0.20 +
-    spatialOrganisation * 0.20 +
-    lineQuality        * 0.15 +
-    writingSpeed       * 0.20
-  );
-
-  return {
-    spelling, grammar, sentenceBoundaries, pastTenseUsage,
-    letterFormation, alignment, spatialOrganisation, writingSpeed,
-    lineQuality, horizontal, vertical, mechanics,
-  };
-}
-
-// ─── calculateScoresWithNorm (main entry point) ───────────────────────────────
-export function calculateScoresWithNorm(e: EvidenceData, grade: string): Scores {
   const norm = getWpmNorm(grade);
 
   const spelling           = scoreSpelling(e.spellingErrors.length, e.wordCount);
@@ -291,11 +260,62 @@ export function calculateScoresWithNorm(e: EvidenceData, grade: string): Scores 
     writingSpeed       * 0.20
   );
 
-  return {
+  const scores = {
     spelling, grammar, sentenceBoundaries, pastTenseUsage,
     letterFormation, alignment, spatialOrganisation, writingSpeed,
     lineQuality, horizontal, vertical, mechanics,
   };
+
+  console.log('[Score Engine] Calculated scores:', scores);
+
+  return scores;
+}
+
+// ─── calculateScoresWithNorm (main entry point) ───────────────────────────────
+export function calculateScoresWithNorm(e: EvidenceData, grade: string): Scores {
+  console.log('[Score Engine] Calculating scores for grade:', grade);
+  console.log('  - wordCount:', e.wordCount);
+  console.log('  - transcription length:', e.transcription?.length || 0);
+  console.log('  - displayTranscription length:', e.displayTranscription?.length || 0);
+  console.log('  - spellingErrors:', e.spellingErrors?.length || 0);
+  console.log('  - grammarMistakes:', e.grammarMistakes?.length || 0);
+  console.log('  - runOnSentences:', e.runOnSentences);
+  console.log('  - missingCapitals:', e.missingCapitals);
+  console.log('  - missingPunctuation:', e.missingPunctuation);
+  console.log('  - confirmedCancellations:', e.confirmedCancellations?.length || 0);
+  console.log('  - wpm:', e.wpm);
+
+  const norm = getWpmNorm(grade);
+
+  const spelling           = scoreSpelling(e.spellingErrors.length, e.wordCount);
+  const grammar            = scoreGrammar(e.grammarMistakes, e.wordCount);
+  const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation, grade, e.wordCount);
+  const pastTenseUsage     = scorePastTense(e.pastTenseErrors, e.wordCount);
+  const letterFormation    = scoreLetterFormation(e.letterFormationObservations);
+  const alignment          = scoreAlignment(e.alignmentObservations);
+  const spatialOrganisation = scoreSpatialOrganisation(e.spacingObservations);
+  const lineQuality        = scoreLineQuality(e.lineQualityObservations);
+  const writingSpeed       = scoreWritingSpeed(e.wpm, norm.min, norm.max);
+
+  const horizontal = Math.round((spatialOrganisation + alignment) / 2);
+  const vertical   = Math.round((alignment + lineQuality) / 2);
+  const mechanics  = Math.round(
+    letterFormation    * 0.25 +
+    alignment          * 0.20 +
+    spatialOrganisation * 0.20 +
+    lineQuality        * 0.15 +
+    writingSpeed       * 0.20
+  );
+
+  const scores = {
+    spelling, grammar, sentenceBoundaries, pastTenseUsage,
+    letterFormation, alignment, spatialOrganisation, writingSpeed,
+    lineQuality, horizontal, vertical, mechanics,
+  };
+
+  console.log('[Score Engine] Calculated scores:', scores);
+
+  return scores;
 }
 
 // ─── Probability engine (2-level: LOW / HIGH) ──────────────────────────────────

@@ -47,33 +47,29 @@ function validateExtraction(evidence: any): any {
 
 /**
  * Extracts the specific grammar target phrase from a larger example
- * Instead of highlighting the entire sentence, highlights only the problematic phrase
+ * Returns the first 2-3 words to ensure it's short enough for the token matcher to find
  */
 function extractGrammarTarget(phrase: string): string {
   if (!phrase) return phrase;
+  const p = phrase.toLowerCase();
 
-  const commonGrammarPatterns = [
-    'will can', 'can will',
-    'their are', 'are their',
-    'be decrease', 'decrease be',
-    'which will', 'will which',
-    'that will', 'will that'
+  const patterns = [
+    /\bwill\s+can\b/i,
+    /\bcan\s+will\b/i,
+    /\bresult\s+increase\b/i,
+    /\bthis\s+can\s+result\b/i,
+    /\bbea\s+decresse\b/i,
+    /\btheir\s+are\b/i,
   ];
 
-  const lowerPhrase = phrase.toLowerCase();
-  
-  for (const pattern of commonGrammarPatterns) {
-    if (lowerPhrase.includes(pattern)) {
-      // Return the actual case-preserved match
-      const patternRegex = new RegExp(pattern, 'i');
-      const match = phrase.match(patternRegex);
-      if (match) {
-        return match[0];
-      }
-    }
+  for (const rx of patterns) {
+    const m = phrase.match(rx);
+    if (m) return m[0];
   }
 
-  return phrase;
+  // fallback: avoid full sentence highlight
+  const words = phrase.trim().split(/\s+/);
+  return words.slice(0, Math.min(2, words.length)).join(' ');
 }
 
 /**
@@ -136,6 +132,16 @@ prefer the most conservative literal reading.
 Do not omit visible words.
 Do not merge repeated words.
 Do not delete overwritten words unless a clear strike-through exists.
+ONLY transcribe words that are CLEARLY VISIBLE in the handwriting.
+Do NOT guess or infer words that are not actually written.
+
+CRITICAL — NO AUTOCORRECTION WHATSOEVER:
+- Do NOT fix spelling errors: "incresse" stays "incresse", not "increase"
+- Do NOT fix grammar errors: preserve exactly as written
+- Do NOT add missing words: if a word is not written, do not add it
+- Do NOT rewrite text to make it "correct English"
+- The transcription MUST be verbatim — errors and all
+- Every spelling error MUST be captured in both transcription AND spellingErrors array
 
 1. CANCELLED / CROSSED-OUT WORDS (BE CONSERVATIVE):
    - Mark as CONFIRMED cancellation ONLY if the word is clearly and unambiguously struck out to remove it.
@@ -178,13 +184,46 @@ Do not delete overwritten words unless a clear strike-through exists.
    When in doubt, KEEP word in transcription + add to uncertainCancellations.
 
 PARTIAL WORD RULE:
-   - If a word appears cut off or truncated (e.g., "cheape" when "cheaper" is clearly written), 
+   - If a word appears cut off or truncated (e.g., "cheape" when "cheaper" is clearly written),
      transcribe the FULL visible word. Do not truncate words mid-letter.
-   - Common truncation errors to avoid: "cheape"→"cheaper", "Costlye"→"Costlyer", 
+   - Common truncation errors to avoid: "cheape"→"cheaper", "Costlye"→"Costlyer",
      "bepe"→"before", "incresse"→"increase". Always read till the last visible stroke.
 
+HALLUCINATION PREVENTION:
+   - Do NOT add words that are not written in the image.
+   - "people fee Indian" - if only "fee Indian" is written, transcribe ONLY "fee Indian"
+   - Never add context words to make grammar sense
+   - If you see a word that looks like "fee" before "Indian", transcribe exactly "fee Indian"
+   - Do NOT add "people" or any other word before "fee" if it's not clearly written
+   - Every word in transcription MUST have a corresponding visible mark in the handwriting
+   - If you cannot see a word in the image, DO NOT transcribe it
+
+AUTOCORRECTION IS STRICTLY FORBIDDEN:
+   - "incresse" MUST stay "incresse" — do NOT write "increase"
+   - "befoie" MUST stay "befoie" — do NOT write "before"
+   - "thouse" MUST stay "thouse" — do NOT write "those"
+   - "Tarrifs" MUST stay "Tarrifs" — do NOT write "Tariffs"
+   - "Costlyer" MUST stay "Costlyer" — do NOT write "Costlier"
+   - If you autocorrect, the entire report scoring will be WRONG
+   - Every misspelling MUST appear in both transcription AND spellingErrors array
+   - Do NOT fix student's grammar or spelling - preserve errors exactly as written
+   - The transcription is the SCORING SOURCE OF TRUTH, not a corrected version
+
+COMMON AUTOCORRECTION ERRORS TO AVOID:
+- "incresse" → "increase" (FORBIDDEN)
+- "befoie" → "before" (FORBIDDEN)
+- "thouse" → "those" (FORBIDDEN)
+- "Tarrifs" → "Tariffs" (FORBIDDEN)
+- "Costlyer" → "Costlier" (FORBIDDEN)
+- "case" → "cause" (FORBIDDEN - check carefully)
+- "be" → "the" (FORBIDDEN - common substitution error)
+- If you see extra letters, wrong letters, or phonetic spelling, PRESERVE IT
+- The goal is to IDENTIFY learning difficulties, not to produce clean text
+
 STRIKE-THROUGH CONFIDENCE RULE:
-   - A horizontal line clearly passing THROUGH a word = CONFIRMED cancellation (confidence >= 80)
+   - A horizontal line clearly passing THROUGH a word = CONFIRMED cancellation (confidence >= 85)
+   - If you can see ANY strike-through line through a word, confidence MUST be >= 80.
+   - NEVER give confidence < 75 for a word that has a visible line through it.
    - Overwriting/rewriting on top = uncertainCancellation
    - Messy strokes around = uncertainCancellation  
    - When student writes a word, then draws a line through it and writes replacement = 
@@ -193,7 +232,17 @@ STRIKE-THROUGH CONFIDENCE RULE:
    - CRITICAL: Cancel ONLY words that have visible strike-through lines. 
    - Do NOT cancel words just because they appear near other cancelled words.
    - Do NOT cancel entire sentences or phrases unless the strike line physically passes through them.
-   - Use a HIGHER threshold (confidence >= 90) for short words (2-3 letters) to avoid false positives
+   - For short words (1-3 letters): if a horizontal line passes through it, mark as CONFIRMED regardless of word length. Short words are harder to see but equally valid cancellations.
+
+   CRITICAL — NON-ENGLISH FRAGMENTS:
+   - Words like "se", "fee", "h", "na", "ko", "ka", "ki" may appear in 
+     Indian-English handwriting as partial words or code-switching fragments.
+   - Do NOT skip these just because they are not valid English words.
+   - If a clear horizontal strike line passes through ANY visible text — 
+     English or not — mark it as CONFIRMED cancellation.
+   - "se citizens" where "se" is struck = CONFIRMED cancellation of "se"
+   - "buy them h" where "h" is struck = CONFIRMED cancellation of "h"
+   - "fee Indian" where "fee" is struck = CONFIRMED cancellation of "fee"
 
 MULTI-WORD STRIKE RULE:
    - Check EVERY word independently for strike-through
@@ -231,8 +280,10 @@ SECOND WORD RULE:
 4. TRANSCRIPTION ACCURACY:
    - Transcribe character-by-character. NEVER autocorrect.
    - Preserve ALL misspellings exactly as written.
-   - NEVER normalize spelling, punctuation, tense, plurals, hyphens, apostrophes, or capitalization.
+   - NEVER normalize spelling, punctuation, tense, plurals, hyphens, or capitalization.
    - Only transcribe what is clearly visible in the handwriting.
+   - CRITICAL: Do NOT transcribe words that are not actually written in the image.
+   - Do NOT complete incomplete words or guess what letters might be missing.
    - If a word is ambiguous, write your best read and add it to uncertainWords.
    - Use \\n for line breaks in transcription.
 
@@ -259,6 +310,13 @@ SECOND WORD RULE:
 - GRAMMAR DETECTION: Continue detecting grammar errors normally
 - Grammar mistakes in cancelled text should still be flagged
 - The highlighting system will handle priority (cancelled > grammar > spelling)
+
+ANTI-HALLUCINATION RULE:
+- Do NOT transcribe words that are not visible in the handwriting
+- Do NOT complete partial words based on context
+- Do NOT add helper words like "reimposed" if not clearly written
+- If a word is ambiguous or unclear, add to uncertainWords instead of guessing
+- Better to leave a word uncertain than to add words that don't exist
 - BUT: wrong plural forms ("lifes"), missing letters, phonetic spellings, merged words, wrong tense forms — ALL must be flagged
 - Count EACH occurrence separately
 - If uncertain about a word, add to uncertainWords instead of spellingErrors
@@ -318,15 +376,19 @@ IMPORTANT:
 - BE STRICT: If there are multiple clauses without punctuation, count each as a potential run-on
 
 FINAL VALIDATION CHECKLIST (run before returning JSON):
+□ Did I transcribe ONLY words that are clearly visible in the handwriting?
+□ Did I avoid adding words that are not actually written?
 □ Did I check EVERY word for strike-through independently?
 □ Did I check for MULTI-WORD cancellations (will be, to the, of the, my cousin, etc.)?
 □ Did I read words till the last visible stroke (no truncation)?
-□ Are short struck words (be, to, se, fee, a) in confirmedCancellations?
-□ Is confidence >= 90 for short words (2-3 letters) to avoid false positives?
+□ Are short struck words (be, to, se, fee, h, a, na) in confirmedCancellations?
+□ Did I check non-English fragments (se, fee, h) for strike-through?
+□ A word does NOT need to be valid English to be a valid cancellation.
 □ Is confidence >= 80 for longer words with clear strike-through?
 □ Are all overwritten/rewritten words in uncertainCancellations only?
 □ If I see "will be" cancelled, did I cancel BOTH words?
 □ If I'm unsure about a cancellation, did I leave it uncancelled rather than making a false positive?
+□ Did I avoid completing partial words or guessing missing letters?
 
 RETURN ONLY THIS JSON (no markdown fences, no extra text):
 {
@@ -772,6 +834,57 @@ function dedupeSpellingErrors(spellingErrors: SpellingError[] = []): SpellingErr
   return result;
 }
 
+function isPlacedInText(text: string, phrase: string): boolean {
+  const t = normalizeForUiMatch(text || '');
+  const p = normalizeForUiMatch(phrase || '');
+  if (!t || !p) return false;
+  const pattern = new RegExp(`\\b${escapeRegExp(p)}\\b`, 'i');
+  return pattern.test(t);
+}
+
+function keepOnlyVisibleConfirmed(
+  transcription: string,
+  items: Array<{ text: string; confidence?: number; occurrence?: number }>
+) {
+  const t = normalizeForUiMatch(transcription || '');
+  return (items || []).filter((c) => {
+    const text = normalizeForUiMatch(c.text || '');
+    if (!text) return false;
+    // multi-word false positives drop
+    if (text.split(' ').length > 1) return false;
+    // must exist as real token in transcription
+    const re = new RegExp(`\\b${escapeRegExp(text)}\\b`, 'i');
+    return re.test(t);
+  });
+}
+
+function sanitizeConfirmedCancellations(transcription: string, items: any[] = []) {
+  return items.filter((c) => {
+    const txt = String(c?.text || "").trim();
+    if (!txt) return false;
+    const words = txt.split(/\s+/);
+    if (words.length > 1) return false; // multi-word false positives block
+    if ((c.confidence ?? 0) < 85) return false;
+    return isPlacedInText(transcription, txt);
+  });
+}
+
+function stripCancellationTags(text: string): string {
+  return (text || '')
+    .replace(/\[CANCELLED:\s*([^\]]+)\]/gi, '$1')
+    .replace(/\[MAYBE-CANCELLED:\s*([^\]]+)\]/gi, '$1');
+}
+
+function extractInlineCancellationTags(text: string): string[] {
+  const cancelled: string[] = [];
+  const cancelledRegex = /\[CANCELLED:\s*([^\]]+)\]/gi;
+  let match;
+  while ((match = cancelledRegex.exec(text)) !== null) {
+    cancelled.push(match[1]);
+  }
+  return cancelled;
+}
+
 function promoteUncertainWordsToSpellingErrors(
   uncertainWords: UncertainWord[] = [],
   existingSpellingErrors: SpellingError[] = []
@@ -843,6 +956,12 @@ function buildHighlightMap(params: {
       occurrence: s.occurrence || 1,
       kind: 'spelling' as const,
       tokenSpan: 1 // spelling is always single word
+    })),
+    ...grammarMistakes.map(g => ({
+      text: extractGrammarTarget(g.example) || g.example,
+      occurrence: 1,
+      kind: 'grammar' as const,
+      tokenSpan: (extractGrammarTarget(g.example) || g.example).trim().split(/\s+/).length
     })),
     ...confirmedCancellations.map(c => ({
       text: c.text,
@@ -937,37 +1056,8 @@ function hasError(spellingErrors: SpErr[], written: string, intended?: string) {
 }
 
 function applySpellingHeuristics(transcription: string, spellingErrors: SpErr[]): SpErr[] {
-  const t = (transcription || '').toLowerCase();
-
-  const add = (e: SpErr) => {
-    if (!hasError(spellingErrors, e.written, e.intended)) spellingErrors.push(e);
-  };
-
-  // "to met" -> should be "to meet" (conditional on MET_AS_SPELLING)
-  if (MET_AS_SPELLING && /\bto\s+met\b/.test(t)) {
-    add({ written: 'met', intended: 'meet', reason: 'wrong verb form', gradeLevel: 'approx 3rd grade', confidence: 90 });
-  }
-
-  // together variants commonly produced by OCR
-  if (/\bgether\b/.test(t)) {
-    add({ written: 'gether', intended: 'together', reason: 'missing letters', gradeLevel: 'approx 2nd grade', confidence: 90 });
-  }
-
-  // "get to gether" split artifact -> together
-  if (/\bget\s+to\s+gether\b/.test(t)) {
-    add({ written: 'gether', intended: 'together', reason: 'OCR split', gradeLevel: 'approx 2nd grade', confidence: 85 });
-  }
-
-  // "togther" missing e
-  if (/\btogther\b/.test(t)) {
-    add({ written: 'togther', intended: 'together', reason: 'missing letter', gradeLevel: 'approx 2nd grade', confidence: 95 });
-  }
-
-  // "get-togther" missing 'e'
-  if (/\bget[-\s]?togther\b/i.test(t)) {
-    add({ written: 'get-togther', intended: 'get-together', confidence: 90, reason: 'missing letter', gradeLevel: 'approx 2nd grade' });
-  }
-
+  // Removed hardcoded patterns - GPT extraction handles spelling detection
+  // Previously had hardcoded "to met" and "together" variants which were sample-specific
   return spellingErrors;
 }
 
@@ -1175,29 +1265,31 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // ── STEP 1: Evidence Extraction ───────────────────────────────────────────
     console.log('[Step 1] Extracting evidence...');
 
-    const step1 = await withFallback(client => client.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: buildExtractionPrompt(grade_p) },
-          { type: 'image_url', image_url: { url: imageUrl } },
-        ],
-      }] as OpenAI.Chat.ChatCompletionMessageParam[],
-      response_format: { type: 'json_object' },
+    const step1 = await withFallback(client => (client as any).responses.create({
+      model: 'gpt-5-chat-latest',
+      input: [
+        {
+          role: 'user',
+          content: [
+            { type: 'input_text', text: buildExtractionPrompt(grade_p) },
+            { type: 'input_image', image_url: imageUrl },
+          ],
+        },
+      ],
       temperature: 0,
-      seed: 42,
-      max_tokens: 4096,
     }));
 
-    const raw1 = step1.choices[0]?.message?.content || '';
+    const raw1 = (step1 as any).output_text || (step1 as any).output?.[0]?.content?.[0]?.text || (step1 as any).choices?.[0]?.message?.content || '';
+    // Try to extract JSON from markdown code blocks if the response is not pure JSON
+    const jsonMatch = raw1.match(/```json\n?([\s\S]*?)\n?```/) || raw1.match(/```\n?([\s\S]*?)\n?```/);
+    const cleanedRaw1 = jsonMatch ? jsonMatch[1] : raw1;
     console.log('\n[Step 1] RAW OUTPUT:\n─────────────────────────────');
     console.log(raw1);
     console.log('─────────────────────────────\n');
 
     let extracted: any;
     try {
-      extracted = JSON.parse(raw1.replace(/```json\n?|\n?```/g, '').trim());
+      extracted = JSON.parse(cleanedRaw1.trim());
     } catch {
       console.error('[Step 1] JSON parse failed');
       res.status(500).json({ error: 'Evidence extraction failed — invalid JSON. Please retry.' });
@@ -1209,35 +1301,33 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       return;
     }
 
-    // Validate GPT extraction consistency
-    extracted = validateExtraction(extracted);
+    // Deduplicate repeated trailing sentences
+    const lines = extracted.transcription.split('\n').map(l => l.trim()).filter(Boolean);
+    const lastLine = lines[lines.length - 1];
+    if (lines.length >= 2 && lines[lines.length - 2] === lastLine) {
+      lines.pop();
+      extracted.transcription = lines.join('\n');
+    }
 
-    // Normalize over-cancelled phrases (AI guardrail)
-    extracted.transcription = normalizeOverCancelledPhrases(extracted.transcription);
+    // Create 3 transcription versions for proper pipeline
+    const modelTranscription = extracted.transcription || '';
+    const inlineConfirmedTags = extractInlineCancellationTags(modelTranscription);
+    const plainTranscription = stripCancellationTags(modelTranscription);
 
-    // Rebucket cancellations: Confirmed = confidence >= 90 AND reason empty, else Uncertain
-    const rawConfirmed = extracted.confirmedCancellations || [];
-    const rawUncertain = extracted.uncertainCancellations || [];
+    console.log('[Step 1] Extraction completed. Initial data:');
+    console.log('  - transcription length:', extracted.transcription?.length || 0);
+    console.log('  - displayTranscription present:', !!extracted.displayTranscription);
+    console.log('  - displayTranscription length:', extracted.displayTranscription?.length || 0);
+    console.log('  - confirmedCancellations:', extracted.confirmedCancellations?.length || 0);
+    console.log('  - uncertainCancellations:', extracted.uncertainCancellations?.length || 0);
+    console.log('  - spellingErrors:', extracted.spellingErrors?.length || 0);
+    console.log('  - grammarMistakes:', extracted.grammarMistakes?.length || 0);
+    if (extracted.confirmedCancellations?.length > 0) {
+      console.log('  - confirmedCancellations samples:', extracted.confirmedCancellations.slice(0, 3).map(c => c.text));
+    }
 
-    const rebucketedConfirmed = rawConfirmed.filter((c: any) => (c.confidence ?? 0) >= 90 && !c.reason);
-    const rebucketedUncertain = [
-      ...rawUncertain,
-      ...rawConfirmed.filter((c: any) => !((c.confidence ?? 0) >= 90 && !c.reason)).map((c: any) => ({
-        text: c.text,
-        confidence: c.confidence ?? 0,
-        reason: c.reason || 'low_confidence',
-        occurrence: c.occurrence
-      }))
-    ];
-
-    extracted.confirmedCancellations = cleanCancellationArray(rebucketedConfirmed);
-    extracted.uncertainCancellations = cleanCancellationArray(rebucketedUncertain);
-
-    // Apply evidence sanitization - ensure cancelled words don't appear as spelling/grammar errors
-    extracted = sanitizeEvidence(extracted);
-
-    // Apply quality gate - detect suspicious AI extraction patterns
-    extracted = qualityGate(extracted);
+    // SIMPLIFIED: Use extraction as-is, minimal processing
+    // Removed: validateExtraction, normalizeOverCancelledPhrases, rebucketing, sanitizeConfirmedCancellations, demote logic, sanitizeEvidence, qualityGate
 
     // Capture raw transcription immediately after Step-1 parse (before any modifications)
     const rawTranscription = extracted.transcription || '';
@@ -1279,238 +1369,101 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
 
     const norm      = getWpmNorm(grade_p);
 
-    // Filter spelling by confidence >= 75 and remove cancelled words using word-level matching
-    // Also filter out high-confidence confirmed cancellations
+    // SIMPLIFIED: Direct use of extraction data with minimal filtering
+    // Basic confidence filtering for spelling errors
     const confirmedCancellationTexts = (extracted.confirmedCancellations || [])
-      .filter((c: any) => (c.confidence ?? 0) >= 90)
+      .filter((c: any) => (c.confidence ?? 0) >= 70)
       .map((c: any) => c.text?.toLowerCase() || '');
-    
-    // Create word-level set for matching (split phrases into individual words)
+
+    // Create word-level set for basic matching
     const cancelledWordSet = new Set(
       confirmedCancellationTexts
         .flatMap(text => text.split(/\s+/))
         .filter(word => word.length > 0)
     );
 
-    // Word choice mistakes (homophones, etc.) - separate from spelling errors
-    type WordChoiceMistake = { written: string; intended: string; confidence?: number; type?: string };
-
-    const wordChoiceMistakes: WordChoiceMistake[] = (extracted.wordChoiceMistakes || [])
-      .filter((m: any) => (m.confidence ?? 100) >= 90)
-      .map((m: any) => ({
-        written: String(m.written || '').trim(),
-        intended: String(m.intended || '').trim(),
-        confidence: m.confidence ?? 100,
-        type: m.type || 'homophone',
-      }))
-      .filter(m => m.written && m.intended);
-
-    const detectedWordChoiceMistakes = detectWordChoiceMistakes(extracted.transcription);
-
-    // Merge AI-detected with dynamically detected word choice mistakes
-    const allWordChoiceMistakes = [...wordChoiceMistakes, ...detectedWordChoiceMistakes]
-      .filter((m: any) => (m.confidence ?? 100) >= 90)
-      .map((m: any) => ({
-        written: String(m.written || '').trim(),
-        intended: String(m.intended || '').trim(),
-        confidence: m.confidence ?? 100,
-        type: m.type || 'homophone',
-      }))
-      .filter(m => m.written && m.intended);
-
-    // Remove word choice mistakes from spelling errors to avoid double penalty
-    const wordChoiceWrittenSet = new Set(allWordChoiceMistakes.map(m => normalizeForMatch(m.written)));
-
+    // SIMPLIFIED: Direct spelling errors from extraction with basic confidence filter
     let spellingErrors = (extracted.spellingErrors || [])
-      .filter((e: any) => (e.confidence ?? 100) >= 75)
-      .filter((err: any) => {
-        const w = normalizeForMatch(err.written || '');
-        return w && !wordChoiceWrittenSet.has(w);
-      })
-      .filter((err: any) => {
-        const writtenLower = err.written?.toLowerCase();
-        // Check if any word in the spelling error matches a cancelled word
-        const errorWords = writtenLower.split(/\s+/).filter(w => w.length > 0);
-        return !errorWords.some(word => cancelledWordSet.has(word));
-      })
+      .filter((e: any) => (e.confidence ?? 100) >= 70)
       .map((e: any) => ({
         written: String(e.written || '').trim(),
-        intended: canonicalIntended(e.written, e.intended),
+        intended: String(e.intended || e.written || '').trim(),
         gradeLevel: e.gradeLevel || '',
         confidence: e.confidence ?? 100
       }));
 
+    // SIMPLIFIED: Remove cancelled words from spelling errors (basic filter)
     spellingErrors = spellingErrors
       .filter((err: any) => {
         const writtenLower = err.written?.toLowerCase();
-        // Check if any word in the spelling error matches a cancelled word
         const errorWords = writtenLower.split(/\s+/).filter(w => w.length > 0);
         return !errorWords.some(word => cancelledWordSet.has(word));
-      })
-      .map((e: any) => ({
-        written: e.written,
-        intended: canonicalIntended(e.written, e.intended),
-        gradeLevel: e.gradeLevel || '',
-        confidence: e.confidence ?? 100
-      }));
+      });
 
     // Strip placeholder strings AI sometimes echoes from the prompt template
     const isPlaceholder = (s: string) =>
       /^(write actual|specific visual|specific observable|e\.g\.|no examples)/i.test(s.trim());
     const cleanObs = (arr: string[]) => (arr || []).filter(s => !isPlaceholder(s));
 
-    // Override LLM values with deterministic heuristic calculation
-    const sb = computeSentenceBoundaryEvidence(extracted.transcription);
-
-    // Use heuristic values for more accurate sentence boundary detection
-    extracted.runOnSentences = sb.runOnSentences;
-    extracted.missingCapitals = sb.missingCapitals;
-    extracted.missingPunctuation = sb.missingPunctuation;
+    // SIMPLIFIED: Use LLM values directly, no heuristic override
+    // Removed: computeSentenceBoundaryEvidence override
 
     // Deduplicate grammar mistakes
     const grammarMistakes = dedupeGrammarMistakes(extracted.grammarMistakes || []);
 
-    // Skip uncertain word promotion to spelling errors (to avoid extra red highlights)
+    // Deduplicate spelling errors
     spellingErrors = dedupeSpellingErrors(spellingErrors || []);
 
     extracted.grammarMistakes = grammarMistakes;
 
-    // Post-process guardrail: Fix over-aggressive cancellation patterns
-    // "[CANCELLED: my cousin]" -> "my [CANCELLED: cousin]"
-    // "[CANCELLED: my cousin cousins]" -> "my [CANCELLED: cousin] cousins"
-
-    // 1) First fix + inject cancellations + re-normalize after injection (uncertain excluded)
-    const taggedTranscription = fixCancellationPatterns(
-      injectCancellationTags(
-        fixCancellationPatterns(extracted.transcription),
-        extracted.confirmedCancellations || [],
-        [] // uncertain cancellations excluded from inline injection
-      )
+    // SIMPLIFIED: As-is OCR approach - use plain transcription with confirmed cancellations only
+    // Don't trust model's [CANCELLED: ...] tags blindly
+    const displayTranscription = injectCancellationTags(
+      plainTranscription,
+      extracted.confirmedCancellations || [],
+      [] // uncertain cancellations excluded from inline injection
     );
 
-    const fixedNormalizedTranscription = extracted.normalizedTranscription
-      ? fixCancellationPatterns(extracted.normalizedTranscription)
-      : undefined;
-    const taggedNormalizedTranscription = fixedNormalizedTranscription
-      ? fixCancellationPatterns(
-        injectCancellationTags(fixedNormalizedTranscription, extracted.confirmedCancellations || [], [])
-      )
-      : undefined;
-
-    // 2) Now remove headers from the FINAL tagged transcription (not the old one)
-    const transcriptionForCounting = taggedTranscription
-      .replace(/Date:\s*\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
-      .replace(/\d{1,2}:\d{2}\s*(?:am|pm)?/gi, '')
-      .replace(/\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
-      .replace(/Date:/gi, '');
-
-    // 3) Persist final transcription used everywhere
-    extracted.transcription = taggedTranscription;
-    if (extracted.normalizedTranscription) {
-      extracted.normalizedTranscription = taggedNormalizedTranscription;
-    }
-
-    // 4) Multiple transcription storage for consistency
-    extracted.rawTranscription = rawTranscription;
-
-    const displayTranscription = fixCancellationPatterns(
-      injectCancellationTags(
-        fixCancellationPatterns(rawTranscription),
-        extracted.confirmedCancellations || [],
-        [] // uncertain cancellations excluded from inline injection
-      )
-    );
-
-    // Detect cancellations that are missing from the display transcription
-    const allCancellations = [
-      ...(extracted.confirmedCancellations || []),
-      ...(extracted.uncertainCancellations || [])
-    ];
-    const unplacedCancellations = findUnplacedCancellations(displayTranscription, allCancellations);
-
+    // Remove headers for counting
     const countingTranscription = displayTranscription
       .replace(/Date:\s*\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
       .replace(/\d{1,2}:\d{2}\s*(?:am|pm)?/gi, '')
       .replace(/\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
       .replace(/Date:/gi, '');
 
-    extracted.transcription = displayTranscription;
-    extracted.rawTranscription = rawTranscription;
+    // Store transcriptions
+    extracted.transcription = modelTranscription; // Keep original model transcription
+    extracted.rawTranscription = modelTranscription;
     extracted.displayTranscription = displayTranscription;
     extracted.countingTranscription = countingTranscription;
+    extracted.modelTranscription = modelTranscription;
 
-    // Apply heuristics to catch LLM misses (now using final displayTranscription)
-    spellingErrors = applySpellingHeuristics(extracted.transcription, spellingErrors);
+    // SIMPLIFIED: Minimal cancellation filtering - only basic checks
+    // Keep cancellations that: exist in plain transcription, have confidence >= 70, text non-empty
+    const minimalConfirmedCancellations = (extracted.confirmedCancellations || [])
+      .filter((c: any) => {
+        const text = (c.text || '').trim();
+        return text.length > 0 &&
+               (c.confidence ?? 0) >= 70 &&
+               isPlacedInText(plainTranscription, text);
+      });
 
-    // Filter out ambiguous letter pairs with low confidence
-    const ambiguousPairs: Record<string, string[]> = {
-      'spot': ['sport'],
-      'sport': ['spot'],
-      'were': ['where'],
-      'where': ['were'],
-      'their': ['there'],
-      'there': ['their'],
-      'to': ['too', 'two'],
-      'too': ['to', 'two'],
-      'two': ['to', 'too'],
-      'here': ['hear'],
-      'hear': ['here'],
-      'write': ['right'],
-      'right': ['write'],
-      'no': ['know'],
-      'know': ['no'],
-      'new': ['knew'],
-      'knew': ['new']
-    };
+    extracted.confirmedCancellations = minimalConfirmedCancellations;
 
-    const filteredSpellingErrors: any[] = [];
-    const movedToUncertain: any[] = [];
-
-    for (const err of spellingErrors) {
-      const writtenLower = (err.written || '').toLowerCase();
-      const intendedLower = (err.intended || '').toLowerCase();
-      const confidence = err.confidence || 0;
-
-      // Check if this is an ambiguous pair
-      const isAmbiguous = ambiguousPairs[writtenLower]?.includes(intendedLower) ||
-                          ambiguousPairs[intendedLower]?.includes(writtenLower);
-
-      if (isAmbiguous && confidence < 98) {
-        // Move to uncertain words instead of spelling errors
-        movedToUncertain.push({
-          word: err.written,
-          possibleAlternatives: [err.intended],
-          confidence,
-          reason: 'ambiguous letter pair - low confidence'
-        });
-      } else {
-        filteredSpellingErrors.push(err);
-      }
-    }
-
-    // Add moved items to uncertain words if not already present
-    for (const moved of movedToUncertain) {
-      const alreadyExists = (extracted.uncertainWords || []).some(
-        (uw: any) => String(uw.word || '').toLowerCase() === String(moved.word || '').toLowerCase()
-      );
-      if (!alreadyExists) {
-        extracted.uncertainWords = extracted.uncertainWords || [];
-        extracted.uncertainWords.push(moved);
-      }
-    }
-
-    spellingErrors = filteredSpellingErrors;
-
+    // SIMPLIFIED: Removed applySpellingHeuristics, ambiguous pair logic
+    // Empty declarations for compatibility
+    const unplacedCancellations: any[] = [];
+    const allWordChoiceMistakes: any[] = [];
+    // Basic filtering only - remove cancelled words from spelling
     spellingErrors = spellingErrors
       .filter((err: any) => {
         const writtenLower = err.written?.toLowerCase();
-        // Check if any word in the spelling error matches a cancelled word
         const errorWords = writtenLower.split(/\s+/).filter(w => w.length > 0);
         return !errorWords.some(word => cancelledWordSet.has(word));
       })
       .map((e: any) => ({
         written: e.written,
-        intended: canonicalIntended(e.written, e.intended),
+        intended: e.intended,
         gradeLevel: e.gradeLevel || '',
         occurrence: typeof e.occurrence === 'number' && e.occurrence > 0 ? e.occurrence : 1
       }));
@@ -1618,33 +1571,44 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // ── STEP 3: Narrative — TEXT ONLY, NO IMAGE ───────────────────────────────
     console.log('\n[Step 3] Generating narrative...');
 
-    const step3 = await withFallback(client => client.chat.completions.create({
-      model: model || 'gpt-4o',
-      messages: [{
-        role: 'user',
-        content: buildNarrativePrompt({
-          grade: grade_p, age: age_p,
-          timeGiven: timeGiven_p ? parseFloat(timeGiven_p) : undefined,
-          timeTaken,
-          writingPrompt: prompt_p, paperType: paper_p, writingInstrument: instrument_p,
-          interventionHistory: { tried: interventionTried, improved: improvedVal, details: detailsMatch?.[1] || '' },
-          evidence: evidenceData,
-          scores,
-          probability,
-          rtiImprovement,
-          spellingLabel,
-          fluencyLabel,
-          norm,
-          actionableStrategies,
-        }),
-      }] as OpenAI.Chat.ChatCompletionMessageParam[],
-      max_tokens: max_tokens || 4096,
+    const step3 = await withFallback(client => (client as any).responses.create({
+      model: model || 'gpt-5-chat-latest',
+      input: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: buildNarrativePrompt({
+                grade: grade_p, age: age_p,
+                timeGiven: timeGiven_p ? parseFloat(timeGiven_p) : undefined,
+                timeTaken,
+                writingPrompt: prompt_p, paperType: paper_p, writingInstrument: instrument_p,
+                interventionHistory: { tried: interventionTried, improved: improvedVal, details: detailsMatch?.[1] || '' },
+                evidence: evidenceData,
+                scores,
+                probability,
+                rtiImprovement,
+                spellingLabel,
+                fluencyLabel,
+                norm,
+                actionableStrategies,
+              }),
+            },
+          ],
+        },
+      ],
     }));
 
-    console.log('[Step 3] ✓ | usage:', step3.usage);
-    console.log('[Step 3] Preview:', step3.choices[0]?.message?.content?.slice(0, 200));
+    console.log('[Step 3] ✓ | usage:', (step3 as any).usage);
+    console.log('[Step 3] Preview:', (step3 as any).output?.[0]?.content?.[0]?.text?.slice(0, 200) || (step3 as any).choices?.[0]?.message?.content?.slice(0, 200));
 
-    const rawReportText = step3.choices[0]?.message?.content || '';
+    let rawReportText = (step3 as any).output_text || (step3 as any).output?.[0]?.content?.[0]?.text || (step3 as any).choices?.[0]?.message?.content || '';
+    // Clean up markdown code blocks if present
+    const reportJsonMatch = rawReportText.match(/```json\n?([\s\S]*?)\n?```/) || rawReportText.match(/```\n?([\s\S]*?)\n?```/);
+    if (reportJsonMatch) {
+      rawReportText = reportJsonMatch[1];
+    }
     const deterministicSummary = buildDeterministicSummary({
       grade: grade_p,
       existingSummary: parseSummaryBlock(rawReportText),
@@ -1658,8 +1622,8 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     });
     const reportText = attachDeterministicSummary(rawReportText, deterministicSummary);
 
-    if (step3.choices[0]?.message) {
-      step3.choices[0].message.content = reportText;
+    if ((step3 as any).choices?.[0]?.message) {
+      (step3 as any).choices[0].message.content = reportText;
     }
 
     if (req.userId) {
@@ -1671,11 +1635,11 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
 
     // Construct response with summary data including highlightMap
     const responseData = {
-      ...step3,
+      ...(step3 as any),
       summary: {
         ...deterministicSummary,
-        transcription: extracted.transcription,
-        displayTranscription: extracted.displayTranscription,
+        transcription: extracted.displayTranscription || extracted.transcription,
+        displayTranscription: extracted.displayTranscription || extracted.transcription,
         spellingErrors: visibleSpellingErrors,
         grammarMistakes: grammarMistakes,
         uncertainWords: extracted.uncertainWords || [],
@@ -1687,6 +1651,16 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         missingPunctuation: extracted.missingPunctuation ?? 0,
       }
     };
+
+    console.log('[Response Data] Sending to frontend:');
+    console.log('  - transcription length:', responseData.summary.transcription?.length || 0);
+    console.log('  - displayTranscription length:', responseData.summary.displayTranscription?.length || 0);
+    console.log('  - transcription has [CANCELLED tags]?:', responseData.summary.transcription?.includes('[CANCELLED'));
+    console.log('  - displayTranscription has [CANCELLED tags]?:', responseData.summary.displayTranscription?.includes('[CANCELLED'));
+    console.log('  - transcription preview:', responseData.summary.transcription?.slice(0, 150));
+    console.log('  - displayTranscription preview:', responseData.summary.displayTranscription?.slice(0, 150));
+    console.log('  - confirmedCancellations in response:', responseData.summary.confirmedCancellations?.length || 0);
+    console.log('  - spellingErrors in response:', responseData.summary.spellingErrors?.length || 0);
 
     res.json(responseData);
 

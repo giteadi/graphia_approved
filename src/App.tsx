@@ -371,9 +371,18 @@ const RenderTranscription = ({
 }) => {
   if (!text) return null;
 
+  console.log('[RenderTranscription] Component called');
+  console.log('  - text length:', text.length);
+  console.log('  - text has [CANCELLED]?:', text.includes('[CANCELLED'));
+  console.log('  - text preview:', text.slice(0, 150));
+
   const redWords = highlightMap?.redWords || [];
   const redPhrases = highlightMap?.redPhrases || [];
   const strikePhrases = highlightMap?.strikePhrases || [];
+
+  console.log('  - redWords:', redWords.length);
+  console.log('  - redPhrases:', redPhrases.length);
+  console.log('  - strikePhrases:', strikePhrases.length);
 
   // Tokenize the text into individual words with annotation types
   const tokenizeText = (input: string): Token[] => {
@@ -400,14 +409,16 @@ const RenderTranscription = ({
       }
 
       // Handle UNCERTAIN cancellations (optional rendering)
-      if (SHOW_MAYBE && /^\[(?:MAYBE-CANCELLED):/i.test(part) && part.endsWith(']')) {
+      if (/^\[(?:MAYBE-CANCELLED):/i.test(part) && part.endsWith(']')) {
         const content = part
           .replace(/^\[(?:MAYBE-CANCELLED):\s*/i, '')
           .replace(/\]$/, '')
           .trim();
         
         if (content) {
-          tokens.push({ text: content, type: 'maybeCancelled' });
+          // SHOW_MAYBE=true → dashed underline style
+          // SHOW_MAYBE=false → plain text, but NOT invisible
+          tokens.push({ text: content, type: SHOW_MAYBE ? 'maybeCancelled' : 'normal' });
         }
         continue;
       }
@@ -425,7 +436,18 @@ const RenderTranscription = ({
         }
       }
     }
-    
+
+    const whitespaceTokens = tokens.filter(t => !t.text.trim()).length;
+    console.log('[RenderTranscription] Tokenization complete:');
+    console.log('  - total tokens:', tokens.length);
+    console.log('  - whitespace-only tokens:', whitespaceTokens);
+    console.log('  - non-whitespace tokens:', tokens.length - whitespaceTokens);
+    console.log('  - cancelled tokens:', tokens.filter(t => t.type === 'cancelled').length);
+    console.log('  - maybeCancelled tokens:', tokens.filter(t => t.type === 'maybeCancelled').length);
+    console.log('  - spelling tokens:', tokens.filter(t => t.type === 'spelling').length);
+    console.log('  - grammar tokens:', tokens.filter(t => t.type === 'grammar').length);
+    console.log('  - token sample:', tokens.slice(0, 15).map(t => ({ text: t.text, type: t.type, isSpace: !t.text.trim() })));
+
     return tokens;
   };
 
@@ -450,6 +472,7 @@ const RenderTranscription = ({
     
     // Apply occurrence-based annotations from targets with phrase-level tokenSpan support
     const targets = highlightMap?.targets || [];
+    const useTargetsOnly = targets.length > 0;
     const occurrenceCounter: Record<string, number> = {};
     
     for (let i = 0; i < annotatedTokens.length; i++) {
@@ -471,47 +494,54 @@ const RenderTranscription = ({
         if (singleWordHit.kind === 'cancelled') upgradeToken(i, 'cancelled');
         if (singleWordHit.kind === 'maybe-cancelled') upgradeToken(i, 'maybeCancelled');
         if (singleWordHit.kind === 'spelling') upgradeToken(i, 'spelling');
+        if (singleWordHit.kind === 'grammar') upgradeToken(i, 'grammar');
         continue;
       }
-      
+
       // Check for phrase-level matches (multi-word targets)
-      const phraseHits = targets.filter(x => 
-        (x.tokenSpan || 1) > 1 && 
-        (x.occurrence || 1) === occ
+      const phraseHits = targets.filter(x =>
+        (x.tokenSpan || 1) > 1
       );
-      
+
       for (const phraseHit of phraseHits) {
         const phraseWords = phraseHit.text.split(/\s+/).map(w => normalize(w));
         if (phraseWords.length === 0) continue;
-        
-        // Check if this token could be the start of a phrase match
-        if (normalize(t.text) === phraseWords[0]) {
+
+        // Build word tokens index (non-whitespace only)
+        const wordTokens: { idx: number; norm: string }[] = [];
+        for (let ti = 0; ti < annotatedTokens.length; ti++) {
+          if (annotatedTokens[ti].text.trim()) {
+            wordTokens.push({ idx: ti, norm: normalize(annotatedTokens[ti].text) });
+          }
+        }
+
+        // Find phrase sequence in word tokens
+        for (let wi = 0; wi <= wordTokens.length - phraseWords.length; wi++) {
           let match = true;
-          for (let j = 1; j < phraseWords.length; j++) {
-            if (i + j >= annotatedTokens.length || 
-                normalize(annotatedTokens[i + j].text) !== phraseWords[j]) {
+          for (let j = 0; j < phraseWords.length; j++) {
+            if (wordTokens[wi + j]?.norm !== phraseWords[j]) {
               match = false;
               break;
             }
           }
-          
+
           if (match) {
-            // Apply annotation to all tokens in the phrase
+            // Apply annotation to all tokens in the phrase using correct word token indices
             for (let j = 0; j < phraseWords.length; j++) {
-              const tokenIndex = i + j;
-              if (tokenIndex < annotatedTokens.length) {
-                if (phraseHit.kind === 'cancelled') upgradeToken(tokenIndex, 'cancelled');
-                if (phraseHit.kind === 'maybe-cancelled') upgradeToken(tokenIndex, 'maybeCancelled');
-              }
+              const tokenIndex = wordTokens[wi + j].idx;
+              if (phraseHit.kind === 'cancelled') upgradeToken(tokenIndex, 'cancelled');
+              if (phraseHit.kind === 'maybe-cancelled') upgradeToken(tokenIndex, 'maybeCancelled');
+              if (phraseHit.kind === 'grammar') upgradeToken(tokenIndex, 'grammar');
+              if (phraseHit.kind === 'spelling') upgradeToken(tokenIndex, 'spelling');
             }
-            break; // Skip other phrase checks for this position
+            break; // Phrase matched, move to next phraseHit
           }
         }
       }
     }
     
     // Legacy fallback: if targets is empty, use old redWords + strikePhrases matching
-    if (!targets.length) {
+    if (!useTargetsOnly) {
       // spelling fallback
       for (let i = 0; i < annotatedTokens.length; i++) {
         const token = annotatedTokens[i];
@@ -520,7 +550,7 @@ const RenderTranscription = ({
         const isSpellingError = redWords.some(word => normalize(word) === normalizedToken);
         if (isSpellingError) upgradeToken(i, 'spelling');
       }
-  
+
       // cancelled fallback
       for (const phrase of strikePhrases) {
         const normalizedPhrase = normalize(phrase);
@@ -532,43 +562,79 @@ const RenderTranscription = ({
         }
       }
     }
-    
+
     // Fallback: Apply grammar phrase annotations (sequence-based matching) for backward compatibility
+    if (!useTargetsOnly) {
     const findPhraseSequence = (phrase: string, tokenArray: Token[]): number => {
-      const phraseWords = phrase.split(/\s+/).map(w => normalize(w));
+      const normTok = (s: string) => (s || "").toLowerCase().replace(/[^\w]/g, "");
+      const phraseWords = phrase.split(/\s+/).map(normTok).filter(Boolean);
       if (phraseWords.length === 0) return -1;
-      
-      for (let i = 0; i <= tokenArray.length - phraseWords.length; i++) {
+
+      // Build index of only non-whitespace tokens with their positions in the full array
+      const wordTokens: { idx: number; norm: string }[] = [];
+      for (let i = 0; i < tokenArray.length; i++) {
+        if (tokenArray[i].text.trim()) {
+          wordTokens.push({ idx: i, norm: normTok(tokenArray[i].text) });
+        }
+      }
+
+      // Find phraseWords as a contiguous sequence within wordTokens
+      for (let wi = 0; wi <= wordTokens.length - phraseWords.length; wi++) {
         let match = true;
         for (let j = 0; j < phraseWords.length; j++) {
-          if (normalize(tokenArray[i + j].text) !== phraseWords[j]) {
+          if (wordTokens[wi + j]?.norm !== phraseWords[j]) {
             match = false;
             break;
           }
         }
-        if (match) return i;
+        if (match) {
+          // Return the index of the FIRST matching word token in the full token array
+          return wordTokens[wi].idx;
+        }
       }
       return -1;
     };
-    
+
+    let grammarMatches = 0;
     for (const phrase of redPhrases) {
+      const phraseWords = phrase.split(/\s+/).map(w => normalize(w)).filter(Boolean);
       const sequenceStart = findPhraseSequence(phrase, annotatedTokens);
       if (sequenceStart !== -1) {
-        const phraseWords = phrase.split(/\s+/);
-        for (let i = 0; i < phraseWords.length; i++) {
-          const tokenIndex = sequenceStart + i;
-          if (tokenIndex < annotatedTokens.length) {
-            upgradeToken(tokenIndex, 'grammar');
+        // Walk forward from sequenceStart, upgrading phraseWords.length non-whitespace tokens
+        let wordsMatched = 0;
+        for (let i = sequenceStart; i < annotatedTokens.length && wordsMatched < phraseWords.length; i++) {
+          if (annotatedTokens[i].text.trim()) {
+            upgradeToken(i, 'grammar');
+            grammarMatches++;
+            wordsMatched++;
+          }
+        }
+        // Safety check: ensure exact word count match
+        if (wordsMatched !== phraseWords.length) {
+          // Rollback if not exact match (shouldn't happen with findPhraseSequence)
+          for (let i = sequenceStart; i < annotatedTokens.length && wordsMatched > 0; i++) {
+            if (annotatedTokens[i].text.trim()) {
+              annotatedTokens[i] = { ...annotatedTokens[i], type: 'normal' };
+              wordsMatched--;
+            }
           }
         }
       }
     }
-    
+    }
     return annotatedTokens;
   };
 
   const tokens = tokenizeText(text);
   const annotatedTokens = applyAnnotations(tokens);
+
+  console.log('[RenderTranscription] Annotation complete:');
+  console.log('  - total annotated tokens:', annotatedTokens.length);
+  console.log('  - cancelled tokens:', annotatedTokens.filter(t => t.type === 'cancelled').length);
+  console.log('  - maybeCancelled tokens:', annotatedTokens.filter(t => t.type === 'maybeCancelled').length);
+  console.log('  - spelling tokens:', annotatedTokens.filter(t => t.type === 'spelling').length);
+  console.log('  - grammar tokens:', annotatedTokens.filter(t => t.type === 'grammar').length);
+  console.log('  - cancelled samples:', annotatedTokens.filter(t => t.type === 'cancelled').slice(0, 5).map(t => t.text));
 
   // Render tokens based on their type
   return (
@@ -2127,15 +2193,16 @@ ${result.report}
               new Paragraph({
                 children: (() => {
                   const transcription = result.summary.displayTranscription || result.summary.transcription || '';
-                  const highlightMap = result.summary.highlightMap || { redWords: [], redPhrases: [], strikePhrases: [], targets: [] };
+                  const highlightMap = (result.summary.highlightMap || { redWords: [], redPhrases: [], strikePhrases: [], targets: [] }) as any;
                   const redWords = highlightMap.redWords || [];
-                  const redPhrases = [...(highlightMap.redPhrases || [])].sort((a, b) => b.length - a.length);
-                  const strikePhrases = [...(highlightMap.strikePhrases || [])].sort((a, b) => b.length - a.length);
+                  const redPhrases = [...(highlightMap.redPhrases || [])].sort((a: any, b: any) => b.length - a.length);
+                  const grammarPhrases = [...((highlightMap.targets || [])).filter((t: any) => t.kind === 'grammar').map((t: any) => t.text)].sort((a: any, b: any) => b.length - a.length);
+                  const strikePhrases = [...(highlightMap.strikePhrases || [])].sort((a: any, b: any) => b.length - a.length);
 
                   const runs: any[] = [];
                   const parts = transcription.split(/(\[(?:cancelled|CANCELLED):.*?\])/gi);
 
-                  const pushStyledText = (value: string, kind: 'plain' | 'red' | 'strike' | 'maybe') => {
+                  const pushStyledText = (value: string, kind: any) => {
                     if (!value) return;
                     runs.push(new TextRun({
                       text: value,
@@ -2143,6 +2210,7 @@ ${result.report}
                       size: 22,
                       italics: true,
                       ...(kind === 'red' ? { bold: true, color: 'CC0000' } : {}),
+                      ...(kind === 'orange' ? { bold: true, color: 'CC6600' } : {}),
                       ...(kind === 'strike' ? { strike: true, color: '888888' } : {}),
                       ...(kind === 'maybe' ? { underline: {}, color: '777777' } : {}),
                     }));
@@ -2151,15 +2219,15 @@ ${result.report}
                   const splitByPhrases = (
                     input: string,
                     phrases: string[],
-                    kind: 'red' | 'strike'
-                  ): Array<{ text: string; kind: 'plain' | 'red' | 'strike' }> => {
-                    let pieces: Array<{ text: string; kind: 'plain' | 'red' | 'strike' }> = [
+                    kind: any
+                  ): any => {
+                    let pieces: any[] = [
                       { text: input, kind: 'plain' }
                     ];
 
                     for (const phrase of phrases) {
                       const pattern = new RegExp(`(\\b${escapeRegExp(phrase)}\\b)`, 'gi');
-                      const next: Array<{ text: string; kind: 'plain' | 'red' | 'strike' }> = [];
+                      const next: any[] = [];
 
                       for (const piece of pieces) {
                         if (piece.kind !== 'plain') {
@@ -2218,7 +2286,7 @@ ${result.report}
 
                     const strikeSplit = splitByPhrases(part, strikePhrases, 'strike');
 
-                    strikeSplit.forEach(piece => {
+                    strikeSplit.forEach((piece: any) => {
                       if (piece.kind === 'strike') {
                         pushStyledText(piece.text, 'strike');
                         return;
@@ -2226,12 +2294,22 @@ ${result.report}
 
                       const redSplit = splitByPhrases(piece.text, redPhrases, 'red');
 
-                      redSplit.forEach(redPiece => {
+                      redSplit.forEach((redPiece: any) => {
                         if (redPiece.kind === 'red') {
                           pushStyledText(redPiece.text, 'red');
-                        } else {
-                          renderPlainWords(redPiece.text);
+                          return;
                         }
+
+                        const grammarSplit = splitByPhrases(redPiece.text, grammarPhrases, 'orange');
+
+                        grammarSplit.forEach((grammarPiece: any) => {
+                          if (grammarPiece.kind === 'orange') {
+                            pushStyledText(grammarPiece.text, 'orange');
+                            return;
+                          }
+
+                          renderPlainWords(grammarPiece.text);
+                        });
                       });
                     });
                   });
@@ -3909,6 +3987,17 @@ ${result.report}
                           </h3>
                           <div className="border border-gray-200 p-3.5 bg-[#FAFAFA] rounded-sm text-[9.5pt] leading-relaxed text-gray-800 italic block max-h-[180px] overflow-y-auto">
                             <span>"</span>
+                            {(() => {
+                              console.log('[App.tsx] RenderTranscription props:');
+                              console.log('  - text length:', (result.summary.displayTranscription || result.summary.transcription)?.length || 0);
+                              console.log('  - text has [CANCELLED]?:', (result.summary.displayTranscription || result.summary.transcription)?.includes('[CANCELLED'));
+                              console.log('  - text preview:', (result.summary.displayTranscription || result.summary.transcription)?.slice(0, 150));
+                              console.log('  - highlightMap:', result.summary.highlightMap);
+                              console.log('  - highlightMap redWords:', result.summary.highlightMap?.redWords?.length || 0);
+                              console.log('  - highlightMap redPhrases:', result.summary.highlightMap?.redPhrases?.length || 0);
+                              console.log('  - highlightMap strikePhrases:', result.summary.highlightMap?.strikePhrases?.length || 0);
+                              return null;
+                            })()}
                             <RenderTranscription text={result.summary.displayTranscription || result.summary.transcription} highlightMap={result.summary.highlightMap} />
                             <span>"</span>
                           </div>

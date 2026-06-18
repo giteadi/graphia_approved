@@ -56,6 +56,12 @@ function escapeRegExp(str: string): string {
 export function sanitizeEvidence(evidence: any): any {
   if (!evidence) return evidence;
 
+  console.log('[Evidence Sanitizer] Input:');
+  console.log('  - confirmedCancellations:', evidence.confirmedCancellations?.length || 0);
+  console.log('  - spellingErrors:', evidence.spellingErrors?.length || 0);
+  console.log('  - grammarMistakes:', evidence.grammarMistakes?.length || 0);
+  console.log('  - wordChoiceMistakes:', evidence.wordChoiceMistakes?.length || 0);
+
   // Build set of cancelled words with occurrence tracking
   const cancelledKeys = new Set(
     (evidence.confirmedCancellations || [])
@@ -71,6 +77,7 @@ export function sanitizeEvidence(evidence: any): any {
   );
 
   // Filter out spelling errors using occurrence-based matching when available
+  const initialSpellingCount = (evidence.spellingErrors || []).length;
   evidence.spellingErrors = (evidence.spellingErrors || [])
     .filter((e: any) => String(e.written || '').trim().length > 0)
     .filter((e: any) => {
@@ -83,6 +90,8 @@ export function sanitizeEvidence(evidence: any): any {
       // no occurrence -> fallback word-level
       return !cancelledWords.has(String(e.written || '').toLowerCase().trim());
     });
+
+  console.log('[Evidence Sanitizer] Spelling errors filtered:', initialSpellingCount, '→', evidence.spellingErrors.length);
 
   // Filter out word choice mistakes using occurrence-based matching with conditional fallback
   evidence.wordChoiceMistakes = (evidence.wordChoiceMistakes || []).filter((e: any) => {
@@ -97,6 +106,7 @@ export function sanitizeEvidence(evidence: any): any {
   });
 
   // Filter out grammar mistakes that contain cancelled words in their examples (word boundary matching)
+  const initialGrammarCount = (evidence.grammarMistakes || []).length;
   evidence.grammarMistakes = (evidence.grammarMistakes || []).filter((g: any) => {
     const example = g.example?.toLowerCase() || '';
     return ![...cancelledWords].some((word: string) => {
@@ -105,6 +115,8 @@ export function sanitizeEvidence(evidence: any): any {
       return regex.test(example);
     });
   });
+
+  console.log('[Evidence Sanitizer] Grammar mistakes filtered:', initialGrammarCount, '→', evidence.grammarMistakes.length);
 
   console.log('[Evidence Sanitizer] Applied priority rules:');
   console.log(`  - Cancelled words: ${cancelledWords.size}`);
