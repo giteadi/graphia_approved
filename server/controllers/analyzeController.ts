@@ -551,7 +551,7 @@ After the report, append:
   "assessmentRecommendation": "${rtiImprovement ? 'A formal evaluation is NOT recommended at this time because the student has shown positive improvement with current interventions. Continued monitoring and support is recommended.' : 'Based on the evidence, a formal psycho-educational assessment is recommended.'}",
   "probabilityEstimate": "${probability} — cite domains impaired and evidence",
   "spellingScore": "${spellingLabel} — 2-sentence justification",
-  "academicDiscrepancy": "The student's spelling performance appears below expected grade level based on this writing sample; however, comprehensive assessment across multiple tasks is recommended before determining the extent of academic discrepancy.",
+  "academicDiscrepancy": "If spelling score >= 85, write: 'No significant academic discrepancy observed in spelling. The student is performing at or near their expected ${grade} level based on this sample.' If spelling score < 85 and there is a clear grade gap (actual grade vs performance level), calculate the gap and write: 'Significant academic discrepancy noted. The student is currently in ${grade}, but spelling patterns indicate functional performance at approximately a Grade [performance level] (a gap of [X] years).' Otherwise, write: 'The student's spelling and writing performance appears below expected ${grade} expectations. Comprehensive assessment across multiple tasks is recommended to determine the exact academic discrepancy.'",
   "horizontalAnalysis": "2-sentence horizontal spacing observation",
   "verticalAnalysis": "2-sentence vertical organisation observation",
   "wordCount": ${evidence.wordCount},
@@ -687,7 +687,23 @@ function buildDeterministicSummary(params: {
       : (existingSummary.assessmentRecommendation || 'Based on the evidence, a formal psycho-educational assessment is recommended.'),
     probabilityEstimate: probability,
     spellingScore: `${spellingLabel} — ${spellingErrors.length} spelling error${spellingErrors.length === 1 ? '' : 's'} detected.`,
-    academicDiscrepancy: existingSummary.academicDiscrepancy || 'The student\'s spelling performance appears below expected grade level based on this writing sample; however, comprehensive assessment across multiple tasks is recommended before determining the extent of academic discrepancy.',
+    academicDiscrepancy: (() => {
+      // 1. Calculate the math
+      const actualGradeNum = parseInt(grade.replace(/\D/g, '')) || 0;
+      const perfGradeNum = parseInt(fallbackGradeLevel.replace(/\D/g, '')) || 0;
+      
+      // 2. Logic based on spelling score
+      if (scores.spelling >= 85) {
+        return `No significant academic discrepancy observed in spelling. The student is performing at or near their expected ${grade} level based on this sample.`;
+      } 
+      
+      if (actualGradeNum > 0 && perfGradeNum > 0 && actualGradeNum > perfGradeNum) {
+        const gap = actualGradeNum - perfGradeNum;
+        return `Significant academic discrepancy noted. The student is currently in ${grade}, but spelling patterns indicate functional performance at approximately a Grade ${perfGradeNum} level (a gap of ${gap} year${gap > 1 ? 's' : ''}).`;
+      }
+      
+      return `The student's spelling and writing performance appears below expected ${grade} expectations. Comprehensive assessment across multiple tasks is recommended to determine the exact academic discrepancy.`;
+    })(),
     horizontalAnalysis: existingSummary.horizontalAnalysis || evidence.spacingObservations.join(' ') || 'Horizontal spacing observations were limited in the extracted evidence.',
     verticalAnalysis: existingSummary.verticalAnalysis || evidence.alignmentObservations.join(' ') || 'Vertical organisation observations were limited in the extracted evidence.',
     wordCount: evidence.wordCount,
