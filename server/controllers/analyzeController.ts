@@ -551,7 +551,7 @@ After the report, append:
   "assessmentRecommendation": "${rtiImprovement ? 'A formal evaluation is NOT recommended at this time because the student has shown positive improvement with current interventions. Continued monitoring and support is recommended.' : 'Based on the evidence, a formal psycho-educational assessment is recommended.'}",
   "probabilityEstimate": "${probability} — cite domains impaired and evidence",
   "spellingScore": "${spellingLabel} — 2-sentence justification",
-  "academicDiscrepancy": "If spelling score >= 85, write: 'No significant academic discrepancy observed in spelling. The student is performing at or near their expected ${grade} level based on this sample.' If spelling score < 85 and there is a clear grade gap (actual grade vs performance level), calculate the gap and write: 'Significant academic discrepancy noted. The student is currently in ${grade}, but spelling patterns indicate functional performance at approximately a Grade [performance level] (a gap of [X] years).' Otherwise, write: 'The student's spelling and writing performance appears below expected ${grade} expectations. Comprehensive assessment across multiple tasks is recommended to determine the exact academic discrepancy.'",
+  "academicDiscrepancy": "Determined dynamically by backend based on impaired domains (spelling, grammar, fluency).",
   "horizontalAnalysis": "2-sentence horizontal spacing observation",
   "verticalAnalysis": "2-sentence vertical organisation observation",
   "wordCount": ${evidence.wordCount},
@@ -688,21 +688,36 @@ function buildDeterministicSummary(params: {
     probabilityEstimate: probability,
     spellingScore: `${spellingLabel} — ${spellingErrors.length} spelling error${spellingErrors.length === 1 ? '' : 's'} detected.`,
     academicDiscrepancy: (() => {
-      // 1. Calculate the math
-      const actualGradeNum = parseInt(grade.replace(/\D/g, '')) || 0;
-      const perfGradeNum = parseInt(fallbackGradeLevel.replace(/\D/g, '')) || 0;
-      
-      // 2. Logic based on spelling score
-      if (scores.spelling >= 85) {
-        return `No significant academic discrepancy observed in spelling. The student is performing at or near their expected ${grade} level based on this sample.`;
-      } 
-      
-      if (actualGradeNum > 0 && perfGradeNum > 0 && actualGradeNum > perfGradeNum) {
-        const gap = actualGradeNum - perfGradeNum;
-        return `Significant academic discrepancy noted. The student is currently in ${grade}, but spelling patterns indicate functional performance at approximately a Grade ${perfGradeNum} level (a gap of ${gap} year${gap > 1 ? 's' : ''}).`;
+      // 1. Identify which key domains are in RED (Needs Support)
+      // Based on UI logic: Spelling/Grammar < 70 is RED. Fluency < norm.min is RED.
+      const impairedDomains: string[] = [];
+
+      if (scores.spelling < 70) impairedDomains.push("spelling");
+      if (scores.grammar < 70) impairedDomains.push("grammar");
+      if (evidence.wpm < norm.min) impairedDomains.push("fluency (writing speed)");
+
+      // 2. If NO domains are in RED
+      if (impairedDomains.length === 0) {
+        return `No significant academic discrepancy observed. The student is performing at or near expected ${grade} levels across spelling, grammar, and fluency.`;
       }
-      
-      return `The student's spelling and writing performance appears below expected ${grade} expectations. Comprehensive assessment across multiple tasks is recommended to determine the exact academic discrepancy.`;
+
+      // 3. Format the impaired domains as a readable string
+      let domainsText = "";
+      if (impairedDomains.length === 1) {
+        domainsText = impairedDomains[0];
+      } else if (impairedDomains.length === 2) {
+        domainsText = `${impairedDomains[0]} and ${impairedDomains[1]}`;
+      } else {
+        domainsText = `${impairedDomains[0]}, ${impairedDomains[1]}, and ${impairedDomains[2]}`;
+      }
+
+      // 4. Determine terminology: Low, Moderate, or High based on count
+      let severity = "Low";
+      if (impairedDomains.length === 2) severity = "Moderate";
+      if (impairedDomains.length === 3) severity = "High";
+
+      // 5. Construct the final clinical statement
+      return `A ${severity} academic discrepancy is noted. While the student is currently in ${grade}, performance falls below grade-level expectations specifically in the domain(s) of ${domainsText}, which currently require clinical support.`;
     })(),
     horizontalAnalysis: existingSummary.horizontalAnalysis || evidence.spacingObservations.join(' ') || 'Horizontal spacing observations were limited in the extracted evidence.',
     verticalAnalysis: existingSummary.verticalAnalysis || evidence.alignmentObservations.join(' ') || 'Vertical organisation observations were limited in the extracted evidence.',
