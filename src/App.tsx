@@ -2965,6 +2965,7 @@ ${result.report}
                 <div className="flex items-center gap-2.5">
                   <GraduationCap className="w-5 h-5 text-emerald-400 animate-bounce" />
                   <div>
+                    <span className="text-[8px] text-emerald-400 font-mono uppercase tracking-widest opacity-70">TM</span>
                     <h3 className="font-serif italic text-sm md:text-base font-bold tracking-tight">
                       GraphiaCheck Interactive Tour
                     </h3>
@@ -3128,8 +3129,9 @@ ${result.report}
       >
         <div className="flex items-center gap-3">
           <Activity className="w-8 h-8" />
-          <h1 className="text-2xl tracking-tighter uppercase italic font-serif">
+          <h1 className="text-2xl tracking-tighter uppercase italic font-serif leading-none flex items-start">
             GRAPHIACHECK PRO
+            <sup className="text-[10px] font-sans font-bold not-italic ml-1 opacity-70 tracking-normal">TM</sup>
           </h1>
         </div>
         <div className="flex items-center gap-4">
@@ -3948,14 +3950,17 @@ ${result.report}
 
                         {/* Header Box (navy banner) */}
                         <div className="bg-[#0C2340] text-white pt-3 pb-4 px-6 rounded-sm">
-                          {/* MINDSAID LEARNING — top left, small gray mono */}
-                          <div className="text-[7pt] text-gray-400 font-mono tracking-[0.25em] uppercase mb-1">
+                          {/* MINDSAID LEARNING — top left, small white mono */}
+                          <div className="text-[7pt] text-white font-mono tracking-[0.25em] uppercase mb-1">
                             MINDSAID LEARNING
                           </div>
                           {/* Main title — centered, white, bold */}
-                          <h1 className="text-[16pt] font-bold tracking-widest uppercase text-white text-center leading-tight mb-3">
-                            GRAPHIACHECK ASSESSMENT REPORT
-                          </h1>
+                          <div className="text-center">
+                            <span className="text-[8pt] text-gray-300 font-mono uppercase tracking-widest">TM</span>
+                            <h1 className="text-[16pt] font-bold tracking-widest uppercase text-white leading-tight mt-1">
+                              GRAPHIACHECK ASSESSMENT REPORT
+                            </h1>
+                          </div>
                           {/* Detail lines — centered, thin top border */}
                           <div className="border-t border-white/20 pt-2 text-center space-y-[4px]">
                             <div className="text-[8.5pt] text-gray-300">
@@ -4189,7 +4194,10 @@ ${result.report}
                         {/* Minimal top header row */}
                         <div className="flex justify-between items-center text-[#718096] text-[8.5pt] border-b border-gray-200 pb-1">
                           <div className="font-medium font-sans uppercase tracking-tight text-left">
-                            {studentName || 'Lyes Difle'} &nbsp;|&nbsp; GraphiaCheck Assessment REPORT
+                            <div className="text-[6pt] font-mono uppercase tracking-widest opacity-70 text-center">TM</div>
+                            <div className="text-[8.5pt]">
+                              {studentName || 'Lyes Difle'} &nbsp;|&nbsp; GraphiaCheck Assessment REPORT
+                            </div>
                           </div>
                           <div className="font-semibold text-right tabular-nums">
                             {new Date().toLocaleDateString('en-GB')}
@@ -4389,7 +4397,10 @@ ${result.report}
                         {/* Minimal top header row */}
                         <div className="flex justify-between items-center text-[#718096] text-[8.5pt] border-b border-gray-200 pb-1">
                           <div className="font-medium font-sans uppercase tracking-tight text-left">
-                            {studentName || 'Lyes Difle'} &nbsp;|&nbsp; GraphiaCheck Assessment REPORT
+                            <div className="text-[6pt] font-mono uppercase tracking-widest opacity-70 text-center">TM</div>
+                            <div className="text-[8.5pt]">
+                              {studentName || 'Lyes Difle'} &nbsp;|&nbsp; GraphiaCheck Assessment REPORT
+                            </div>
                           </div>
                           <div className="font-semibold text-right tabular-nums">
                             {new Date().toLocaleDateString('en-GB')}
@@ -4521,7 +4532,10 @@ ${result.report}
                         {/* Minimal top header row */}
                         <div className="flex justify-between items-center text-[#718096] text-[8.5pt] border-b border-gray-200 pb-1">
                           <div className="font-medium font-sans uppercase tracking-tight text-left">
-                            {studentName || 'Lyes Difle'} &nbsp;|&nbsp; GraphiaCheck Assessment REPORT
+                            <div className="text-[6pt] font-mono uppercase tracking-widest opacity-70 text-center">TM</div>
+                            <div className="text-[8.5pt]">
+                              {studentName || 'Lyes Difle'} &nbsp;|&nbsp; GraphiaCheck Assessment REPORT
+                            </div>
                           </div>
                           <div className="font-semibold text-right tabular-nums">
                             {new Date().toLocaleDateString('en-GB')}
@@ -4661,9 +4675,12 @@ ${result.report}
                 <div className="w-10 h-10 bg-[#141414] flex items-center justify-center">
                   <Activity className="w-6 h-6 text-[#E4E3E0]" />
                 </div>
-                <div>
-                  <h3 className="font-bold text-lg">GraphiaCheck</h3>
-                  <p className="text-xs font-mono uppercase tracking-wider opacity-60">Clinical Analysis</p>
+                <div className="flex flex-col justify-center">
+                  <h3 className="font-bold text-lg leading-none flex items-start">
+                    GraphiaCheck
+                    <sup className="text-[9px] font-sans font-bold not-italic ml-0.5 opacity-60 tracking-normal">TM</sup>
+                  </h3>
+                  <p className="text-[10px] font-mono uppercase tracking-wider opacity-60 mt-1.5 leading-none">Clinical Analysis</p>
                 </div>
               </div>
               <p className="text-sm opacity-70 leading-relaxed">

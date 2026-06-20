@@ -29,12 +29,15 @@ export default function Navbar({
           <div className="w-9 h-9 bg-[#1a3a4a] rounded-md flex items-center justify-center">
             <span className="text-white font-bold text-sm">G</span>
           </div>
-          <span
-            className="text-[#1a3a4a] font-bold text-lg tracking-tight"
-            style={{ fontFamily: "'Georgia', serif" }}
-          >
-            GraphiaCheck
-          </span>
+          <div className="flex items-start">
+            <span
+              className="text-[#1a3a4a] font-bold text-lg tracking-tight"
+              style={{ fontFamily: "'Georgia', serif" }}
+            >
+              GraphiaCheck
+              <sup className="text-[9px] font-sans font-bold not-italic ml-0.5 opacity-60 tracking-normal">TM</sup>
+            </span>
+          </div>
         </button>
 
         {/* Navigation */}
