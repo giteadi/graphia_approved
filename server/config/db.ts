@@ -71,9 +71,20 @@ export async function initDB() {
           name       VARCHAR(100) NOT NULL,
           email      VARCHAR(150) NOT NULL UNIQUE,
           password   VARCHAR(255) NOT NULL,
+          mobile     VARCHAR(20),
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
+
+      // Add mobile column if it doesn't exist (for existing tables)
+      try {
+        await conn.execute('ALTER TABLE users ADD COLUMN mobile VARCHAR(20)');
+      } catch (err: any) {
+        // Column might already exist, ignore error
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+          console.warn('[DB] Note on mobile column:', err.message);
+        }
+      }
 
       await conn.execute(`
         CREATE TABLE IF NOT EXISTS reports (

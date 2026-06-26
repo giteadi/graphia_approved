@@ -4,6 +4,7 @@ export interface AuthUser {
   id: number;
   name: string;
   email: string;
+  mobile?: string;
 }
 
 export interface AuthResponse {
@@ -12,11 +13,11 @@ export interface AuthResponse {
   message: string;
 }
 
-export async function registerUser(name: string, email: string, password: string): Promise<AuthResponse> {
+export async function registerUser(name: string, email: string, password: string, mobile?: string): Promise<AuthResponse> {
   const res = await fetch(`${API}/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, email, password }),
+    body: JSON.stringify({ name, email, password, mobile }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Registration failed');

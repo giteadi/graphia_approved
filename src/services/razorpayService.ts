@@ -204,7 +204,7 @@ export function initiateRazorpayPayment(
     prefill: {
       name: report_data?.studentName || '',
       email: report_data?.contactEmail || '',
-      contact: ''
+      contact: report_data?.contactPhone || ''
     },
     theme: {
       color: '#0C2340'

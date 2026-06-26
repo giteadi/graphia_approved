@@ -5,8 +5,8 @@ import { query } from '../config/db.js';
 
 // Razorpay instance using environment variables
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID || 'rzp_live_RuZlqciKwvcmLJ',
-  key_secret: process.env.RAZORPAY_KEY_SECRET || '60bnM5xSBYo6RYdz2FWBtob0',
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
 export async function createOrder(req: Request, res: Response): Promise<void> {
@@ -43,7 +43,7 @@ export async function createOrder(req: Request, res: Response): Promise<void> {
       success: true,
       data: {
         id: order.id,
-        key: process.env.RAZORPAY_KEY_ID || 'rzp_live_RuZlqciKwvcmLJ', // Live key for frontend
+        key: process.env.RAZORPAY_KEY_ID, // Use environment variable
         amount: order.amount,
         currency: order.currency,
         receipt: order.receipt
@@ -99,12 +99,18 @@ export async function verifyPayment(req: Request, res: Response): Promise<void> 
       return;
     }
 
-    // Store payment in database
+    // Store payment in database with phone number
     const paymentAmount = amount || 899.00;
+    const contactEmail = report_data?.contactEmail || report_data?.contact_info || null;
+    const contactPhone = report_data?.contactPhone || null;
+    const paymentDescription = contactPhone
+      ? `${description || 'Report Generation Fee'} | ${contactEmail || ''} | ${contactPhone}`
+      : `${description || 'Report Generation Fee'} | ${contactEmail || ''}`;
+
     const paymentResult = await query(
       `INSERT INTO payments (user_id, amount, currency, status, payment_method, description, payment_date)
        VALUES (?, ?, 'INR', 'completed', 'razorpay', ?, NOW())`,
-      [user_id, paymentAmount, description || 'Report Generation Fee']
+      [user_id, paymentAmount, paymentDescription]
     );
 
     const paymentId = (paymentResult as any).insertId;
@@ -113,6 +119,9 @@ export async function verifyPayment(req: Request, res: Response): Promise<void> 
     // Check if report data contains high probability
     const probability = report_data?.probability || 'Unknown';
     const isHighProbability = probability.toLowerCase().includes('high');
+
+    // Combine email and phone for contact_info (reuse variables from above)
+    const contactInfo = contactPhone ? `${contactEmail || ''} | ${contactPhone}` : contactEmail;
 
     // Store report with probability information
     await query(
@@ -124,9 +133,9 @@ export async function verifyPayment(req: Request, res: Response): Promise<void> 
         JSON.stringify(report_data),
         probability,
         isHighProbability,
-        report_data?.studentName || null,
-        report_data?.age || null,
-        report_data?.contactEmail || null
+        report_data?.studentName || report_data?.student_name || null,
+        report_data?.age || report_data?.student_age || null,
+        contactInfo
       ]
     );
 
@@ -225,11 +234,22 @@ export async function getHighProbabilityReports(req: Request, res: Response): Pr
     const formattedReports = reports.map((report: any) => {
       try {
         const reportData = JSON.parse(report.report_text);
+        
+        // Extract phone from contact_info if stored as "email | phone"
+        let extractedPhone = null;
+        if (report.contact_info && report.contact_info.includes('|')) {
+          const parts = report.contact_info.split('|').map((p: string) => p.trim());
+          if (parts.length > 1) {
+            extractedPhone = parts[1]; // Second part is phone
+          }
+        }
+        
         return {
           id: report.id,
           userId: report.user_id,
           userName: report.user_name,
           userEmail: report.user_email,
+          userMobile: extractedPhone || null,
           studentName: report.student_name,
           studentAge: report.student_age,
           contactInfo: report.contact_info,
@@ -241,11 +261,21 @@ export async function getHighProbabilityReports(req: Request, res: Response): Pr
           summary: reportData.summary
         };
       } catch {
+        // Extract phone from contact_info even if JSON parsing fails
+        let extractedPhone = null;
+        if (report.contact_info && report.contact_info.includes('|')) {
+          const parts = report.contact_info.split('|').map((p: string) => p.trim());
+          if (parts.length > 1) {
+            extractedPhone = parts[1];
+          }
+        }
+        
         return {
           id: report.id,
           userId: report.user_id,
           userName: report.user_name,
           userEmail: report.user_email,
+          userMobile: extractedPhone || null,
           studentName: report.student_name,
           studentAge: report.student_age,
           contactInfo: report.contact_info,

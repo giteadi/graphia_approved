@@ -15,6 +15,7 @@ export default function AuthPage({ onAuth, onBack }: AuthPageProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [mobile, setMobile] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -26,7 +27,7 @@ export default function AuthPage({ onAuth, onBack }: AuthPageProps) {
     try {
       let res;
       if (mode === 'register') {
-        res = await registerUser(name, email, password);
+        res = await registerUser(name, email, password, mobile);
       } else {
         res = await loginUser(email, password);
       }
@@ -91,6 +92,7 @@ export default function AuthPage({ onAuth, onBack }: AuthPageProps) {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'register' && (
+              <>
               <div>
                 <label className="font-mono text-[10px] uppercase tracking-widest text-[#141414] opacity-60 block mb-1">
                   Full Name
@@ -104,6 +106,19 @@ export default function AuthPage({ onAuth, onBack }: AuthPageProps) {
                   className="w-full border border-[#141414] bg-transparent px-3 py-2 font-mono text-sm text-[#141414] outline-none focus:ring-1 focus:ring-[#141414]"
                 />
               </div>
+              <div>
+                <label className="font-mono text-[10px] uppercase tracking-widest text-[#141414] opacity-60 block mb-1">
+                  Mobile Number
+                </label>
+                <input
+                  type="tel"
+                  value={mobile}
+                  onChange={e => setMobile(e.target.value)}
+                  placeholder="+91 9876543210"
+                  className="w-full border border-[#141414] bg-transparent px-3 py-2 font-mono text-sm text-[#141414] outline-none focus:ring-1 focus:ring-[#141414]"
+                />
+              </div>
+              </>
             )}
 
             <div>

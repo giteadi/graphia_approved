@@ -1781,7 +1781,10 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
         paperType,
         writingInstrument,
         timeGiven ? parseFloat(timeGiven) : undefined,
-        observationalNotes
+        observationalNotes,
+        studentName,
+        contactEmail,
+        contactPhone
       );
       const analysisResult = { ...analysis, image };
       

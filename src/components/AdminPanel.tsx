@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Search, Calendar, Filter, ChevronDown, User, Mail, DollarSign, Clock, X, Loader2, LogOut, Shield, Phone } from 'lucide-react';
+import { Search, Calendar, Filter, ChevronDown, User, Mail, DollarSign, Clock, X, Loader2, LogOut, Shield, Phone, Check, Trash2, CheckSquare, Square } from 'lucide-react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { getUser, clearSession } from '../services/authService';
 
@@ -7,6 +7,7 @@ interface Payment {
   id: string;
   userName: string;
   userEmail: string;
+  userMobile?: string;
   amount: number;
   currency: string;
   date: string;
@@ -20,6 +21,7 @@ interface HighProbabilityUser {
   userId: number;
   userName: string;
   userEmail: string;
+  userMobile?: string;
   studentName: string;
   studentAge: string;
   contactInfo: string;
@@ -45,6 +47,10 @@ export default function AdminPanel() {
   const [loadingHighProb, setLoadingHighProb] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'payments' | 'high-probability'>('payments');
+  const [selectedPayments, setSelectedPayments] = useState<Set<string>>(new Set());
+  const [selectedUsers, setSelectedUsers] = useState<Set<number>>(new Set());
+  const [selectAllPayments, setSelectAllPayments] = useState(false);
+  const [selectAllUsers, setSelectAllUsers] = useState(false);
 
   const handleLogout = useCallback(() => {
     clearSession();
@@ -67,12 +73,24 @@ export default function AdminPanel() {
     }
   }, [debouncedSearch, selectedDate, activeTab]);
 
+  // Reset select all when payments change
+  useEffect(() => {
+    setSelectedPayments(new Set());
+    setSelectAllPayments(false);
+  }, [payments]);
+
   // Fetch high probability users
   useEffect(() => {
     if (activeTab === 'high-probability') {
       fetchHighProbabilityUsers();
     }
   }, [activeTab]);
+
+  // Reset select all when high probability users change
+  useEffect(() => {
+    setSelectedUsers(new Set());
+    setSelectAllUsers(false);
+  }, [highProbabilityUsers]);
 
   const fetchPayments = useCallback(async () => {
     setLoading(true);
@@ -104,14 +122,14 @@ export default function AdminPanel() {
   const fetchHighProbabilityUsers = useCallback(async () => {
     setLoadingHighProb(true);
     setError(null);
-    
+
     try {
       const response = await fetch('/api/admin/high-probability-users');
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch high probability users');
       }
-      
+
       const data = await response.json();
       setHighProbabilityUsers(data);
     } catch (err) {
@@ -121,6 +139,114 @@ export default function AdminPanel() {
       setLoadingHighProb(false);
     }
   }, []);
+
+  // Selection handlers
+  const handlePaymentSelect = useCallback((paymentId: string) => {
+    setSelectedPayments(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(paymentId)) {
+        newSet.delete(paymentId);
+        setSelectAllPayments(false);
+      } else {
+        newSet.add(paymentId);
+        // Check if all payments are now selected
+        if (newSet.size === payments.length) {
+          setSelectAllPayments(true);
+        }
+      }
+      return newSet;
+    });
+  }, [payments.length]);
+
+  const handleUserSelect = useCallback((userId: number) => {
+    setSelectedUsers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(userId)) {
+        newSet.delete(userId);
+        setSelectAllUsers(false);
+      } else {
+        newSet.add(userId);
+        // Check if all users are now selected
+        if (newSet.size === highProbabilityUsers.length) {
+          setSelectAllUsers(true);
+        }
+      }
+      return newSet;
+    });
+  }, [highProbabilityUsers.length]);
+
+  const handleSelectAllPayments = useCallback(() => {
+    if (selectAllPayments) {
+      setSelectedPayments(new Set());
+    } else {
+      setSelectedPayments(new Set(payments.map(p => p.id)));
+    }
+    setSelectAllPayments(!selectAllPayments);
+  }, [selectAllPayments, payments]);
+
+  const handleSelectAllUsers = useCallback(() => {
+    if (selectAllUsers) {
+      setSelectedUsers(new Set());
+    } else {
+      setSelectedUsers(new Set(highProbabilityUsers.map(u => u.id)));
+    }
+    setSelectAllUsers(!selectAllUsers);
+  }, [selectAllUsers, highProbabilityUsers]);
+
+  // Delete handlers
+  const handleDeletePayments = useCallback(async () => {
+    if (selectedPayments.size === 0) return;
+
+    if (!confirm(`Are you sure you want to delete ${selectedPayments.size} payment(s)?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/admin/payments/bulk-delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedPayments) })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete payments');
+      }
+
+      setSelectedPayments(new Set());
+      setSelectAllPayments(false);
+      fetchPayments();
+    } catch (err) {
+      console.error('Error deleting payments:', err);
+      setError('Failed to delete payments. Please try again.');
+    }
+  }, [selectedPayments, fetchPayments]);
+
+  const handleDeleteUsers = useCallback(async () => {
+    if (selectedUsers.size === 0) return;
+
+    if (!confirm(`Are you sure you want to delete ${selectedUsers.size} user report(s)?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/admin/high-probability-users/bulk-delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedUsers) })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete users');
+      }
+
+      setSelectedUsers(new Set());
+      setSelectAllUsers(false);
+      fetchHighProbabilityUsers();
+    } catch (err) {
+      console.error('Error deleting users:', err);
+      setError('Failed to delete users. Please try again.');
+    }
+  }, [selectedUsers, fetchHighProbabilityUsers]);
 
   // Debounce search
   useEffect(() => {
@@ -163,6 +289,50 @@ export default function AdminPanel() {
       default:
         return 'bg-gray-100 text-gray-800';
     }
+  }, []);
+
+  const formatDate = useCallback((dateString: string) => {
+    if (!dateString || dateString === 'N/A') return 'N/A';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return dateString;
+      return date.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+    } catch {
+      return dateString;
+    }
+  }, []);
+
+  const formatTime = useCallback((dateString: string) => {
+    if (!dateString || dateString === 'N/A') return 'N/A';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'N/A';
+      return date.toLocaleTimeString('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch {
+      return 'N/A';
+    }
+  }, []);
+
+  const getProbabilityColor = useCallback((probability: string) => {
+    const prob = probability?.toLowerCase() || '';
+    if (prob.includes('very') || prob.includes('important')) {
+      return 'bg-red-100 text-red-800';
+    } else if (prob.includes('high')) {
+      return 'bg-orange-100 text-orange-800';
+    } else if (prob.includes('moderate')) {
+      return 'bg-yellow-100 text-yellow-800';
+    } else if (prob.includes('low')) {
+      return 'bg-green-100 text-green-800';
+    }
+    return 'bg-gray-100 text-gray-800';
   }, []);
 
   return (
@@ -373,12 +543,39 @@ export default function AdminPanel() {
         {/* Payment Table - Show only when payments tab is active */}
         {activeTab === 'payments' && (
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          {/* Bulk actions bar */}
+          {selectedPayments.size > 0 && (
+            <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-blue-900">
+                  {selectedPayments.size} payment(s) selected
+                </span>
+              </div>
+              <button
+                onClick={handleDeletePayments}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete Selected
+              </button>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Payment ID
+                    <button
+                      onClick={handleSelectAllPayments}
+                      className="flex items-center gap-2 hover:text-gray-700"
+                    >
+                      {selectAllPayments ? (
+                        <CheckSquare className="w-4 h-4 text-blue-600" />
+                      ) : (
+                        <Square className="w-4 h-4 text-gray-400" />
+                      )}
+                      <span>Select All</span>
+                    </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     User
@@ -387,10 +584,16 @@ export default function AdminPanel() {
                     Email
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Mobile
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Amount
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Date
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Time
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
@@ -406,8 +609,17 @@ export default function AdminPanel() {
               <tbody className="divide-y divide-gray-200">
                 {payments.map((payment) => (
                   <tr key={payment.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {payment.id}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <button
+                        onClick={() => handlePaymentSelect(payment.id)}
+                        className="flex items-center justify-center"
+                      >
+                        {selectedPayments.has(payment.id) ? (
+                          <CheckSquare className="w-5 h-5 text-blue-600" />
+                        ) : (
+                          <Square className="w-5 h-5 text-gray-400" />
+                        )}
+                      </button>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -427,6 +639,12 @@ export default function AdminPanel() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
+                        <Phone className="h-4 w-4 text-gray-400 mr-2" />
+                        <span className="text-sm text-gray-600">{payment.userMobile || 'N/A'}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
                         <DollarSign className="h-4 w-4 text-gray-400 mr-1" />
                         <span className="text-sm font-medium text-gray-900">
                           {payment.amount.toFixed(2)} {payment.currency}
@@ -435,8 +653,14 @@ export default function AdminPanel() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
+                        <Calendar className="h-4 w-4 text-gray-400 mr-2" />
+                        <span className="text-sm text-gray-600">{formatDate(payment.date)}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
                         <Clock className="h-4 w-4 text-gray-400 mr-2" />
-                        <span className="text-sm text-gray-600">{payment.date}</span>
+                        <span className="text-sm text-gray-600">{formatTime(payment.date)}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -472,6 +696,24 @@ export default function AdminPanel() {
               <p className="text-sm text-gray-600 mt-1">Users with HIGH dysgraphia probability who need clinical follow-up</p>
             </div>
             
+            {/* Bulk actions bar */}
+            {selectedUsers.size > 0 && (
+              <div className="bg-red-50 border-b border-red-200 px-6 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-red-900">
+                    {selectedUsers.size} report(s) selected
+                  </span>
+                </div>
+                <button
+                  onClick={handleDeleteUsers}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete Selected
+                </button>
+              </div>
+            )}
+            
             {loadingHighProb ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-6 h-6 animate-spin text-blue-600 mr-2" />
@@ -487,7 +729,23 @@ export default function AdminPanel() {
                   <thead className="bg-red-50 border-b border-gray-200">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <button
+                          onClick={handleSelectAllUsers}
+                          className="flex items-center gap-2 hover:text-gray-700"
+                        >
+                          {selectAllUsers ? (
+                            <CheckSquare className="w-4 h-4 text-red-600" />
+                          ) : (
+                            <Square className="w-4 h-4 text-gray-400" />
+                          )}
+                          <span>Select All</span>
+                        </button>
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Report ID
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        User Details
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Student Name
@@ -515,17 +773,45 @@ export default function AdminPanel() {
                   <tbody className="divide-y divide-gray-200">
                     {highProbabilityUsers.map((user) => (
                       <tr key={user.id} className="hover:bg-red-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <button
+                            onClick={() => handleUserSelect(user.id)}
+                            className="flex items-center justify-center"
+                          >
+                            {selectedUsers.has(user.id) ? (
+                              <CheckSquare className="w-5 h-5 text-red-600" />
+                            ) : (
+                              <Square className="w-5 h-5 text-gray-400" />
+                            )}
+                          </button>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                           #{user.id}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="flex-shrink-0 h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
+                              <User className="h-4 w-4 text-blue-600" />
+                            </div>
+                            <div className="ml-3">
+                              <div className="text-sm font-medium text-gray-900">{user.userName}</div>
+                              <div className="text-xs text-gray-500">{user.userEmail}</div>
+                              {user.userMobile && (
+                                <div className="text-xs text-gray-500 flex items-center">
+                                  <Phone className="h-3 w-3 mr-1" />
+                                  {user.userMobile}
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
                             <div className="flex-shrink-0 h-8 w-8 bg-red-100 rounded-full flex items-center justify-center">
                               <User className="h-4 w-4 text-red-600" />
                             </div>
-                            <div className="ml-4">
-                              <div className="text-sm font-medium text-gray-900">{user.studentName || user.userName}</div>
-                              <div className="text-xs text-gray-500">{user.userEmail}</div>
+                            <div className="ml-3">
+                              <div className="text-sm font-medium text-gray-900">{user.studentName || 'N/A'}</div>
                             </div>
                           </div>
                         </td>
@@ -533,10 +819,10 @@ export default function AdminPanel() {
                           {user.studentAge || 'N/A'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {user.grade}
+                          {user.grade || 'N/A'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getProbabilityColor(user.probability)}`}>
                             {user.probability}
                           </span>
                         </td>
@@ -544,11 +830,11 @@ export default function AdminPanel() {
                           {user.contactInfo || user.userEmail}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {new Date(user.reportDate).toLocaleDateString('en-GB')}
+                          {formatDate(user.reportDate)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(user.paymentStatus)}`}>
-                            {user.paymentStatus}
+                            {user.paymentStatus || 'N/A'}
                           </span>
                         </td>
                       </tr>

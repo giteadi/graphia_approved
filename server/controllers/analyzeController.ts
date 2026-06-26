@@ -1284,6 +1284,10 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
   const paper_p      = extract('Paper Type');
   const instrument_p = extract('Writing Instrument');
   const timeTaken    = timeTaken_p ? parseFloat(timeTaken_p) : undefined;
+  // Prioritize form data over OCR extraction
+  const studentName  = req.body.studentName || extract('Student Name') || extract('Name') || null;
+  const contactEmail = req.body.contactEmail || extract('Contact Email') || extract('Email') || extract('Parent Email') || null;
+  const contactPhone = req.body.contactPhone || extract('Contact Phone') || extract('Phone') || extract('Mobile') || null;
 
   const interventionTried = textPart.includes('Interventions Tried: Yes');
   const improvedMatch     = textPart.match(/Improvement Observed: (\w+)/);
@@ -1691,9 +1695,11 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     }
 
     if (req.userId) {
+      const isHighProbability = probability.toLowerCase().includes('high');
+      const contactInfo = contactPhone ? `${contactEmail || ''} | ${contactPhone}` : contactEmail;
       await query(
-        'INSERT INTO reports (user_id, grade, report_text) VALUES (?, ?, ?)',
-        [req.userId, grade_p || null, reportText]
+        'INSERT INTO reports (user_id, grade, report_text, probability, is_high_probability, student_name, student_age, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [req.userId, grade_p || null, reportText, probability, isHighProbability, studentName, age_p || null, contactInfo]
       );
     }
 

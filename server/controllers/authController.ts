@@ -8,7 +8,7 @@ const JWT_SECRET = 'graphia_jwt_super_secret_2024';
 const JWT_EXPIRES = '36500d'; // 100 years — effectively permanent
 
 export async function register(req: Request, res: Response): Promise<void> {
-  const { name, email, password } = req.body;
+  const { name, email, password, mobile } = req.body;
 
   if (!name || !email || !password) {
     res.status(400).json({ error: 'Name, email and password are required' });
@@ -29,8 +29,8 @@ export async function register(req: Request, res: Response): Promise<void> {
 
     const hashed = await bcrypt.hash(password, 10);
     const result = await query(
-      'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
-      [name, email, hashed]
+      'INSERT INTO users (name, email, password, mobile) VALUES (?, ?, ?, ?)',
+      [name, email, hashed, mobile || null]
     );
 
     const userId = (result as any).insertId;
@@ -49,7 +49,7 @@ export async function register(req: Request, res: Response): Promise<void> {
     res.status(201).json({
       message: 'Registration successful',
       token,
-      user: { id: userId, name, email },
+      user: { id: userId, name, email, mobile },
     });
   } catch (err: any) {
     console.error('[Auth] Register error:', err.message);
@@ -89,7 +89,7 @@ export async function login(req: Request, res: Response): Promise<void> {
     res.json({
       message: 'Login successful',
       token,
-      user: { id: user.id, name: user.name, email: user.email },
+      user: { id: user.id, name: user.name, email: user.email, mobile: user.mobile },
     });
   } catch (err: any) {
     console.error('[Auth] Login error:', err.message);

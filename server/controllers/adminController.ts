@@ -11,6 +11,7 @@ export async function getAllPayments(req: Request, res: Response): Promise<void>
         p.user_id,
         u.name as user_name,
         u.email as user_email,
+        COALESCE(u.mobile, 'N/A') as user_mobile,
         p.amount,
         p.currency,
         p.status,
@@ -63,17 +64,29 @@ export async function getAllPayments(req: Request, res: Response): Promise<void>
     const payments = await query<any>(sql, params);
 
     // Format the response to match the frontend interface
-    const formattedPayments = payments.map((p: any) => ({
-      id: `PAY${String(p.id).padStart(3, '0')}`,
-      userName: p.user_name,
-      userEmail: p.user_email,
-      amount: parseFloat(p.amount),
-      currency: p.currency,
-      date: p.payment_date,
-      status: p.status,
-      paymentMethod: p.payment_method,
-      description: p.description
-    }));
+    const formattedPayments = payments.map((p: any) => {
+      // Extract phone from user mobile or from description if stored there
+      let extractedPhone = p.user_mobile;
+      if (p.description && p.description.includes('|')) {
+        const parts = p.description.split('|').map((part: string) => part.trim());
+        if (parts.length > 1) {
+          extractedPhone = parts[1]; // Second part might be phone
+        }
+      }
+      
+      return {
+        id: `PAY${String(p.id).padStart(3, '0')}`,
+        userName: p.user_name,
+        userEmail: p.user_email,
+        userMobile: extractedPhone || p.user_mobile || 'N/A',
+        amount: parseFloat(p.amount),
+        currency: p.currency,
+        date: p.payment_date,
+        status: p.status,
+        paymentMethod: p.payment_method,
+        description: p.description
+      };
+    });
 
     res.json(formattedPayments);
   } catch (err: any) {
@@ -183,17 +196,19 @@ export async function getHighProbabilityUsers(req: Request, res: Response): Prom
   try {
     const users = await query<any>(
       `SELECT 
-        u.id,
-        u.name,
-        u.email,
-        r.id as report_id,
+        u.id as userId,
+        u.name as userName,
+        u.email as userEmail,
+        u.mobile as userMobile,
+        r.id as id,
         r.grade,
         r.probability,
-        r.student_name,
-        r.student_age,
-        r.contact_info,
-        r.created_at as report_date,
-        p.status as payment_status
+        r.student_name as studentName,
+        r.student_age as studentAge,
+        r.contact_info as contactInfo,
+        r.created_at as reportDate,
+        r.is_high_probability as isHighProbability,
+        p.status as paymentStatus
        FROM users u
        JOIN reports r ON u.id = r.user_id
        LEFT JOIN payments p ON u.id = p.user_id AND p.status = 'completed'
@@ -201,7 +216,23 @@ export async function getHighProbabilityUsers(req: Request, res: Response): Prom
        ORDER BY r.created_at DESC`
     );
 
-    res.json(users);
+    // Parse contact_info to extract phone number if available
+    const formattedUsers = users.map((user: any) => {
+      let extractedPhone = user.userMobile;
+      if (user.contactInfo && user.contactInfo.includes('|')) {
+        const parts = user.contactInfo.split('|').map((p: string) => p.trim());
+        // Format: "email | phone" or "email | phone"
+        if (parts.length > 1) {
+          extractedPhone = parts[1]; // Second part is phone
+        }
+      }
+      return {
+        ...user,
+        userMobile: extractedPhone || user.userMobile || 'N/A'
+      };
+    });
+
+    res.json(formattedUsers);
   } catch (err: any) {
     console.error('[Admin] Get high probability users error:', err.message);
     res.status(500).json({ error: 'Server error while fetching high probability users' });

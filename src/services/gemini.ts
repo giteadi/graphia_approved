@@ -86,7 +86,10 @@ export async function analyzeHandwriting(
   paperType?: string,
   writingInstrument?: string,
   timeGiven?: number,
-  observationalNotes?: string
+  observationalNotes?: string,
+  studentName?: string,
+  contactEmail?: string,
+  contactPhone?: string
 ): Promise<AnalysisResult> {
   const model = "gpt-4o";
   
@@ -136,6 +139,10 @@ export async function analyzeHandwriting(
         model,
         max_tokens: 4096,
         grade: grade,
+        studentName: studentName,
+        age: age,
+        contactEmail: contactEmail,
+        contactPhone: contactPhone,
         messages: [
           {
             role: 'user',
