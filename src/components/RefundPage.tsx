@@ -1,11 +1,15 @@
 import { motion } from 'motion/react';
 import { Activity, ArrowLeft, DollarSign, RefreshCw, CreditCard, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
+import Footer from "./Footer";
 
 interface RefundPageProps {
   onBack: () => void;
+  onTerms?: () => void;
+  onPrivacy?: () => void;
+  onRefund?: () => void;
 }
 
-export default function RefundPage({ onBack }: RefundPageProps) {
+export default function RefundPage({ onBack, onTerms, onPrivacy, onRefund }: RefundPageProps) {
   return (
     <div className="min-h-screen bg-[#E4E3E0] text-[#141414]">
       {/* Header */}
@@ -424,17 +428,7 @@ export default function RefundPage({ onBack }: RefundPageProps) {
           </div>
         </motion.div>
       </main>
-
-      {/* Footer */}
-      <footer className="bg-[#141414] text-[#E4E3E0] border-t-4 border-[#E4E3E0] mt-12">
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="text-center">
-            <p className="text-sm opacity-60 font-mono">
-              © 2026 GraphiaCheck. All rights reserved.
-            </p>
-          </div>
-        </div>
-      </footer>
+    
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import Navbar from "./Navbar";
+import Footer from "./Footer";
 
 interface AboutPageProps {
   onBack: () => void;
@@ -183,17 +184,11 @@ export default function AboutPage({ onBack, onAbout, onTerms, onPrivacy, onRefun
       </section>
 
       {/* ── FOOTER ── */}
-      <footer className="bg-[#ece7dd] border-t border-[#d8d0c4] py-8">
-        <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-xs text-[#888]" style={{ fontFamily: "system-ui, sans-serif" }}>
-            © 2026 GraphiaCheck Demo. A clinical handwriting screening tool for educators and specialists.
-          </p>
-          <div className="flex gap-6 text-xs text-[#888]" style={{ fontFamily: "system-ui, sans-serif" }}>
-            <button onClick={onPrivacy} className="hover:text-[#1a3a4a] transition-colors">Privacy</button>
-            <button onClick={onTerms} className="hover:text-[#1a3a4a] transition-colors">Terms</button>
-          </div>
-        </div>
-      </footer>
+      <Footer
+        onTerms={onTerms}
+        onPrivacy={onPrivacy}
+        onRefund={onRefund}
+      />
     </div>
   );
 }

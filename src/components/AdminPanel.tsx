@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Search, Calendar, Filter, ChevronDown, User, Mail, DollarSign, Clock, X, Loader2, LogOut, Shield } from 'lucide-react';
+import { Search, Calendar, Filter, ChevronDown, User, Mail, DollarSign, Clock, X, Loader2, LogOut, Shield, Phone } from 'lucide-react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { getUser, clearSession } from '../services/authService';
 
@@ -15,6 +15,21 @@ interface Payment {
   description?: string;
 }
 
+interface HighProbabilityUser {
+  id: number;
+  userId: number;
+  userName: string;
+  userEmail: string;
+  studentName: string;
+  studentAge: string;
+  contactInfo: string;
+  grade: string;
+  probability: string;
+  isHighProbability: boolean;
+  reportDate: string;
+  paymentStatus: string;
+}
+
 export default function AdminPanel() {
   const user = getUser();
   const navigate = useNavigate();
@@ -25,8 +40,11 @@ export default function AdminPanel() {
   }
 
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [highProbabilityUsers, setHighProbabilityUsers] = useState<HighProbabilityUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingHighProb, setLoadingHighProb] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'payments' | 'high-probability'>('payments');
 
   const handleLogout = useCallback(() => {
     clearSession();
@@ -44,8 +62,17 @@ export default function AdminPanel() {
 
   // Fetch payments from server
   useEffect(() => {
-    fetchPayments();
-  }, [debouncedSearch, selectedDate]);
+    if (activeTab === 'payments') {
+      fetchPayments();
+    }
+  }, [debouncedSearch, selectedDate, activeTab]);
+
+  // Fetch high probability users
+  useEffect(() => {
+    if (activeTab === 'high-probability') {
+      fetchHighProbabilityUsers();
+    }
+  }, [activeTab]);
 
   const fetchPayments = useCallback(async () => {
     setLoading(true);
@@ -73,6 +100,27 @@ export default function AdminPanel() {
       setLoading(false);
     }
   }, [debouncedSearch, selectedDate]);
+
+  const fetchHighProbabilityUsers = useCallback(async () => {
+    setLoadingHighProb(true);
+    setError(null);
+    
+    try {
+      const response = await fetch('/api/admin/high-probability-users');
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch high probability users');
+      }
+      
+      const data = await response.json();
+      setHighProbabilityUsers(data);
+    } catch (err) {
+      console.error('Error fetching high probability users:', err);
+      setError('Failed to load high probability users. Please try again.');
+    } finally {
+      setLoadingHighProb(false);
+    }
+  }, []);
 
   // Debounce search
   useEffect(() => {
@@ -298,7 +346,32 @@ export default function AdminPanel() {
           )}
         </div>
 
-        {/* Payment Table */}
+        {/* Tab Navigation */}
+        <div className="flex gap-4 mb-6 border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab('payments')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${
+              activeTab === 'payments'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Payments
+          </button>
+          <button
+            onClick={() => setActiveTab('high-probability')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${
+              activeTab === 'high-probability'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            High Probability Reports
+          </button>
+        </div>
+
+        {/* Payment Table - Show only when payments tab is active */}
+        {activeTab === 'payments' && (
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -389,6 +462,103 @@ export default function AdminPanel() {
             </div>
           )}
         </div>
+        )}
+
+        {/* High Probability Users Table - Show only when high-probability tab is active */}
+        {activeTab === 'high-probability' && (
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-lg font-bold text-gray-900">High Probability Reports - Follow-up Required</h2>
+              <p className="text-sm text-gray-600 mt-1">Users with HIGH dysgraphia probability who need clinical follow-up</p>
+            </div>
+            
+            {loadingHighProb ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-600 mr-2" />
+                <span className="text-gray-600">Loading high probability reports...</span>
+              </div>
+            ) : highProbabilityUsers.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500">No high probability reports found</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-red-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Report ID
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Student Name
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Age
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Grade
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Probability
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Contact
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Report Date
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Payment Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {highProbabilityUsers.map((user) => (
+                      <tr key={user.id} className="hover:bg-red-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          #{user.id}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="flex-shrink-0 h-8 w-8 bg-red-100 rounded-full flex items-center justify-center">
+                              <User className="h-4 w-4 text-red-600" />
+                            </div>
+                            <div className="ml-4">
+                              <div className="text-sm font-medium text-gray-900">{user.studentName || user.userName}</div>
+                              <div className="text-xs text-gray-500">{user.userEmail}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {user.studentAge || 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {user.grade}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            {user.probability}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {user.contactInfo || user.userEmail}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {new Date(user.reportDate).toLocaleDateString('en-GB')}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(user.paymentStatus)}`}>
+                            {user.paymentStatus}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       </div>
     </div>

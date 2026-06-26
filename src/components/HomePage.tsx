@@ -1,16 +1,15 @@
 import { ArrowRight } from 'lucide-react';
 import Navbar from "./Navbar";
+import Footer from "./Footer";
 
 interface HomePageProps {
   onGetStarted: () => void;
   onHome: () => void;
   onAbout: () => void;
-  onTerms?: () => void;
-  onPrivacy?: () => void;
   onRefund?: () => void;
 }
 
-export default function HomePage({ onGetStarted, onHome, onAbout, onTerms, onPrivacy, onRefund }: HomePageProps) {
+export default function HomePage({ onGetStarted, onHome, onAbout, onRefund }: HomePageProps) {
   return (
     <div style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }} className="min-h-screen bg-[#F5F0E8] text-[#1a1a2e]">
 
@@ -232,19 +231,7 @@ export default function HomePage({ onGetStarted, onHome, onAbout, onTerms, onPri
           </div>
         </div>
       </section>
-
-      {/* ── FOOTER ── */}
-      <footer className="bg-[#ece7dd] border-t border-[#d8d0c4] py-8">
-        <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-xs text-[#888]" style={{ fontFamily: "system-ui, sans-serif" }}>
-            © 2026 GraphiaCheck Demo. A clinical handwriting screening tool for educators and specialists.
-          </p>
-          <div className="flex gap-6 text-xs text-[#888]" style={{ fontFamily: "system-ui, sans-serif" }}>
-            <button onClick={onPrivacy} className="hover:text-[#1a3a4a] transition-colors">Privacy</button>
-            <button onClick={onTerms} className="hover:text-[#1a3a4a] transition-colors">Terms</button>
-          </div>
-        </div>
-      </footer>
+      
     </div>
   );
 }

@@ -86,6 +86,7 @@ const getProbabilityDisplayLabel = (probabilityEstimate = '') => {
 };
 import ReactMarkdown from 'react-markdown';
 import { analyzeHandwriting, AnalysisResult, InterventionHistory, SpellingError } from './services/gemini';
+import { loadRazorpayScript, createPaymentOrder, initiateRazorpayPayment } from './services/razorpayService';
 
 const GRADES = [
   ...Array.from({ length: 12 }, (_, i) => `Grade ${i + 1}`),
@@ -807,6 +808,7 @@ export default function App({ user, onLogout, reportTabMode = false }: AppProps)
   const [dob, setDob] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   
@@ -1674,6 +1676,8 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
   };
 
   const startAnalysis = async () => {
+    console.log("🔥🔥🔥 START ANALYSIS CALLED 🔥🔥🔥");
+    
     if (!image) return;
     
     if (!writingPrompt.trim()) {
@@ -1690,7 +1694,71 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
       setError(`The student's age (${chronologicalAge.split('y')[0]} years) does not match the selected Grade (${grade}). Please verify the Date of Birth and Grade.`);
       return;
     }
-    
+
+    // Load Razorpay script and process payment
+    try {
+      setIsProcessingPayment(true);
+      console.log('[App] Starting payment process...');
+      
+      // Load Razorpay script
+      await loadRazorpayScript();
+      console.log('[App] Razorpay script loaded');
+      
+      // Create payment order
+      const order = await createPaymentOrder(899, 'GraphiaCheck Report Generation Fee'); // ₹899
+      console.log('[App] Payment order created:', order.id);
+      
+      // Get user ID from localStorage
+      const userInfo = JSON.parse(localStorage.getItem('graphia_user') || '{}');
+      const userId = userInfo.id || 1; // Default to 1 if not logged in
+      console.log('[App] User ID:', userId);
+      
+      // Prepare report data
+      const reportData = {
+        studentName,
+        grade,
+        age: chronologicalAge,
+        contactEmail,
+        contactPhone,
+        schoolName,
+        cityName,
+        countryName,
+        description: 'GraphiaCheck Report Generation Fee'
+      };
+
+      console.log('[App] Initiating Razorpay payment...');
+      // Initiate payment
+      initiateRazorpayPayment(
+        order,
+        userId,
+        reportData,
+        async (paymentResult) => {
+          // Payment successful, proceed with analysis
+          console.log('[App] Payment successful, proceeding with analysis');
+          setIsProcessingPayment(false);
+          await performAnalysis(userId, reportData);
+        },
+        (paymentError) => {
+          // Payment failed
+          console.error('[App] Payment failed:', paymentError);
+          setIsProcessingPayment(false);
+          
+          // Show more helpful error message
+          if (paymentError.includes('refresh')) {
+            setError(`${paymentError} 💡 If you have AdBlocker enabled, please disable it for this site or try Incognito mode.`);
+          } else {
+            setError(`Payment failed: ${paymentError}. Please try again.`);
+          }
+        }
+      );
+    } catch (paymentError) {
+      console.error('[App] Payment initialization failed:', paymentError);
+      setIsProcessingPayment(false);
+      setError(`Payment initialization failed: ${paymentError instanceof Error ? paymentError.message : 'Unknown error'}. Please try again.`);
+    }
+  };
+
+  const performAnalysis = async (userId: number, reportData: any) => {
     setIsAnalyzing(true);
     setActiveStep(4);
     setError(null);
@@ -1716,6 +1784,26 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
         observationalNotes
       );
       const analysisResult = { ...analysis, image };
+      
+      // Update report with probability and analysis results
+      try {
+        await fetch('/api/payment/update-report', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            user_id: userId,
+            probability: analysis.summary?.probabilityEstimate || 'Unknown',
+            summary: analysis.summary,
+            scores: analysis.summary?.scores
+          }),
+        });
+      } catch (updateError) {
+        console.error('[Payment] Report update failed:', updateError);
+        // Continue even if update fails, payment was already successful
+      }
+
       setResult(analysisResult);
       // Save to sessionStorage and open report in new tab
       try {
@@ -3758,18 +3846,27 @@ ${result.report}
               </div>
 
               <div id="tour-generate-button" className="flex gap-4 scroll-mt-20">
-                <button
-                  disabled={!image || !grade || isAnalyzing}
+                <div className="flex-1">
+                  <p className="text-[8px] text-yellow-600 font-mono mb-2 text-center">
+                    ⚠️ If payment popup closes automatically, please disable AdBlocker/Brave Shields or use Chrome Incognito mode
+                  </p>
+                  <button
+                  disabled={!image || !grade || isAnalyzing || isProcessingPayment}
                   onClick={startAnalysis}
                   className={`
                     flex-1 py-4 font-bold uppercase tracking-widest flex items-center justify-center gap-2
                     transition-all duration-300 relative overflow-hidden
-                    ${!image || !grade || isAnalyzing 
+                    ${!image || !grade || isAnalyzing || isProcessingPayment 
                       ? 'bg-[#141414]/10 text-[#141414]/30 cursor-not-allowed' 
                       : 'bg-[#141414] text-[#E4E3E0] hover:bg-[#2a2a2a] active:scale-[0.98]'}
                   `}
                 >
-                  {isAnalyzing ? (
+                  {isProcessingPayment ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Processing Payment (₹1)...
+                    </>
+                  ) : isAnalyzing ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
                       Processing Neural Analysis...
@@ -3781,7 +3878,7 @@ ${result.report}
                         Generate Clinical Report
                       </div>
                       <span className="text-[8px] opacity-40 mt-1 font-mono tracking-widest">
-                        [ CTRL + ENTER ]
+                        ₹1 Payment Required • [ CTRL + ENTER ]
                       </span>
                     </div>
                   )}
@@ -3795,6 +3892,7 @@ ${result.report}
                   <RotateCcw className="w-4 h-4 mb-1 group-hover:rotate-[-90deg] transition-transform" />
                   Reset
                 </button>
+                </div>
               </div>
             </div>
           </section>
@@ -4711,8 +4809,6 @@ ${result.report}
             <div>
               <h4 className="font-bold mb-4 uppercase tracking-wider text-sm">Legal</h4>
               <ul className="space-y-2 text-sm opacity-70">
-                <li><a href="/?page=privacy" target="_blank" className="hover:opacity-100 transition-opacity">Privacy Policy</a></li>
-                <li><a href="/?page=terms" target="_blank" className="hover:opacity-100 transition-opacity">Terms of Service</a></li>
                 <li><a href="/?page=refund" target="_blank" className="hover:opacity-100 transition-opacity">Refund Policy</a></li>
                 <li><a href="#" className="hover:opacity-100 transition-opacity">Data Security</a></li>
               </ul>

@@ -5,6 +5,7 @@ import analyzeRoutes from './routes/analyzeRoutes.js';
 import modelsRoute from './routes/modelsRoute.js';
 import adminRoutes from './routes/adminRoutes.js';
 import passwordRoutes from './routes/passwordRoutes.js';
+import razorpayRoutes from './routes/razorpayRoutes.js';
 
 const app = express();
 
@@ -40,5 +41,6 @@ app.use('/api', analyzeRoutes);
 app.use('/api', modelsRoute);
 app.use('/api/admin', adminRoutes);
 app.use('/api/password', passwordRoutes);
+app.use('/api/payments', razorpayRoutes);
 
 export default app;

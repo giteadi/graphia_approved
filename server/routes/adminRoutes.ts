@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getAllPayments, getPaymentStats, createPayment, updatePaymentStatus } from '../controllers/adminController.js';
+import { getAllPayments, getPaymentStats, createPayment, updatePaymentStatus, getHighProbabilityUsers } from '../controllers/adminController.js';
 
 const router = Router();
 
@@ -14,5 +14,8 @@ router.post('/payments', createPayment);
 
 // Update payment status
 router.patch('/payments/:id/status', updatePaymentStatus);
+
+// Get high probability users for follow-up
+router.get('/high-probability-users', getHighProbabilityUsers);
 
 export default router;

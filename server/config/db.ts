@@ -81,6 +81,11 @@ export async function initDB() {
           user_id     INT NOT NULL,
           grade       VARCHAR(50),
           report_text LONGTEXT,
+          probability VARCHAR(50),
+          is_high_probability BOOLEAN DEFAULT FALSE,
+          student_name VARCHAR(100),
+          student_age VARCHAR(10),
+          contact_info VARCHAR(200),
           created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )

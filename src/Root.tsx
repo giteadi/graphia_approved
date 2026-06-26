@@ -59,9 +59,9 @@ function RootContent() {
     <Routes>
       <Route path="/" element={<HomePage onGetStarted={() => navigate('/auth')} onHome={() => navigate('/')} onAbout={() => navigate('/about')} onTerms={() => navigate('/terms')} onPrivacy={() => navigate('/privacy')} onRefund={() => navigate('/refund')} />} />
       <Route path="/about" element={<AboutPage onBack={() => navigate('/')} onTerms={() => navigate('/terms')} onPrivacy={() => navigate('/privacy')} onRefund={() => navigate('/refund')} />} />
-      <Route path="/terms" element={<TermsPage onBack={() => navigate('/')} />} />
-      <Route path="/privacy" element={<PrivacyPage onBack={() => navigate('/')} />} />
-      <Route path="/refund" element={<RefundPage onBack={() => navigate('/')} />} />
+      <Route path="/terms" element={<TermsPage onBack={() => navigate('/')} onTerms={() => navigate('/terms')} onPrivacy={() => navigate('/privacy')} onRefund={() => navigate('/refund')} />} />
+      <Route path="/privacy" element={<PrivacyPage onBack={() => navigate('/')} onTerms={() => navigate('/terms')} onPrivacy={() => navigate('/privacy')} onRefund={() => navigate('/refund')} />} />
+      <Route path="/refund" element={<RefundPage onBack={() => navigate('/')} onTerms={() => navigate('/terms')} onPrivacy={() => navigate('/privacy')} onRefund={() => navigate('/refund')} />} />
       <Route path="/auth" element={<AuthPage onAuth={handleAuth} onBack={() => navigate('/')} />} />
       <Route path="/forget-password" element={<PasswordResetFlow />} />
       <Route path="/app" element={user ? <App user={user} onLogout={handleLogout} /> : <Navigate to="/auth" />} />

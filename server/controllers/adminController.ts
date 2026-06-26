@@ -178,3 +178,32 @@ export async function updatePaymentStatus(req: Request, res: Response): Promise<
     res.status(500).json({ error: 'Server error while updating payment status' });
   }
 }
+
+export async function getHighProbabilityUsers(req: Request, res: Response): Promise<void> {
+  try {
+    const users = await query<any>(
+      `SELECT 
+        u.id,
+        u.name,
+        u.email,
+        r.id as report_id,
+        r.grade,
+        r.probability,
+        r.student_name,
+        r.student_age,
+        r.contact_info,
+        r.created_at as report_date,
+        p.status as payment_status
+       FROM users u
+       JOIN reports r ON u.id = r.user_id
+       LEFT JOIN payments p ON u.id = p.user_id AND p.status = 'completed'
+       WHERE r.is_high_probability = TRUE
+       ORDER BY r.created_at DESC`
+    );
+
+    res.json(users);
+  } catch (err: any) {
+    console.error('[Admin] Get high probability users error:', err.message);
+    res.status(500).json({ error: 'Server error while fetching high probability users' });
+  }
+}
