@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { withFallback } from '../config/openai.js';
+import { withFallback, createResponse } from '../config/openai.js';
 import { query } from '../config/db.js';
 import { AuthRequest } from '../middleware/authMiddleware.js';
 import OpenAI from 'openai';
@@ -451,6 +451,110 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// STEP 1B — Dedicated strike-through pass.
+//
+// The main extraction prompt asks for ~20 different things at once
+// (transcription, spelling, grammar, punctuation counts, letter formation,
+// alignment, spacing, line quality, DSM-5 traits...). Measured against a marked
+// sample it reliably found only about half the cross-outs — attention is spread
+// too thin for the most pixel-level task in the set.
+//
+// This second pass asks for ONE thing only and runs in parallel, so it costs no
+// extra wall-clock time. Its findings are merged into the main result; anything
+// it reports that is not actually present in the transcription is dropped later
+// by isPlacedInText(), so a hallucination cannot reach the report.
+// ══════════════════════════════════════════════════════════════════════════════
+function buildCancellationPrompt(grade: string): string {
+  return `You are examining a handwritten page for ONE purpose only: finding every word the student crossed out, struck through, scribbled over, or wrote on top of.
+
+Ignore spelling. Ignore grammar. Ignore neatness. Report ONLY cancellations.
+
+WHAT COUNTS AS A CONFIRMED CANCELLATION:
+- A pen line clearly passes THROUGH the word (horizontal, diagonal, or zig-zag).
+- The word is scribbled out.
+- The word is struck and a replacement is written next to or above it.
+
+WHAT COUNTS AS UNCERTAIN (not confirmed):
+- Letters written on top of other letters (overwriting) with no clear strike line.
+- Messy or doubled strokes where you cannot tell if a line was intended.
+- A word that is underlined only — underlining is NOT a cancellation.
+
+HOW TO SEARCH — be systematic:
+1. Go line by line, from the first line to the last. Do not skip the final line.
+2. On each line, check EVERY word individually, including 1–3 letter words
+   (in, on, en, to, be, the, a, ad, se). Short struck words are the most
+   commonly missed.
+3. When a strike line spans several words ("talk about", "when you",
+   "every sunday"), report the full spanned phrase as one entry.
+4. A replacement written ABOVE the line (an insertion caret or a word squeezed
+   above) almost always means the text BELOW it was struck — look there.
+5. Words do not need to be valid English. Report struck fragments too.
+6. If the same word appears more than once, state WHICH occurrence is struck
+   (1 = first time that word appears on the page, reading left-to-right,
+   top-to-bottom). Never assume a repeated word means a cancellation.
+
+ACCURACY RULES:
+- Report the struck word(s) EXACTLY as written, including misspellings.
+- Do NOT include neighbouring readable words in the entry.
+- If a line clearly passes through the word, confidence must be >= 80.
+- If you are unsure, put it in uncertainCancellations rather than omitting it.
+- Do not invent cancellations. Every entry must correspond to visible ink.
+
+Grade context: ${grade}
+
+Return ONLY this JSON (no markdown fences, no commentary):
+{
+  "confirmedCancellations": [
+    { "text": "exact struck text", "confidence": 0-100, "occurrence": 1, "line": 1 }
+  ],
+  "uncertainCancellations": [
+    { "text": "possibly struck text", "confidence": 0-100, "reason": "overwrite|messy|unclear strike", "occurrence": 1, "line": 1 }
+  ]
+}`;
+}
+
+/** Parses model JSON that may be wrapped in a markdown code fence. */
+function parseJsonLoose(raw: string): any | null {
+  if (!raw) return null;
+  const fenced = raw.match(/```json\n?([\s\S]*?)\n?```/) || raw.match(/```\n?([\s\S]*?)\n?```/);
+  try {
+    return JSON.parse((fenced ? fenced[1] : raw).trim());
+  } catch {
+    return null;
+  }
+}
+
+/** Reads the text payload out of a Responses API result. */
+function responseText(result: any): string {
+  return result?.output_text
+    || result?.output?.[0]?.content?.[0]?.text
+    || result?.choices?.[0]?.message?.content
+    || '';
+}
+
+/**
+ * Unions two cancellation lists, keeping the higher-confidence entry when the
+ * same text+occurrence is reported by both passes.
+ */
+function mergeCancellations(primary: any[] = [], secondary: any[] = []): any[] {
+  const byKey = new Map<string, any>();
+
+  for (const item of [...(primary || []), ...(secondary || [])]) {
+    const text = String(item?.text || '').trim();
+    if (!text) continue;
+
+    const key = `${text.toLowerCase()}#${item.occurrence ?? 1}`;
+    const existing = byKey.get(key);
+
+    if (!existing || (item.confidence ?? 0) > (existing.confidence ?? 0)) {
+      byKey.set(key, { ...item, text });
+    }
+  }
+
+  return [...byKey.values()];
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // STEP 3 — GPT-4o: Clinical narrative using fixed scores. NO IMAGE.
 // ══════════════════════════════════════════════════════════════════════════════
 function buildNarrativePrompt(params: {
@@ -694,7 +798,8 @@ function buildDeterministicSummary(params: {
 
       if (scores.spelling < 70) impairedDomains.push("spelling");
       if (scores.grammar < 70) impairedDomains.push("grammar");
-      if (evidence.wpm < norm.min) impairedDomains.push("fluency (writing speed)");
+      // Only count fluency when it was actually measured
+      if (evidence.wpm > 0 && evidence.wpm < norm.min) impairedDomains.push("fluency (writing speed)");
 
       // 2. If NO domains are in RED
       if (impairedDomains.length === 0) {
@@ -723,7 +828,9 @@ function buildDeterministicSummary(params: {
     verticalAnalysis: existingSummary.verticalAnalysis || evidence.alignmentObservations.join(' ') || 'Vertical organisation observations were limited in the extracted evidence.',
     wordCount: evidence.wordCount,
     transcription: evidence.transcription,
-    fluencyAnalysis: `${fluencyLabel} — ${evidence.wpm} WPM vs norm ${norm.min}-${norm.max} WPM.`,
+    fluencyAnalysis: evidence.wpm > 0
+      ? `${fluencyLabel} — ${evidence.wpm} WPM vs norm ${norm.min}-${norm.max} WPM.`
+      : `Not assessed — the time taken to produce this sample was not recorded, so words-per-minute could not be calculated. Writing speed is excluded from scoring.`,
     wpm: evidence.wpm,
     basalLevel: existingSummary.basalLevel || 'Basal level should be interpreted from consistently demonstrated spelling, sentence, and handwriting skills in the sample.',
     ceilingLevel: existingSummary.ceilingLevel || 'Ceiling level should be interpreted from the first point where spelling, fluency, or mechanics break down.',
@@ -1301,24 +1408,45 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
   }
 
   try {
-    // ── STEP 1: Evidence Extraction ───────────────────────────────────────────
-    console.log('[Step 1] Extracting evidence...');
+    // ── STEP 1: Evidence Extraction (+ parallel cancellation pass) ────────────
+    console.log('[Step 1] Extracting evidence (2 parallel passes)...');
 
-    const step1 = await withFallback(client => (client as any).responses.create({
-      model: 'gpt-5-chat-latest',
-      input: [
-        {
-          role: 'user',
-          content: [
-            { type: 'input_text', text: buildExtractionPrompt(grade_p) },
-            { type: 'input_image', image_url: imageUrl },
-          ],
-        },
-      ],
-      temperature: 0,
-    }));
+    const preferredModel = model || 'gpt-4o';
 
-    const raw1 = (step1 as any).output_text || (step1 as any).output?.[0]?.content?.[0]?.text || (step1 as any).choices?.[0]?.message?.content || '';
+    const [step1, step1b] = await Promise.all([
+      withFallback((client, m) => createResponse(client, {
+        model: m,
+        input: [
+          {
+            role: 'user',
+            content: [
+              { type: 'input_text', text: buildExtractionPrompt(grade_p) },
+              { type: 'input_image', image_url: imageUrl },
+            ],
+          },
+        ],
+      }, 0), preferredModel),
+
+      // Focused strike-through pass. Never fatal — if it fails we simply fall
+      // back to whatever the main extraction found on its own.
+      withFallback((client, m) => createResponse(client, {
+        model: m,
+        input: [
+          {
+            role: 'user',
+            content: [
+              { type: 'input_text', text: buildCancellationPrompt(grade_p) },
+              { type: 'input_image', image_url: imageUrl },
+            ],
+          },
+        ],
+      }, 0), preferredModel).catch((err: any) => {
+        console.warn('[Step 1B] Cancellation pass failed, continuing without it:', err?.message);
+        return null;
+      }),
+    ]);
+
+    const raw1 = responseText(step1);
     // Try to extract JSON from markdown code blocks if the response is not pure JSON
     const jsonMatch = raw1.match(/```json\n?([\s\S]*?)\n?```/) || raw1.match(/```\n?([\s\S]*?)\n?```/);
     const cleanedRaw1 = jsonMatch ? jsonMatch[1] : raw1;
@@ -1375,6 +1503,35 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       }
       
       extracted.confirmedCancellations = updatedCancellations;
+    }
+
+    // 4. Merge the focused pass. This runs AFTER the inline-tag sync above,
+    //    which rebuilds the array from tags in the transcription and would
+    //    otherwise discard everything the second pass found.
+    if (step1b) {
+      const parsedB = parseJsonLoose(responseText(step1b));
+
+      if (parsedB) {
+        const beforeConfirmed = extracted.confirmedCancellations?.length || 0;
+        const beforeUncertain = extracted.uncertainCancellations?.length || 0;
+
+        extracted.confirmedCancellations = mergeCancellations(
+          extracted.confirmedCancellations,
+          parsedB.confirmedCancellations
+        );
+        extracted.uncertainCancellations = mergeCancellations(
+          extracted.uncertainCancellations,
+          parsedB.uncertainCancellations
+        );
+
+        console.log(
+          `[Step 1B] Cancellation pass merged: confirmed ${beforeConfirmed} -> ${extracted.confirmedCancellations.length}, ` +
+          `uncertain ${beforeUncertain} -> ${extracted.uncertainCancellations.length}`
+        );
+        console.log('[Step 1B] Pass-B confirmed:', (parsedB.confirmedCancellations || []).map((c: any) => c.text).join(', ') || '(none)');
+      } else {
+        console.warn('[Step 1B] Cancellation pass returned unparseable JSON — ignored.');
+      }
     }
 
     const plainTranscription = stripCancellationTags(modelTranscription);
@@ -1629,7 +1786,8 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       : scores.spelling < 70 ? 'Below Grade Level'
       : scores.spelling < 85 ? 'At Grade Level' : 'Above Grade Level';
 
-    const fluencyLabel = wpm < norm.min ? 'Slow/Labored'
+    const fluencyLabel = wpm <= 0 ? 'Not assessed'
+      : wpm < norm.min ? 'Slow/Labored'
       : wpm <= norm.max ? 'Developing' : 'Fluent';
 
     console.log('[Step 2] SCORES:');
@@ -1639,8 +1797,8 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // ── STEP 3: Narrative — TEXT ONLY, NO IMAGE ───────────────────────────────
     console.log('\n[Step 3] Generating narrative...');
 
-    const step3 = await withFallback(client => (client as any).responses.create({
-      model: model || 'gpt-5-chat-latest',
+    const step3 = await withFallback((client, m) => (client as any).responses.create({
+      model: m,
       input: [
         {
           role: 'user',
@@ -1666,7 +1824,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
           ],
         },
       ],
-    }));
+    }), model || 'gpt-4o');
 
     console.log('[Step 3] ✓ | usage:', (step3 as any).usage);
     console.log('[Step 3] Preview:', (step3 as any).output?.[0]?.content?.[0]?.text?.slice(0, 200) || (step3 as any).choices?.[0]?.message?.content?.slice(0, 200));
@@ -1783,7 +1941,8 @@ export async function recalculateHandler(req: AuthRequest, res: Response): Promi
       : scores.spelling < 70 ? 'Below Grade Level'
       : scores.spelling < 85 ? 'At Grade Level' : 'Above Grade Level';
 
-    const fluencyLabel = wpm < norm.min ? 'Slow/Labored'
+    const fluencyLabel = wpm <= 0 ? 'Not assessed'
+      : wpm < norm.min ? 'Slow/Labored'
       : wpm <= norm.max ? 'Developing' : 'Fluent';
 
     console.log('[Recalculate] Updated scores:', scores);

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import ReactCrop, { type Crop, centerCrop, makeAspectCrop, PixelCrop } from 'react-image-crop';
+import ReactCrop, { type Crop, centerCrop, PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { 
   Document, 
@@ -343,6 +343,15 @@ const normalizeForUiMatch = (value: string): string =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// Spelling comparisons keep hyphens — a hyphenation error is exactly the
+// difference we must preserve (e.g. "gettogether" vs "get-together").
+const normalizeForSpellingMatch = (value: string): string =>
+  (value || '')
+    .toLowerCase()
+    .replace(/[.,\/#!$%\^&\*;:{}=_`~()?"']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -458,6 +467,13 @@ const RenderTranscription = ({
     
     // Helper to normalize text for matching
     const normalize = (str: string) => str.toLowerCase().replace(/[^\w\s]/g, '').trim();
+
+    // Spelling matches must keep hyphens. Errors like "gettogether" (intended
+    // "get-together") differ from the correct form ONLY by the hyphen — the
+    // loose normalizer above collapses both to "gettogether" and would paint a
+    // correctly written "get-together" red.
+    const normalizeSpelling = (str: string) =>
+      str.toLowerCase().replace(/[^\w\s-]/g, '').trim();
     
     // Helper to safely upgrade annotation type based on priority
     const upgradeToken = (tokenIndex: number, newType: AnnotationType) => {
@@ -475,6 +491,7 @@ const RenderTranscription = ({
     const targets = highlightMap?.targets || [];
     const useTargetsOnly = targets.length > 0;
     const occurrenceCounter: Record<string, number> = {};
+    const spellOccurrenceCounter: Record<string, number> = {};
     
     for (let i = 0; i < annotatedTokens.length; i++) {
       const t = annotatedTokens[i];
@@ -483,12 +500,18 @@ const RenderTranscription = ({
       const key = normalize(t.text);
       occurrenceCounter[key] = (occurrenceCounter[key] || 0) + 1;
       const occ = occurrenceCounter[key];
-      
+
+      const spellKey = normalizeSpelling(t.text);
+      spellOccurrenceCounter[spellKey] = (spellOccurrenceCounter[spellKey] || 0) + 1;
+      const spellOcc = spellOccurrenceCounter[spellKey];
+
       // Check for single-word matches first
-      const singleWordHit = targets.find(x => 
-        normalize(x.text) === key && 
-        (x.occurrence || 1) === occ && 
-        (x.tokenSpan || 1) === 1
+      const singleWordHit = targets.find(x =>
+        (x.tokenSpan || 1) === 1 && (
+          x.kind === 'spelling'
+            ? normalizeSpelling(x.text) === spellKey && (x.occurrence || 1) === spellOcc
+            : normalize(x.text) === key && (x.occurrence || 1) === occ
+        )
       );
       
       if (singleWordHit) {
@@ -549,8 +572,8 @@ const RenderTranscription = ({
       for (let i = 0; i < annotatedTokens.length; i++) {
         const token = annotatedTokens[i];
         if (!token.text.trim()) continue;
-        const normalizedToken = normalize(token.text);
-        const isSpellingError = redWords.some(word => normalize(word) === normalizedToken);
+        const normalizedToken = normalizeSpelling(token.text);
+        const isSpellingError = redWords.some(word => normalizeSpelling(word) === normalizedToken);
         if (isSpellingError) upgradeToken(i, 'spelling');
       }
 
@@ -828,6 +851,8 @@ export default function App({ user, onLogout, reportTabMode = false }: AppProps)
   const [externalUrl, setExternalUrl] = useState('');
   const [crop, setCrop] = useState<Crop>();
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+  const [cropDims, setCropDims] = useState<{ w: number; h: number } | null>(null);
+  const [cropError, setCropError] = useState<string | null>(null);
   const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
   const [showSavedReports, setShowSavedReports] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -1628,50 +1653,80 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
     img.src = image;
   };
 
+  // Default selection: most of the page, free-form. Handwriting samples are
+  // rarely square, so no aspect ratio is forced on the user.
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const { width, height } = e.currentTarget;
+    const { width, height, naturalWidth, naturalHeight } = e.currentTarget;
     const initialCrop = centerCrop(
-      makeAspectCrop(
-        {
-          unit: '%',
-          width: 90,
-        },
-        1, // aspect ratio (optional, setting to 1 for now but user can change)
-        width,
-        height
-      ),
+      { unit: '%', x: 0, y: 0, width: 92, height: 92 },
       width,
       height
     );
     setCrop(initialCrop);
+    setCropError(null);
+    setCropDims({
+      w: Math.round((naturalWidth * 92) / 100),
+      h: Math.round((naturalHeight * 92) / 100),
+    });
+  };
+
+  const resetCrop = () => {
+    const img = imgRef.current;
+    if (!img) return;
+    setCrop(centerCrop({ unit: '%', x: 0, y: 0, width: 92, height: 92 }, img.width, img.height));
+    setCompletedCrop(undefined);
+    setCropError(null);
+    setCropDims({
+      w: Math.round((img.naturalWidth * 92) / 100),
+      h: Math.round((img.naturalHeight * 92) / 100),
+    });
+  };
+
+  const closeCropper = () => {
+    setIsCropping(false);
+    setCropError(null);
   };
 
   const getCroppedImg = () => {
-    if (!completedCrop || !imgRef.current) return;
+    const img = imgRef.current;
+
+    if (!img || !completedCrop || completedCrop.width < 5 || completedCrop.height < 5) {
+      setCropError('Drag on the image to select the handwriting area first.');
+      return;
+    }
+
+    // The <img> is displayed scaled-down to fit the modal. Crop coordinates are
+    // in display pixels, so map them back to the source image and render the
+    // canvas at the ORIGINAL resolution — downscaling here would blur the
+    // handwriting and degrade OCR accuracy.
+    const scaleX = img.naturalWidth / img.width;
+    const scaleY = img.naturalHeight / img.height;
+
+    const sourceX = completedCrop.x * scaleX;
+    const sourceY = completedCrop.y * scaleY;
+    const sourceW = completedCrop.width * scaleX;
+    const sourceH = completedCrop.height * scaleY;
 
     const canvas = document.createElement('canvas');
-    const scaleX = imgRef.current.naturalWidth / imgRef.current.width;
-    const scaleY = imgRef.current.naturalHeight / imgRef.current.height;
-    canvas.width = completedCrop.width;
-    canvas.height = completedCrop.height;
+    canvas.width = Math.round(sourceW);
+    canvas.height = Math.round(sourceH);
+
     const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      setCropError('Could not process the image. Please try again.');
+      return;
+    }
 
-    if (!ctx) return;
-
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(
-      imgRef.current,
-      completedCrop.x * scaleX,
-      completedCrop.y * scaleY,
-      completedCrop.width * scaleX,
-      completedCrop.height * scaleY,
-      0,
-      0,
-      completedCrop.width,
-      completedCrop.height
+      img,
+      sourceX, sourceY, sourceW, sourceH,
+      0, 0, canvas.width, canvas.height
     );
 
-    const base64Image = canvas.toDataURL('image/jpeg', 0.9);
-    setImage(base64Image);
+    setImage(canvas.toDataURL('image/jpeg', 0.95));
+    setCompletedCrop(undefined);
+    setCropError(null);
     setIsCropping(false);
   };
 
@@ -1687,6 +1742,13 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
     
     if (!timeGiven.trim()) {
       setError("Please specify the 'Time Given (minutes)' before generating the report.");
+      return;
+    }
+
+    // Writing speed (WPM) is a scored clinical domain. Without the actual time
+    // spent it cannot be measured, so the report would understate fluency.
+    if (!timeTaken.trim() || parseFloat(timeTaken) <= 0) {
+      setError("Please specify the 'Time Taken (minutes)' — writing speed cannot be calculated without it.");
       return;
     }
     
@@ -1709,7 +1771,7 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
       console.log('[App] Payment order created:', order.id);
       
       // Get user ID from localStorage
-      const userInfo = JSON.parse(localStorage.getItem('graphia_user') || '{}');
+      const userInfo = JSON.parse(localStorage.getItem('user') || '{}');
       const userId = userInfo.id || 1; // Default to 1 if not logged in
       console.log('[App] User ID:', userId);
       
@@ -1790,10 +1852,13 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
       
       // Update report with probability and analysis results
       try {
-        await fetch('/api/payment/update-report', {
+        const API_URL = import.meta.env.VITE_API_URL || '/api';
+        const API_KEY = import.meta.env.VITE_API_KEY || 'candidjobs_iep_secure_key_2025';
+        await fetch(`${API_URL}/payments/update-report`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-API-Key': API_KEY,
           },
           body: JSON.stringify({
             user_id: userId,
@@ -1865,7 +1930,7 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
     
     try {
       // Get the user info from localStorage
-      const userInfo = JSON.parse(localStorage.getItem('graphia_user') || '{}');
+      const userInfo = JSON.parse(localStorage.getItem('user') || '{}');
       
       const response = await fetch('/api/recalculate', {
         method: 'POST',
@@ -2437,14 +2502,13 @@ ${result.report}
                         return;
                       }
 
-                      let isRed = redWords.some(item => normalizeForUiMatch(item) === normalized);
-
-                      if (!isRed && word.includes('-')) {
-                        isRed = redWords.some(item => {
-                          const target = normalizeForUiMatch(item);
-                          return target.length >= 2 && normalized.includes(target);
-                        });
-                      }
+                      // Hyphen-sensitive: "gettogether" must NOT match a correctly
+                      // written "get-together". The old substring fallback below
+                      // matched any target of 2+ chars and painted valid words red.
+                      const normalizedSpelling = normalizeForSpellingMatch(word);
+                      const isRed = redWords.some(
+                        item => normalizeForSpellingMatch(item) === normalizedSpelling
+                      );
 
                       pushStyledText(word, isRed ? 'red' : 'plain');
                     });
@@ -2602,51 +2666,104 @@ ${result.report}
             style={{ backgroundColor: 'rgba(20, 20, 20, 0.9)' }}
             className="fixed inset-0 backdrop-blur-sm z-[100] flex items-center justify-center p-4 sm:p-8"
           >
-            <div className="bg-[#E4E3E0] border border-[#141414] w-full max-w-4xl max-h-[90vh] flex flex-col">
-              <div className="p-4 border-b border-[#141414] flex justify-between items-center">
-                <h3 className="font-serif italic text-lg flex items-center gap-2">
-                  <CropIcon className="w-4 h-4" /> Crop Handwriting Sample
-                </h3>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => setIsCropping(false)}
-                    className="p-2 hover:bg-[#141414]/10 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+            <div className="bg-[#E4E3E0] border border-[#141414] w-full max-w-5xl h-[92vh] flex flex-col shadow-2xl">
+              {/* Header */}
+              <div className="px-5 py-3 border-b border-[#141414] flex justify-between items-center shrink-0">
+                <div>
+                  <h3 className="font-serif italic text-lg flex items-center gap-2">
+                    <CropIcon className="w-4 h-4" /> Crop Handwriting Sample
+                  </h3>
+                  <p className="font-mono text-[9px] uppercase tracking-widest opacity-50 mt-0.5">
+                    Drag the corners to keep only the handwriting
+                  </p>
                 </div>
+                <button
+                  onClick={closeCropper}
+                  aria-label="Close cropper"
+                  className="p-2 hover:bg-[#141414]/10 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              
-              <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-[#141414]/5">
+
+              {/* Toolbar */}
+              <div className="px-5 py-2.5 border-b border-[#141414]/20 bg-[#141414]/[0.04] flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  onClick={rotateImage}
+                  className="flex items-center gap-1.5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest border border-[#141414]/40 bg-[#E4E3E0] hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors"
+                >
+                  <RotateCw className="w-3.5 h-3.5" /> Rotate 90°
+                </button>
+                <button
+                  onClick={resetCrop}
+                  className="flex items-center gap-1.5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest border border-[#141414]/40 bg-[#E4E3E0] hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Reset Selection
+                </button>
+
+                <span className="ml-auto font-mono text-[10px] uppercase tracking-widest opacity-60">
+                  {cropDims
+                    ? `Selection: ${cropDims.w} × ${cropDims.h} px`
+                    : 'No selection'}
+                </span>
+              </div>
+
+              {/* Crop surface — takes all remaining height, image always fits */}
+              <div className="flex-1 min-h-0 overflow-auto p-4 flex items-center justify-center bg-[#141414]/10">
                 <ReactCrop
                   crop={crop}
-                  onChange={c => setCrop(c)}
-                  onComplete={c => setCompletedCrop(c)}
+                  onChange={c => { setCrop(c); if (cropError) setCropError(null); }}
+                  onComplete={c => {
+                    setCompletedCrop(c);
+                    const img = imgRef.current;
+                    if (img && c.width > 0 && c.height > 0) {
+                      setCropDims({
+                        w: Math.round(c.width * (img.naturalWidth / img.width)),
+                        h: Math.round(c.height * (img.naturalHeight / img.height)),
+                      });
+                    } else {
+                      setCropDims(null);
+                    }
+                  }}
+                  className="graphia-cropper"
+                  ruleOfThirds
+                  keepSelection
+                  minWidth={24}
+                  minHeight={24}
                 >
-                  <img 
+                  <img
                     ref={imgRef}
-                    src={image} 
-                    alt="Crop preview" 
+                    src={image}
+                    alt="Crop preview"
                     onLoad={onImageLoad}
-                    className="max-w-full max-h-[60vh] object-contain"
+                    style={{ maxHeight: 'calc(92vh - 230px)' }}
+                    className="block max-w-full w-auto object-contain"
                     referrerPolicy="no-referrer"
                   />
                 </ReactCrop>
               </div>
 
-              <div className="p-6 border-t border-[#141414] flex justify-end gap-4">
-                <button 
-                  onClick={() => setIsCropping(false)}
-                  className="px-6 py-2 font-mono text-xs uppercase tracking-widest border border-[#141414] hover:bg-[#141414]/10 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={getCroppedImg}
-                  className="px-6 py-2 font-mono text-xs uppercase tracking-widest bg-[#141414] text-[#E4E3E0] hover:bg-[#2a2a2a] flex items-center gap-2 transition-colors"
-                >
-                  <Check className="w-4 h-4" /> Apply Crop
-                </button>
+              {/* Footer */}
+              <div className="px-5 py-4 border-t border-[#141414] flex items-center gap-4 shrink-0">
+                {cropError && (
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-red-700">
+                    {cropError}
+                  </p>
+                )}
+                <div className="ml-auto flex gap-3">
+                  <button
+                    onClick={closeCropper}
+                    className="px-6 py-2 font-mono text-xs uppercase tracking-widest border border-[#141414] hover:bg-[#141414]/10 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={getCroppedImg}
+                    className="px-6 py-2 font-mono text-xs uppercase tracking-widest bg-[#141414] text-[#E4E3E0] hover:bg-[#2a2a2a] flex items-center gap-2 transition-colors"
+                  >
+                    <Check className="w-4 h-4" /> Apply Crop
+                  </button>
+                </div>
               </div>
             </div>
           </motion.div>
@@ -4133,8 +4250,8 @@ ${result.report}
                                 </div>
                                 <div className="border-t border-gray-150 pt-2">
                                   <div className="text-[8pt] text-gray-500 font-mono uppercase tracking-wider">Writing speed</div>
-                                  <div className="text-[20pt] font-black text-red-600 leading-none mt-0.5">
-                                    {reportWpm} WPM
+                                  <div className={`text-[20pt] font-black leading-none mt-0.5 ${reportWpm > 0 && reportWpm < (parseInt(getGradeSpeedNorm(grade).split('-')[0]) || 20) ? 'text-red-600' : 'text-[#0C2340]'}`}>
+                                    {reportWpm > 0 ? `${reportWpm} WPM` : 'Not assessed'}
                                   </div>
                                   <div className="text-[7.5pt] text-gray-400 italic mt-0.5 leading-normal font-mono">
                                     ({grade || 'Grade 9'} norm: {getGradeSpeedNorm(grade)} WPM)
@@ -4562,11 +4679,11 @@ ${result.report}
                                   )}
                                 </td>
                                 <td className="border border-gray-300 px-2 py-2">
-                                  <div className="text-[14pt] font-black text-[#0c2340] leading-none">{timeTaken || 12}</div>
+                                  <div className="text-[14pt] font-black text-[#0c2340] leading-none">{timeTaken || '—'}</div>
                                   <div className="text-[6.5pt] text-gray-400 uppercase tracking-wide mt-0.5">minutes</div>
                                 </td>
                                 <td className="border border-gray-300 px-2 py-2">
-                                  <div className="text-[14pt] font-black text-[#0c2340] leading-none">{reportWpm}</div>
+                                  <div className="text-[14pt] font-black text-[#0c2340] leading-none">{reportWpm > 0 ? reportWpm : '—'}</div>
                                   <div className="text-[6.5pt] text-gray-400 uppercase tracking-wide mt-0.5">wpm</div>
                                 </td>
                                 <td className="border border-gray-300 px-2 py-2">
@@ -4576,7 +4693,9 @@ ${result.report}
                               </tr>
                               <tr>
                                 <td colSpan={4} className="border border-gray-300 px-2 py-1.5 text-[8pt] text-gray-800 italic">
-                                  {result.summary.wordCount} words / {timeTaken || 12} minutes = <strong>{reportWpm} WPM.</strong> {result.summary.fluencyAnalysis || 'Slow / Labored — the physical act of writing is consuming significant cognitive load.'}
+                                  {timeTaken
+                                    ? <>{result.summary.wordCount} words / {timeTaken} minutes = <strong>{reportWpm} WPM.</strong> {result.summary.fluencyAnalysis || 'Slow / Labored — the physical act of writing is consuming significant cognitive load.'}</>
+                                    : <>Writing speed not assessed — the actual time taken was not recorded for this sample.</>}
                                 </td>
                               </tr>
                             </tbody>

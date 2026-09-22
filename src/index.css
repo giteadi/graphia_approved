@@ -241,3 +241,32 @@
     break-inside: avoid !important;
   }
 }
+
+/* ── Image cropper (react-image-crop) ─────────────────────────────────────── */
+/* Default handles are 6px and nearly invisible on a scanned page. Enlarge the
+   grab targets and raise contrast so the selection reads clearly on any sample. */
+.graphia-cropper .ReactCrop__crop-selection {
+  border: 1.5px solid #E4E3E0;
+  box-shadow: 0 0 0 9999em rgba(20, 20, 20, 0.6);
+}
+
+.graphia-cropper .ReactCrop__drag-handle::after {
+  width: 14px;
+  height: 14px;
+  background-color: #E4E3E0;
+  border: 2px solid #141414;
+  border-radius: 2px;
+}
+
+/* Bigger invisible hit area — easier to grab on trackpads and touch screens */
+.graphia-cropper .ReactCrop__drag-handle {
+  width: 26px;
+  height: 26px;
+}
+
+.graphia-cropper .ReactCrop__rule-of-thirds-vt::before,
+.graphia-cropper .ReactCrop__rule-of-thirds-vt::after,
+.graphia-cropper .ReactCrop__rule-of-thirds-hz::before,
+.graphia-cropper .ReactCrop__rule-of-thirds-hz::after {
+  background-color: rgba(228, 227, 224, 0.4);
+}

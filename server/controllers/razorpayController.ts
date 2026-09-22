@@ -3,11 +3,66 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import { query } from '../config/db.js';
 
-// Razorpay instance using environment variables
+// ── Razorpay clients ──────────────────────────────────────────────────────────
+// Live keys charge real money. Test keys let admins walk the full payment flow
+// without a real charge — those payments are flagged and excluded from revenue.
+const LIVE_KEY_ID     = process.env.RAZORPAY_KEY_ID;
+const LIVE_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
+const TEST_KEY_ID     = process.env.RAZORPAY_TEST_KEY_ID;
+const TEST_KEY_SECRET = process.env.RAZORPAY_TEST_KEY_SECRET;
+
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
+  key_id: LIVE_KEY_ID,
+  key_secret: LIVE_KEY_SECRET,
 });
+
+const razorpayTest = TEST_KEY_ID && TEST_KEY_SECRET
+  ? new Razorpay({ key_id: TEST_KEY_ID, key_secret: TEST_KEY_SECRET })
+  : null;
+
+/** Accounts allowed to pay with test keys. Comma-separated in TEST_PAYMENT_EMAILS. */
+const TEST_PAYMENT_EMAILS = (process.env.TEST_PAYMENT_EMAILS || 'admin@graphiacheck.in')
+  .split(',')
+  .map(e => e.trim().toLowerCase())
+  .filter(Boolean);
+
+function requesterEmail(req: Request): string {
+  return String(req.headers['x-user-email'] || req.body?.user_email || '')
+    .toLowerCase()
+    .trim();
+}
+
+/** True when this request should go through Razorpay test mode. */
+function useTestMode(req: Request): boolean {
+  if (!razorpayTest) return false;
+  const email = requesterEmail(req);
+  return !!email && TEST_PAYMENT_EMAILS.includes(email);
+}
+
+/**
+ * Verifies the Razorpay signature against the live secret first, then the test
+ * secret. Returns which mode matched, or null when the signature is invalid.
+ */
+function verifySignatureMode(
+  orderId: string,
+  paymentId: string,
+  signature: string
+): 'live' | 'test' | null {
+  const body = `${orderId}|${paymentId}`;
+  const candidates: Array<{ mode: 'live' | 'test'; secret?: string }> = [
+    { mode: 'live', secret: LIVE_KEY_SECRET },
+    { mode: 'test', secret: TEST_KEY_SECRET },
+  ];
+
+  for (const { mode, secret } of candidates) {
+    if (!secret) continue;
+    const expected = crypto.createHmac('sha256', secret).update(body).digest('hex');
+    const a = Buffer.from(expected, 'utf8');
+    const b = Buffer.from(signature, 'utf8');
+    if (a.length === b.length && crypto.timingSafeEqual(a, b)) return mode;
+  }
+  return null;
+}
 
 export async function createOrder(req: Request, res: Response): Promise<void> {
   try {
@@ -22,6 +77,10 @@ export async function createOrder(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    const testMode = useTestMode(req);
+    const client = testMode ? razorpayTest! : razorpay;
+    const keyId = testMode ? TEST_KEY_ID : LIVE_KEY_ID;
+
     // Create Razorpay order
     const options = {
       amount: amount * 100, // Razorpay expects amount in paise
@@ -33,20 +92,21 @@ export async function createOrder(req: Request, res: Response): Promise<void> {
       }
     };
 
-    console.log('[Razorpay] Creating order with options:', JSON.stringify(options));
-    const order = await razorpay.orders.create(options);
+    console.log(`[Razorpay] Creating order (${testMode ? 'TEST' : 'LIVE'} mode) with options:`, JSON.stringify(options));
+    const order = await client.orders.create(options);
 
-    console.log(`[Razorpay] Order created: ${order.id} for amount ${amount}`);
+    console.log(`[Razorpay] Order created: ${order.id} for amount ${amount} (${testMode ? 'TEST' : 'LIVE'})`);
 
     // Return response in Pyment.md format
     res.json({
       success: true,
       data: {
         id: order.id,
-        key: process.env.RAZORPAY_KEY_ID, // Use environment variable
+        key: keyId, // test key for whitelisted admins, live key otherwise
         amount: order.amount,
         currency: order.currency,
-        receipt: order.receipt
+        receipt: order.receipt,
+        mode: testMode ? 'test' : 'live'
       }
     });
   } catch (err: any) {
@@ -81,16 +141,14 @@ export async function verifyPayment(req: Request, res: Response): Promise<void> 
       return;
     }
 
-    // Verify signature
-    const secret = process.env.RAZORPAY_KEY_SECRET;
-    const hmac = crypto.createHmac('sha256', secret);
-    hmac.update(`${razorpay_order_id}|${razorpay_payment_id}`);
-    const generatedSignature = hmac.digest('hex');
-    
-    // Hardcoded secret fallback (commented out - use .env file)
-    // const secret = 'ypHPglfRsPwivHvtG2S4YO34'; // GraphiaCheck Shop - New Secret (Hardcoded)
+    // Verify signature against live secret, then test secret
+    const signatureMode = verifySignatureMode(
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature
+    );
 
-    if (generatedSignature !== razorpay_signature) {
+    if (!signatureMode) {
       console.error('[Razorpay] Signature verification failed');
       res.status(400).json({ 
         success: false, 
@@ -99,22 +157,30 @@ export async function verifyPayment(req: Request, res: Response): Promise<void> 
       return;
     }
 
+    const isTestPayment = signatureMode === 'test';
+    if (isTestPayment) {
+      console.log(`[Razorpay] TEST-mode payment verified for user ${user_id} — excluded from revenue`);
+    }
+
     // Store payment in database with phone number
     const paymentAmount = amount || 899.00;
     const contactEmail = report_data?.contactEmail || report_data?.contact_info || null;
     const contactPhone = report_data?.contactPhone || null;
+    const baseDescription = isTestPayment
+      ? `[TEST] ${description || 'Report Generation Fee'}`
+      : (description || 'Report Generation Fee');
     const paymentDescription = contactPhone
-      ? `${description || 'Report Generation Fee'} | ${contactEmail || ''} | ${contactPhone}`
-      : `${description || 'Report Generation Fee'} | ${contactEmail || ''}`;
+      ? `${baseDescription} | ${contactEmail || ''} | ${contactPhone}`
+      : `${baseDescription} | ${contactEmail || ''}`;
 
     const paymentResult = await query(
-      `INSERT INTO payments (user_id, amount, currency, status, payment_method, description, payment_date)
-       VALUES (?, ?, 'INR', 'completed', 'razorpay', ?, NOW())`,
-      [user_id, paymentAmount, paymentDescription]
+      `INSERT INTO payments (user_id, amount, currency, status, payment_method, description, is_test, payment_date)
+       VALUES (?, ?, 'INR', 'completed', 'razorpay', ?, ?, NOW())`,
+      [user_id, paymentAmount, paymentDescription, isTestPayment ? 1 : 0]
     );
 
     const paymentId = (paymentResult as any).insertId;
-    console.log(`[Razorpay] Payment stored: ID ${paymentId}, User ID ${user_id}`);
+    console.log(`[Razorpay] Payment stored: ID ${paymentId}, User ID ${user_id}, Mode ${signatureMode}`);
 
     // Check if report data contains high probability
     const probability = report_data?.probability || 'Unknown';
@@ -146,6 +212,7 @@ export async function verifyPayment(req: Request, res: Response): Promise<void> 
       data: {
         paymentId,
         isHighProbability,
+        isTestPayment,
         message: 'Payment verified successfully'
       }
     });
@@ -170,29 +237,50 @@ export async function updateReportData(req: Request, res: Response): Promise<voi
       return;
     }
 
-    // Update the latest report for this user with probability and analysis results
-    const result = await query(
-      `UPDATE reports 
-       SET probability = ?, 
-           is_high_probability = ?,
-           report_text = JSON_FORMAT(JSON_SET(
-             JSON_UNQUOTE(report_text),
-             '$.summary', ?,
-             '$.scores', ?
-           ))
-       WHERE user_id = ? 
-       ORDER BY id DESC 
-       LIMIT 1`,
+    // Merge in JS rather than with SQL JSON functions — JSON_FORMAT is MariaDB
+    // only and threw "FUNCTION does not exist" on MySQL, so this update never
+    // actually ran. report_text may also hold narrative text (not JSON), which
+    // JSON_SET would have corrupted.
+    const rows = await query<any>(
+      'SELECT id, report_text FROM reports WHERE user_id = ? ORDER BY id DESC LIMIT 1',
+      [user_id]
+    );
+
+    if (rows.length === 0) {
+      res.status(404).json({
+        success: false,
+        message: 'No report found for this user'
+      });
+      return;
+    }
+
+    const latest = rows[0];
+    let reportText: string = latest.report_text;
+
+    try {
+      const parsed = JSON.parse(reportText);
+      if (parsed && typeof parsed === 'object') {
+        parsed.summary = summary;
+        parsed.scores = scores;
+        reportText = JSON.stringify(parsed);
+      }
+    } catch {
+      // Narrative report text — leave it untouched, only the columns update.
+    }
+
+    await query(
+      `UPDATE reports
+       SET probability = ?, is_high_probability = ?, report_text = ?
+       WHERE id = ?`,
       [
         probability || 'Unknown',
         (probability || '').toLowerCase().includes('high') ? 1 : 0,
-        JSON.stringify(summary),
-        JSON.stringify(scores),
-        user_id
+        reportText,
+        latest.id
       ]
     );
 
-    console.log(`[Razorpay] Report updated for User ID ${user_id}, Probability: ${probability}`);
+    console.log(`[Razorpay] Report ${latest.id} updated for User ID ${user_id}, Probability: ${probability}`);
     res.json({ 
       success: true, 
       data: { message: 'Report updated successfully' } 

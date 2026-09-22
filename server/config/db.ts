@@ -117,6 +117,15 @@ export async function initDB() {
         )
       `);
 
+      // Mark payments made with Razorpay test keys so they never count as revenue
+      try {
+        await conn.execute('ALTER TABLE payments ADD COLUMN is_test BOOLEAN NOT NULL DEFAULT FALSE');
+      } catch (err: any) {
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+          console.warn('[DB] Note on payments.is_test column:', err.message);
+        }
+      }
+
       // Create admin user if not exists
       const adminExists = await query('SELECT id FROM users WHERE email = ?', ['admin@graphiacheck.in']);
       if (adminExists.length === 0) {

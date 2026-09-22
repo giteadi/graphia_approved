@@ -1,8 +1,10 @@
 interface FooterProps {
+  onTerms?: () => void;
+  onPrivacy?: () => void;
   onRefund?: () => void;
 }
 
-export default function Footer({ onRefund }: FooterProps) {
+export default function Footer({ onTerms, onPrivacy, onRefund }: FooterProps) {
   return (
     <footer className="bg-[#1a1a2e] text-white py-12">
       <div className="max-w-6xl mx-auto px-6">
@@ -34,6 +36,28 @@ export default function Footer({ onRefund }: FooterProps) {
               Legal
             </h3>
             <ul className="space-y-2">
+              {onTerms && (
+                <li>
+                  <button
+                    onClick={onTerms}
+                    className="text-gray-400 text-sm hover:text-white transition-colors"
+                    style={{ fontFamily: "system-ui, sans-serif" }}
+                  >
+                    Terms & Conditions
+                  </button>
+                </li>
+              )}
+              {onPrivacy && (
+                <li>
+                  <button
+                    onClick={onPrivacy}
+                    className="text-gray-400 text-sm hover:text-white transition-colors"
+                    style={{ fontFamily: "system-ui, sans-serif" }}
+                  >
+                    Privacy Policy
+                  </button>
+                </li>
+              )}
               {onRefund && (
                 <li>
                   <button

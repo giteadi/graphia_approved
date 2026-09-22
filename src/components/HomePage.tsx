@@ -6,10 +6,12 @@ interface HomePageProps {
   onGetStarted: () => void;
   onHome: () => void;
   onAbout: () => void;
+  onTerms?: () => void;
+  onPrivacy?: () => void;
   onRefund?: () => void;
 }
 
-export default function HomePage({ onGetStarted, onHome, onAbout, onRefund }: HomePageProps) {
+export default function HomePage({ onGetStarted, onHome, onAbout, onTerms, onPrivacy, onRefund }: HomePageProps) {
   return (
     <div style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }} className="min-h-screen bg-[#F5F0E8] text-[#1a1a2e]">
 
@@ -231,7 +233,8 @@ export default function HomePage({ onGetStarted, onHome, onAbout, onRefund }: Ho
           </div>
         </div>
       </section>
-      
+
+      <Footer onTerms={onTerms} onPrivacy={onPrivacy} onRefund={onRefund} />
     </div>
   );
 }

@@ -4,6 +4,17 @@ interface PaymentOrder {
   amount: number;
   currency: string;
   receipt: string;
+  mode?: 'live' | 'test';
+}
+
+/** Logged-in user's email — the server uses it to decide live vs test Razorpay keys. */
+function currentUserEmail(): string {
+  try {
+    const raw = localStorage.getItem('user');
+    return raw ? (JSON.parse(raw).email || '') : '';
+  } catch {
+    return '';
+  }
 }
 
 interface PaymentVerification {
@@ -58,7 +69,8 @@ export async function createPaymentOrder(amount: number = 899, description?: str
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-API-Key': API_KEY
+        'X-API-Key': API_KEY,
+        'x-user-email': currentUserEmail()
       },
       body: JSON.stringify({ 
         amount, 
@@ -111,7 +123,8 @@ export async function verifyPayment(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-API-Key': API_KEY
+        'X-API-Key': API_KEY,
+        'x-user-email': currentUserEmail()
       },
       body: JSON.stringify({
         razorpay_order_id,
@@ -161,9 +174,14 @@ export function initiateRazorpayPayment(
   let paymentSucceeded = false; // Track if payment already succeeded
   let rzpInstance: any = null; // Store Razorpay instance
   
+  const isTestMode = order.mode === 'test';
+  if (isTestMode) {
+    console.warn('[Razorpay] TEST MODE — no real money will be charged');
+  }
+
   const options: RazorpayOptions = {
     key: order.key, // Use key from order response (comes from backend)
-    name: 'GraphiaCheck',
+    name: isTestMode ? 'GraphiaCheck (TEST MODE)' : 'GraphiaCheck',
     description: report_data?.description || 'Report Generation Fee',
     image: 'https://res.cloudinary.com/bazeercloud/image/upload/v1765087953/Gemini_Generated_Image_o8ciwko8ciwko8ci-removebg-preview_l4nnui.png',
     order_id: order.id, // ONLY order_id needed - amount/currency comes from order

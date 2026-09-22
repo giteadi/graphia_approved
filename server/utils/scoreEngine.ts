@@ -58,6 +58,8 @@ export interface Scores {
   alignment: number;
   spatialOrganisation: number;
   writingSpeed: number;
+  /** False when "time taken" was never recorded — writing speed is unknown, not slow. */
+  writingSpeedAssessed: boolean;
   lineQuality: number;
   horizontal: number;
   vertical: number;
@@ -101,6 +103,21 @@ export function getWpmNorm(grade: string): { min: number; max: number } {
 }
 
 // ─── Individual scorers (Strict Clinical Ratio-Based Formulas) ────────────────
+
+/**
+ * Minimum sample size used as the denominator when extrapolating an error rate.
+ * Matches the 75-word validity threshold used for the report's validity warning.
+ *
+ * Without this floor, a handful of errors in a very short sample extrapolates to
+ * an impossible per-100-word rate (e.g. 2 mistakes in 8 words => 371% deduction),
+ * collapsing the score to 0. Short samples are under-powered, not catastrophic.
+ */
+const MIN_RATE_SAMPLE_WORDS = 75;
+
+/** Denominator for per-100-word rates, floored so small samples don't explode. */
+function rateDenominator(totalWords: number): number {
+  return Math.max(totalWords, MIN_RATE_SAMPLE_WORDS);
+}
 
 /** SPELLING: Clinical Error Density Penalty */
 function scoreSpelling(spellingErrors: number, totalWords: number): number {
@@ -160,8 +177,8 @@ function scoreGrammar(
     }
   }
 
-  const errorRatePer100Words = (errorWeight / totalWords) * 100;
-  
+  const errorRatePer100Words = (errorWeight / rateDenominator(totalWords)) * 100;
+
   // Strict clinical deduction (Multiplier 8.5)
   // Severe grammar impairment is penalized appropriately.
   const clinicalDeduction = errorRatePer100Words * 8.5;
@@ -256,21 +273,38 @@ export function calculateScoresWithNorm(e: EvidenceData, grade: string): Scores 
   const alignment          = scoreAlignment(e.alignmentObservations || []);
   const spatialOrganisation = scoreSpatialOrganisation(e.spacingObservations || []);
   const lineQuality        = scoreLineQuality(e.lineQualityObservations || []);
-  const writingSpeed       = scoreWritingSpeed(e.wpm, norm.min, norm.max);
+  // A missing or zero "time taken" means writing speed was never MEASURED — it is
+  // not evidence of slow writing. Scoring it as 0 would drag mechanics down and
+  // manufacture a false HIGH dysgraphia probability from an empty form field.
+  const writingSpeedAssessed = e.wpm > 0;
+  const writingSpeed = writingSpeedAssessed
+    ? scoreWritingSpeed(e.wpm, norm.min, norm.max)
+    : 0;
 
   const horizontal = Math.round((spatialOrganisation + alignment) / 2);
   const vertical   = Math.round((alignment + lineQuality) / 2);
-  const mechanics  = Math.round(
-    letterFormation    * 0.25 +
-    alignment          * 0.20 +
-    spatialOrganisation * 0.20 +
-    lineQuality        * 0.15 +
-    writingSpeed       * 0.20
-  );
+
+  // When speed is unavailable its 20% weight is redistributed over the
+  // remaining domains instead of counting as a zero.
+  const mechanics = writingSpeedAssessed
+    ? Math.round(
+        letterFormation     * 0.25 +
+        alignment           * 0.20 +
+        spatialOrganisation * 0.20 +
+        lineQuality         * 0.15 +
+        writingSpeed        * 0.20
+      )
+    : Math.round(
+        (letterFormation     * 0.25 +
+         alignment           * 0.20 +
+         spatialOrganisation * 0.20 +
+         lineQuality         * 0.15) / 0.80
+      );
 
   const scores = {
     spelling, grammar, sentenceBoundaries, pastTenseUsage,
     letterFormation, alignment, spatialOrganisation, writingSpeed,
+    writingSpeedAssessed,
     lineQuality, horizontal, vertical, mechanics,
   };
 
@@ -286,8 +320,13 @@ export function calculateProbability(
   wpm: number,
   grade: string = '6'
 ): string {
-  const { spelling, writingSpeed, letterFormation, alignment } = scores;
+  const { spelling, letterFormation, alignment } = scores;
   const norm = getWpmNorm(grade);
+
+  // Unmeasured writing speed must never count as a deficit — an unrecorded
+  // "time taken" is missing data, not a clinical finding.
+  const speedAssessed = scores.writingSpeedAssessed !== false && wpm > 0;
+  const slowForGrade = speedAssessed && wpm < norm.min;
 
   // HIGH: Grammar < 20 (severe grammar impairment)
   if (scores.grammar < 20) return 'HIGH';
@@ -301,12 +340,12 @@ export function calculateProbability(
 
   // ── Severe fluency deficit (below 50% of norm min) ──
   const wpmPercent = norm.min > 0 ? (wpm / norm.min) * 100 : 100;
-  const severeFluency = wpm > 0 && wpmPercent < 50;
+  const severeFluency = speedAssessed && wpmPercent < 50;
 
   // HIGH: Original condition (spelling + speed + 2+ visual domains impaired)
   if (
     spelling <= 30 &&
-    wpm < norm.min &&
+    slowForGrade &&
     visualImpairedCount >= 2
   ) {
     return 'HIGH';
@@ -325,7 +364,7 @@ export function calculateProbability(
   // HIGH if spelling moderate + slow speed + mild visual concerns
   if (
     spelling >= 50 && spelling < 70 &&
-    wpm < norm.min &&
+    slowForGrade &&
     (letterFormation >= 65 || alignment >= 70)
   ) {
     return 'HIGH';
@@ -338,7 +377,7 @@ export function calculateProbability(
     scores.sentenceBoundaries < 60,
     scores.pastTenseUsage < 60,
     visualImpairedCount >= 1,
-    scores.writingSpeed < 60,
+    speedAssessed && scores.writingSpeed < 60,
     scores.mechanics < 65 // Visual mechanics poor fallback
   ].filter(Boolean).length;
 
@@ -350,7 +389,7 @@ export function calculateProbability(
 export function getActionableStrategies(scores: Scores, rtiImprovement: boolean): string[] {
   const strategies: string[] = [];
 
-  if (scores.writingSpeed < 60) {
+  if (scores.writingSpeedAssessed !== false && scores.writingSpeed < 60) {
     strategies.push('Allow extended time on all written tasks and assessments.');
     strategies.push('Introduce speech-to-text tools for longer writing assignments so ideas are not blocked by the physical act of writing.');
   }

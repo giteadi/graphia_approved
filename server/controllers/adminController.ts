@@ -17,6 +17,7 @@ export async function getAllPayments(req: Request, res: Response): Promise<void>
         p.status,
         p.payment_method,
         p.description,
+        p.is_test,
         DATE(p.payment_date) as payment_date,
         p.created_at
       FROM payments p
@@ -84,7 +85,8 @@ export async function getAllPayments(req: Request, res: Response): Promise<void>
         date: p.payment_date,
         status: p.status,
         paymentMethod: p.payment_method,
-        description: p.description
+        description: p.description,
+        isTest: Boolean(p.is_test)
       };
     });
 
@@ -97,19 +99,19 @@ export async function getAllPayments(req: Request, res: Response): Promise<void>
 
 export async function getPaymentStats(req: Request, res: Response): Promise<void> {
   try {
-    // Get total revenue
+    // Get total revenue — Razorpay test-mode payments are not real money
     const totalRevenue = await query<any>(
-      'SELECT SUM(amount) as total FROM payments WHERE status = "completed"'
+      'SELECT SUM(amount) as total FROM payments WHERE status = "completed" AND is_test = FALSE'
     );
 
     // Get payment count by status
     const statusCounts = await query<any>(
-      'SELECT status, COUNT(*) as count FROM payments GROUP BY status'
+      'SELECT status, COUNT(*) as count FROM payments WHERE is_test = FALSE GROUP BY status'
     );
 
     // Get payment method distribution
     const methodCounts = await query<any>(
-      'SELECT payment_method, COUNT(*) as count FROM payments GROUP BY payment_method'
+      'SELECT payment_method, COUNT(*) as count FROM payments WHERE is_test = FALSE GROUP BY payment_method'
     );
 
     // Get recent payments (last 7 days)
@@ -117,11 +119,18 @@ export async function getPaymentStats(req: Request, res: Response): Promise<void
       `SELECT COUNT(*) as count, SUM(amount) as total 
        FROM payments 
        WHERE status = 'completed' 
+       AND is_test = FALSE
        AND payment_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)`
+    );
+
+    // Test payments tracked separately so admins can still see their test runs
+    const testPayments = await query<any>(
+      'SELECT COUNT(*) as count FROM payments WHERE is_test = TRUE'
     );
 
     res.json({
       totalRevenue: totalRevenue[0]?.total || 0,
+      testPaymentCount: testPayments[0]?.count || 0,
       statusCounts: statusCounts.reduce((acc: any, row: any) => {
         acc[row.status] = row.count;
         return acc;
