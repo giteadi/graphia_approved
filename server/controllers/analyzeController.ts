@@ -465,13 +465,18 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
 // it reports that is not actually present in the transcription is dropped later
 // by isPlacedInText(), so a hallucination cannot reach the report.
 // ══════════════════════════════════════════════════════════════════════════════
-function buildCancellationPrompt(grade: string): string {
+function buildCancellationPrompt(grade: string, paperType: string = ''): string {
   return `You are examining a handwritten page for ONE purpose only: finding words that the student intentionally CANCELLED (struck through with a horizontal or diagonal line).
 
 Ignore spelling. Ignore grammar. Ignore neatness. Report ONLY genuine cancellations.
 
+PAPER TYPE: ${paperType || 'Unknown'}
+- Printed/ruled lines running along the baseline are NOT strikes. A strike is a separate pen stroke crossing through the MIDDLE of the letters (x-height), in the same ink as the writing.
+- Text written ABOVE a line as an insertion is NOT cancelled. Only the text that the stroke passes through is cancelled.
+- Overwritten/retraced letters (e.g. "together" traced over) are NOT strikes.
+
 WHAT COUNTS AS A CONFIRMED CANCELLATION:
-- A pen line clearly passes THROUGH the word (horizontal, diagonal, or zig-zag).
+- A pen line clearly passes THROUGH the MIDDLE of the word (horizontal, diagonal, or zig-zag).
 - The word is heavily scribbled out to completely obscure it.
 - The word is struck and a replacement is written next to or above it.
 
@@ -488,17 +493,15 @@ HOW TO SEARCH — be systematic:
    commonly missed.
 3. When a strike line spans several words ("talk about", "when you",
    "every sunday"), report the full spanned phrase as one entry.
-4. A replacement written ABOVE the line (an insertion caret or a word squeezed
-   above) almost always means the text BELOW it was struck — look there.
-5. Words do not need to be valid English. Report struck fragments too.
-6. If the same word appears more than once, state WHICH occurrence is struck
+4. Words do not need to be valid English. Report struck fragments too.
+5. If the same word appears more than once, state WHICH occurrence is struck
    (1 = first time that word appears on the page, reading left-to-right,
    top-to-bottom). Never assume a repeated word means a cancellation.
 
 ACCURACY RULES:
 - Report the struck word(s) EXACTLY as written, including misspellings.
 - Do NOT include neighbouring readable words in the entry.
-- If a line clearly passes through the word, confidence must be >= 80.
+- If a line clearly passes through the middle of the word, confidence must be >= 80.
 - If you are unsure, put it in uncertainCancellations rather than omitting it.
 - Do not invent cancellations. Every entry must correspond to visible ink.
 
@@ -1107,13 +1110,8 @@ function buildHighlightMap(params: {
       occurrence: 1,
       kind: 'grammar' as const,
       tokenSpan: (extractGrammarTarget(g.example) || g.example).trim().split(/\s+/).length
-    })),
-    ...confirmedCancellations.map(c => ({
-      text: c.text,
-      occurrence: c.occurrence || 1,
-      kind: 'cancelled' as const,
-      tokenSpan: (c.text || '').trim().split(/\s+/).length
-    })),
+    }))
+    // confirmedCancellations excluded from targets because they are handled via inline [CANCELLED:] tags
     // Uncertain cancellations excluded from targets
   ];
 
@@ -1424,7 +1422,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
             role: 'user',
             content: [
               { type: 'input_text', text: buildExtractionPrompt(grade_p) },
-              { type: 'input_image', image_url: imageUrl },
+              { type: 'input_image', image_url: imageUrl, detail: 'high' },
             ],
           },
         ],
@@ -1438,8 +1436,8 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
           {
             role: 'user',
             content: [
-              { type: 'input_text', text: buildCancellationPrompt(grade_p) },
-              { type: 'input_image', image_url: imageUrl },
+              { type: 'input_text', text: buildCancellationPrompt(grade_p, paper_p) },
+              { type: 'input_image', image_url: imageUrl, detail: 'high' },
             ],
           },
         ],
@@ -1518,13 +1516,26 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         const beforeConfirmed = extracted.confirmedCancellations?.length || 0;
         const beforeUncertain = extracted.uncertainCancellations?.length || 0;
 
-        let mergedConfirmed = mergeCancellations(
-          extracted.confirmedCancellations,
-          parsedB.confirmedCancellations
-        );
+        // Demote Pass B hallucinations: Pass B is prone to hallucinating strikes on ruled paper.
+        // If Pass B found a confirmed cancellation that Pass A did NOT find, we demote it to uncertain.
+        const aConfirmed = extracted.confirmedCancellations || [];
+        const bConfirmed = parsedB.confirmedCancellations || [];
+        
+        const aKeys = new Set(aConfirmed.map((c: any) => `${c.text.toLowerCase()}#${c.occurrence || 1}`));
+        
+        const demotedFromB = bConfirmed
+          .filter((c: any) => !aKeys.has(`${c.text.toLowerCase()}#${c.occurrence || 1}`))
+          .map((c: any) => ({ ...c, confidence: Math.min(c.confidence ?? 60, 65), reason: 'single-pass' }));
+
+        // mergedConfirmed is just Pass A's confirmed (Pass B can't add new confirmed, it can only add uncertain)
+        // Note: we still merge if Pass B found the same one with higher confidence, but that's handled by mergeCancellations
+        // if we just merge Pass A with (Pass B - demoted).
+        const bConfirmedKept = bConfirmed.filter((c: any) => aKeys.has(`${c.text.toLowerCase()}#${c.occurrence || 1}`));
+        let mergedConfirmed = mergeCancellations(aConfirmed, bConfirmedKept);
+
         let mergedUncertain = mergeCancellations(
           extracted.uncertainCancellations,
-          parsedB.uncertainCancellations
+          [...(parsedB.uncertainCancellations || []), ...demotedFromB]
         );
 
         // Cross-array deduplication: If Pass-A correctly identified something as uncertain (overwritten),
