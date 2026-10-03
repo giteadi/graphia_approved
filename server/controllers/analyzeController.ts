@@ -466,9 +466,9 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
 // by isPlacedInText(), so a hallucination cannot reach the report.
 // ══════════════════════════════════════════════════════════════════════════════
 function buildCancellationPrompt(grade: string): string {
-  return `You are examining a handwritten page for ONE purpose only: finding every word the student crossed out, struck through, scribbled over, or wrote on top of.
+  return `You are examining a handwritten page for ONE purpose only: finding words that the student intentionally CANCELLED (struck through with a horizontal or diagonal line).
 
-Ignore spelling. Ignore grammar. Ignore neatness. Report ONLY cancellations.
+Ignore spelling. Ignore grammar. Ignore neatness. Report ONLY genuine cancellations.
 
 WHAT COUNTS AS A CONFIRMED CANCELLATION:
 - A pen line clearly passes THROUGH the word (horizontal, diagonal, or zig-zag).
@@ -1518,14 +1518,26 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         const beforeConfirmed = extracted.confirmedCancellations?.length || 0;
         const beforeUncertain = extracted.uncertainCancellations?.length || 0;
 
-        extracted.confirmedCancellations = mergeCancellations(
+        let mergedConfirmed = mergeCancellations(
           extracted.confirmedCancellations,
           parsedB.confirmedCancellations
         );
-        extracted.uncertainCancellations = mergeCancellations(
+        let mergedUncertain = mergeCancellations(
           extracted.uncertainCancellations,
           parsedB.uncertainCancellations
         );
+
+        // Cross-array deduplication: If Pass-A correctly identified something as uncertain (overwritten),
+        // but Pass-B mistakenly marked it as confirmed, we MUST remove it from confirmed to respect the overwrite rule.
+        mergedConfirmed = mergedConfirmed.filter(c => 
+          !mergedUncertain.some(u => 
+            u.text.toLowerCase() === c.text.toLowerCase() && 
+            (u.occurrence || 1) === (c.occurrence || 1)
+          )
+        );
+
+        extracted.confirmedCancellations = mergedConfirmed;
+        extracted.uncertainCancellations = mergedUncertain;
 
         console.log(
           `[Step 1B] Cancellation pass merged: confirmed ${beforeConfirmed} -> ${extracted.confirmedCancellations.length}, ` +
