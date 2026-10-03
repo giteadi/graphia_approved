@@ -148,9 +148,10 @@ CRITICAL — NO AUTOCORRECTION WHATSOEVER:
 - Every spelling error MUST be captured in both transcription AND spellingErrors array
 
 1. CANCELLED / CROSSED-OUT WORDS (BE CONSERVATIVE):
-   - Mark as CONFIRMED cancellation ONLY if the word is clearly and unambiguously struck out to remove it.
-   - Overwriting / rewrite / messy strokes are NOT confirmed cancellations. Put them in uncertainCancellations instead.
-   - If uncertain: KEEP the word in transcription AND add it to uncertainCancellations (do NOT cancel).
+   - Mark as CONFIRMED cancellation ONLY if the word is clearly and unambiguously struck out (e.g. with a horizontal line) to remove it.
+   - Overwriting / rewriting / messy strokes (like writing letters on top of other letters) are NOT confirmed cancellations. Put them in uncertainCancellations instead.
+   - If uncertain (e.g. word just looks heavily overwritten but no clear strike line): KEEP the word in transcription AND add it to uncertainCancellations (do NOT cancel).
+   - CRITICAL: "get-together" or similar overwritten words with NO horizontal strike line must NEVER be confirmed cancellations.
    - Cancel ONLY the exact struck word(s), not surrounding context words.
    - Example correct: "my [CANCELLED: cousin] cousins"
    - Example wrong: "[CANCELLED: my cousin cousins]"
@@ -228,8 +229,8 @@ STRIKE-THROUGH CONFIDENCE RULE:
    - A horizontal line clearly passing THROUGH a word = CONFIRMED cancellation (confidence >= 85)
    - If you can see ANY strike-through line through a word, confidence MUST be >= 80.
    - NEVER give confidence < 75 for a word that has a visible line through it.
-   - Overwriting/rewriting on top = uncertainCancellation
-   - Messy strokes around = uncertainCancellation  
+   - Overwriting/rewriting on top without a strike-through = uncertainCancellation ONLY. DO NOT put in confirmedCancellations.
+   - Messy strokes around = uncertainCancellation ONLY.
    - When student writes a word, then draws a line through it and writes replacement = 
      CANCELLED the original, keep replacement
    - Single underline = NOT a cancellation (could be emphasis)
@@ -471,13 +472,14 @@ Ignore spelling. Ignore grammar. Ignore neatness. Report ONLY cancellations.
 
 WHAT COUNTS AS A CONFIRMED CANCELLATION:
 - A pen line clearly passes THROUGH the word (horizontal, diagonal, or zig-zag).
-- The word is scribbled out.
+- The word is heavily scribbled out to completely obscure it.
 - The word is struck and a replacement is written next to or above it.
 
-WHAT COUNTS AS UNCERTAIN (not confirmed):
-- Letters written on top of other letters (overwriting) with no clear strike line.
-- Messy or doubled strokes where you cannot tell if a line was intended.
+WHAT COUNTS AS UNCERTAIN (not confirmed) - DO NOT PUT THESE IN CONFIRMED:
+- Letters written on top of other letters (overwriting/rewriting) with no clear strike line.
+- Messy or doubled strokes where you cannot tell if a strike line was intended.
 - A word that is underlined only — underlining is NOT a cancellation.
+- CRITICAL: "get-together" or similar overwritten words with NO horizontal strike line must NEVER be confirmed cancellations.
 
 HOW TO SEARCH — be systematic:
 1. Go line by line, from the first line to the last. Do not skip the final line.
@@ -574,11 +576,12 @@ function buildNarrativePrompt(params: {
   fluencyLabel: string;
   norm: { min: number; max: number };
   actionableStrategies: string[];
+  parentEmail?: string;
 }): string {
   const {
     grade, age, timeGiven, timeTaken, writingPrompt, paperType, writingInstrument,
     interventionHistory, evidence, scores, probability, rtiImprovement,
-    spellingLabel, fluencyLabel, norm, actionableStrategies,
+    spellingLabel, fluencyLabel, norm, actionableStrategies, parentEmail,
   } = params;
 
   return `You are an expert in Educational Psychology, Occupational Therapy, and Special Education specializing in Dysgraphia and SLD.
@@ -597,7 +600,7 @@ Write a clinical handwriting assessment report. Use ONLY the data supplied. You 
 9. Do NOT invent specific letter names. Mention specific letters only if they are listed in OBSERVED LETTERS FOR FORMATION. If that list is empty, use "some letter forms" or "rounded/hump-based forms" without naming letters.
 
 STUDENT DETAILS:
-Grade: ${grade}${age ? ` | Age: ${age}` : ''}${timeTaken ? ` | Time Taken: ${timeTaken} min` : ''}${timeGiven ? ` | Time Given: ${timeGiven} min` : ''}${writingPrompt ? `\nPrompt: ${writingPrompt}` : ''}${paperType ? ` | Paper: ${paperType}` : ''}${writingInstrument ? ` | Instrument: ${writingInstrument}` : ''}
+Grade: ${grade}${age ? ` | Age: ${age}` : ''}${timeTaken ? ` | Time Taken: ${timeTaken} min` : ''}${timeGiven ? ` | Time Given: ${timeGiven} min` : ''}${writingPrompt ? `\nPrompt: ${writingPrompt}` : ''}${paperType ? ` | Paper: ${paperType}` : ''}${writingInstrument ? ` | Instrument: ${writingInstrument}` : ''}${parentEmail ? `\nParent Email: ${parentEmail}` : ''}
 
 TRANSCRIPTION:
 ${evidence.transcription}
@@ -1819,6 +1822,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
                 fluencyLabel,
                 norm,
                 actionableStrategies,
+                parentEmail: contactEmail || undefined,
               }),
             },
           ],

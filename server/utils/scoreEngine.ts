@@ -72,7 +72,7 @@ export function countWordsDeterministic(transcription: string): number {
   const bodyText = transcription
     .replace(/Date:\s*\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
     .replace(/\d{1,2}:\d{2}\s*to\s*\d{1,2}(?:am|pm)?/gi, '')
-    .replace(/\[(?:CANCELLED|MAYBE-CANCELLED):\s*[^\]]+\]/gi, '') // Cancelled words count mein nahi aayenge
+    .replace(/\[CANCELLED:\s*[^\]]+\]/gi, '') // ONLY confirmed cancellations are removed from word count; maybe-cancelled (overwrites) should be counted
     .replace(/\n/g, ' ')
     .trim();
 

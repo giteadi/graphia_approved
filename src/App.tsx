@@ -487,80 +487,93 @@ const RenderTranscription = ({
       }
     };
     
-    // Apply occurrence-based annotations from targets with phrase-level tokenSpan support
+    // --- OPTIMIZED MATCHING (Token + Hash Map Architecture) ---
     const targets = highlightMap?.targets || [];
     const useTargetsOnly = targets.length > 0;
-    const occurrenceCounter: Record<string, number> = {};
-    const spellOccurrenceCounter: Record<string, number> = {};
     
-    for (let i = 0; i < annotatedTokens.length; i++) {
-      const t = annotatedTokens[i];
-      if (!t.text.trim()) continue;
+    if (useTargetsOnly) {
+      // 1. Pre-build Hash Maps for O(1) Lookup of single-word errors
+      const singleWordErrors = new Map<string, HighlightTarget>();
+      const phraseHits: HighlightTarget[] = [];
       
-      const key = normalize(t.text);
-      occurrenceCounter[key] = (occurrenceCounter[key] || 0) + 1;
-      const occ = occurrenceCounter[key];
-
-      const spellKey = normalizeSpelling(t.text);
-      spellOccurrenceCounter[spellKey] = (spellOccurrenceCounter[spellKey] || 0) + 1;
-      const spellOcc = spellOccurrenceCounter[spellKey];
-
-      // Check for single-word matches first
-      const singleWordHit = targets.find(x =>
-        (x.tokenSpan || 1) === 1 && (
-          x.kind === 'spelling'
-            ? normalizeSpelling(x.text) === spellKey && (x.occurrence || 1) === spellOcc
-            : normalize(x.text) === key && (x.occurrence || 1) === occ
-        )
-      );
-      
-      if (singleWordHit) {
-        if (singleWordHit.kind === 'cancelled') upgradeToken(i, 'cancelled');
-        if (singleWordHit.kind === 'maybe-cancelled') upgradeToken(i, 'maybeCancelled');
-        if (singleWordHit.kind === 'spelling') upgradeToken(i, 'spelling');
-        // Skip grammar highlights in UI (score calculation still works in backend)
-        // if (singleWordHit.kind === 'grammar') upgradeToken(i, 'grammar');
-        continue;
+      for (const target of targets) {
+        if ((target.tokenSpan || 1) === 1) {
+          const key = target.kind === 'spelling' 
+            ? `${normalizeSpelling(target.text)}#${target.occurrence || 1}`
+            : `${normalize(target.text)}#${target.occurrence || 1}`;
+          singleWordErrors.set(key, target);
+        } else {
+          phraseHits.push(target);
+        }
       }
 
-      // Check for phrase-level matches (multi-word targets)
-      const phraseHits = targets.filter(x =>
-        (x.tokenSpan || 1) > 1
-      );
+      // 2. Build Word Tokens Index & Occurrences in a single pass O(N)
+      const wordTokens: { idx: number; norm: string; spellNorm: string; occ: number; spellOcc: number }[] = [];
+      const occurrenceCounter = new Map<string, number>();
+      const spellOccurrenceCounter = new Map<string, number>();
 
-      for (const phraseHit of phraseHits) {
-        const phraseWords = phraseHit.text.split(/\s+/).map(w => normalize(w));
-        if (phraseWords.length === 0) continue;
+      for (let i = 0; i < annotatedTokens.length; i++) {
+        const t = annotatedTokens[i];
+        if (!t.text.trim()) continue;
 
-        // Build word tokens index (non-whitespace only)
-        const wordTokens: { idx: number; norm: string }[] = [];
-        for (let ti = 0; ti < annotatedTokens.length; ti++) {
-          if (annotatedTokens[ti].text.trim()) {
-            wordTokens.push({ idx: ti, norm: normalize(annotatedTokens[ti].text) });
-          }
+        const norm = normalize(t.text);
+        const spellNorm = normalizeSpelling(t.text);
+        
+        const occ = (occurrenceCounter.get(norm) || 0) + 1;
+        occurrenceCounter.set(norm, occ);
+        
+        const spellOcc = (spellOccurrenceCounter.get(spellNorm) || 0) + 1;
+        spellOccurrenceCounter.set(spellNorm, spellOcc);
+
+        wordTokens.push({ idx: i, norm, spellNorm, occ, spellOcc });
+      }
+
+      // 3. Apply Single-Word Matches O(N)
+      for (const wt of wordTokens) {
+        // Check normal normalized match
+        let target = singleWordErrors.get(`${wt.norm}#${wt.occ}`);
+        // Check spelling normalized match
+        if (!target) target = singleWordErrors.get(`${wt.spellNorm}#${wt.spellOcc}`);
+
+        if (target) {
+          if (target.kind === 'cancelled') upgradeToken(wt.idx, 'cancelled');
+          if (target.kind === 'maybe-cancelled') upgradeToken(wt.idx, 'maybeCancelled');
+          if (target.kind === 'spelling') upgradeToken(wt.idx, 'spelling');
         }
+      }
 
-        // Find phrase sequence in word tokens
-        for (let wi = 0; wi <= wordTokens.length - phraseWords.length; wi++) {
-          let match = true;
-          for (let j = 0; j < phraseWords.length; j++) {
-            if (wordTokens[wi + j]?.norm !== phraseWords[j]) {
-              match = false;
-              break;
-            }
-          }
+      // 4. Apply Multi-Word Phrase Matches
+      if (phraseHits.length > 0) {
+        const phraseOccurrenceCounter = new Map<string, number>();
+        
+        for (let wi = 0; wi < wordTokens.length; wi++) {
+          for (const phraseHit of phraseHits) {
+            const phraseWords = phraseHit.text.split(/\s+/).map(w => normalize(w));
+            if (phraseWords.length === 0 || wi > wordTokens.length - phraseWords.length) continue;
 
-          if (match) {
-            // Apply annotation to all tokens in the phrase using correct word token indices
+            let match = true;
             for (let j = 0; j < phraseWords.length; j++) {
-              const tokenIndex = wordTokens[wi + j].idx;
-              if (phraseHit.kind === 'cancelled') upgradeToken(tokenIndex, 'cancelled');
-              if (phraseHit.kind === 'maybe-cancelled') upgradeToken(tokenIndex, 'maybeCancelled');
-              // Skip grammar highlights in UI (score calculation still works in backend)
-              // if (phraseHit.kind === 'grammar') upgradeToken(tokenIndex, 'grammar');
-              if (phraseHit.kind === 'spelling') upgradeToken(tokenIndex, 'spelling');
+              if (wordTokens[wi + j]?.norm !== phraseWords[j]) {
+                match = false;
+                break;
+              }
             }
-            break; // Phrase matched, move to next phraseHit
+
+            if (match) {
+              const phraseKey = phraseWords.join(' ');
+              const occ = (phraseOccurrenceCounter.get(phraseKey) || 0) + 1;
+              phraseOccurrenceCounter.set(phraseKey, occ);
+
+              if ((phraseHit.occurrence || 1) === occ) {
+                // Apply annotation to all tokens in the phrase
+                for (let j = 0; j < phraseWords.length; j++) {
+                  const tokenIndex = wordTokens[wi + j].idx;
+                  if (phraseHit.kind === 'cancelled') upgradeToken(tokenIndex, 'cancelled');
+                  if (phraseHit.kind === 'maybe-cancelled') upgradeToken(tokenIndex, 'maybeCancelled');
+                  if (phraseHit.kind === 'spelling') upgradeToken(tokenIndex, 'spelling');
+                }
+              }
+            }
           }
         }
       }
