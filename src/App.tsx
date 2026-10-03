@@ -365,10 +365,10 @@ interface Token {
 
 // Priority system for annotation types (higher = overrides lower)
 const TOKEN_PRIORITY: Record<AnnotationType, number> = {
-  cancelled: 3,       // Highest priority
-  maybeCancelled: 2,  // Medium priority (uncertain)
+  cancelled: 3,
+  maybeCancelled: 2,
   spelling: 2,
-  grammar: 1,
+  grammar: 2,
   normal: 0
 };
 
@@ -535,10 +535,19 @@ const RenderTranscription = ({
         // Check spelling normalized match
         if (!target) target = singleWordErrors.get(`${wt.spellNorm}#${wt.spellOcc}`);
 
+        // NEW: hyphenated token ka koi part error ho (get-togther -> "togther")
+        if (!target && wt.spellNorm.includes('-')) {
+          for (const part of wt.spellNorm.split('-').filter(Boolean)) {
+            const hit = singleWordErrors.get(`${part}#1`);
+            if (hit && hit.kind === 'spelling') { target = hit; break; }
+          }
+        }
+
         if (target) {
           if (target.kind === 'cancelled') upgradeToken(wt.idx, 'cancelled');
           if (target.kind === 'maybe-cancelled') upgradeToken(wt.idx, 'maybeCancelled');
           if (target.kind === 'spelling') upgradeToken(wt.idx, 'spelling');
+          if (target.kind === 'grammar') upgradeToken(wt.idx, 'grammar');
         }
       }
 
@@ -571,6 +580,7 @@ const RenderTranscription = ({
                   if (phraseHit.kind === 'cancelled') upgradeToken(tokenIndex, 'cancelled');
                   if (phraseHit.kind === 'maybe-cancelled') upgradeToken(tokenIndex, 'maybeCancelled');
                   if (phraseHit.kind === 'spelling') upgradeToken(tokenIndex, 'spelling');
+                  if (phraseHit.kind === 'grammar') upgradeToken(tokenIndex, 'grammar');
                 }
               }
             }
@@ -688,7 +698,7 @@ const RenderTranscription = ({
             );
           case 'maybeCancelled':
             return (
-              <span key={`token-${index}`} className="text-gray-500 italic underline decoration-gray-400/70 underline-offset-2">
+              <span key={`token-${index}`} className="text-red-600 font-bold underline decoration-red-600/50 underline-offset-2">
                 {token.text}
               </span>
             );
@@ -705,7 +715,7 @@ const RenderTranscription = ({
             return (
               <span
                 key={`token-${index}`}
-                className="text-orange-600 font-semibold"
+                className="text-red-600 font-bold underline decoration-red-600/50 underline-offset-2"
               >
                 {token.text}
               </span>
@@ -2451,7 +2461,7 @@ ${result.report}
                   const strikePhrases = [...(highlightMap.strikePhrases || [])].sort((a: any, b: any) => b.length - a.length);
 
                   const runs: any[] = [];
-                  const parts = transcription.split(/(\[(?:cancelled|CANCELLED):.*?\])/gi);
+                  const parts = transcription.split(/(\[(?:cancelled|CANCELLED|maybe-cancelled|MAYBE-CANCELLED):.*?\])/gi);
 
                   const pushStyledText = (value: string, kind: any) => {
                     if (!value) return;
@@ -2463,7 +2473,7 @@ ${result.report}
                       ...(kind === 'red' ? { bold: true, color: 'CC0000' } : {}),
                       ...(kind === 'orange' ? { bold: true, color: 'CC6600' } : {}),
                       ...(kind === 'strike' ? { strike: true, color: '888888' } : {}),
-                      ...(kind === 'maybe' ? { underline: {}, color: '777777' } : {}),
+                      ...(kind === 'maybe' ? { bold: true, color: 'CC0000' } : {}), // Match red styling
                     }));
                   };
 
@@ -2531,6 +2541,11 @@ ${result.report}
                     if (/^\[(?:cancelled|CANCELLED):/i.test(part)) {
                       const content = part.replace(/^\[(?:cancelled|CANCELLED):\s*/i, '').replace(/\]$/, '');
                       pushStyledText(content + ' ', 'strike');
+                      return;
+                    }
+                    if (/^\[(?:maybe-cancelled|MAYBE-CANCELLED):/i.test(part)) {
+                      const content = part.replace(/^\[(?:maybe-cancelled|MAYBE-CANCELLED):\s*/i, '').replace(/\]$/, '');
+                      pushStyledText(content + ' ', 'maybe');
                       return;
                     }
 
@@ -4309,7 +4324,7 @@ ${result.report}
 
                         <div>
                           <div className="flex justify-between items-center mb-1">
-                            <p className="text-[7.5pt] text-gray-400 italic font-mono">Note: Words in bold = spelling errors. Strikethrough = student cancellations.</p>
+                            <p className="text-[7.5pt] text-gray-400 italic font-mono">Note: Red = spelling error / overwritten / grammar error. Strikethrough = cancelled.</p>
                             <button
                               onClick={() => {
                                 setIsEditingTranscription(!isEditingTranscription);

@@ -1504,38 +1504,27 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         const beforeConfirmed = extracted.confirmedCancellations?.length || 0;
         const beforeUncertain = extracted.uncertainCancellations?.length || 0;
 
-        // Demote Pass B hallucinations: Pass B is prone to hallucinating strikes on ruled paper.
-        // If Pass B found a confirmed cancellation that Pass A did NOT find, we demote it to uncertain.
+        const isOverwrite = (u: any) => /overwrite/i.test(u?.reason || '');
+        const key = (c: any) => String(c?.text || '').toLowerCase().trim();
+
         const aConfirmed = extracted.confirmedCancellations || [];
-        const bConfirmed = parsedB.confirmedCancellations || [];
-        
-        const aKeys = new Set(aConfirmed.map((c: any) => c.text.toLowerCase().trim()));
-        
-        const demotedFromB = bConfirmed
-          .filter((c: any) => !aKeys.has(c.text.toLowerCase().trim()))
-          .map((c: any) => ({ ...c, confidence: Math.min(c.confidence ?? 60, 65), reason: 'single-pass' }));
+        const confirmedKeys = new Set(aConfirmed.map(key));
 
-        // mergedConfirmed is just Pass A's confirmed (Pass B can't add new confirmed, it can only add uncertain)
-        // Note: we still merge if Pass B found the same one with higher confidence, but that's handled by mergeCancellations
-        // if we just merge Pass A with (Pass B - demoted).
-        const bConfirmedKept = bConfirmed.filter((c: any) => aKeys.has(c.text.toLowerCase().trim()));
-        let mergedConfirmed = mergeCancellations(aConfirmed, bConfirmedKept);
+        // Pass B ka "confirmed" use nahi hoga. Sirf overwrite entries aayengi.
+        const overwrites = [
+          ...(extracted.uncertainCancellations || []),
+          ...(parsedB.uncertainCancellations || []),
+        ].filter(isOverwrite);
 
-        let mergedUncertain = mergeCancellations(
-          extracted.uncertainCancellations,
-          [...(parsedB.uncertainCancellations || []), ...demotedFromB]
-        );
+        const seen = new Set<string>();
+        const mergedUncertain = overwrites.filter(u => {
+          const k = key(u);
+          if (!k || confirmedKeys.has(k) || seen.has(k)) return false; // strike wale ko overwrite mat banao
+          seen.add(k);
+          return true;
+        });
 
-        // Cross-array deduplication: If Pass-A correctly identified something as uncertain (overwritten),
-        // but Pass-B mistakenly marked it as confirmed, we MUST remove it from confirmed to respect the overwrite rule.
-        mergedConfirmed = mergedConfirmed.filter(c => 
-          !mergedUncertain.some(u => 
-            u.text.toLowerCase() === c.text.toLowerCase() && 
-            (u.occurrence || 1) === (c.occurrence || 1)
-          )
-        );
-
-        extracted.confirmedCancellations = mergedConfirmed;
+        extracted.confirmedCancellations = aConfirmed;
         extracted.uncertainCancellations = mergedUncertain;
 
         console.log(
