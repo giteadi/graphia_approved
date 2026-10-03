@@ -12,6 +12,76 @@ import {
   getWpmNorm,
 } from '../utils/scoreEngine.js';
 import { sanitizeEvidence } from '../utils/evidenceSanitizer.js';
+import nspell from 'nspell';
+import en from 'dictionary-en';
+
+let spellChecker: any = null;
+async function initSpellChecker() {
+  if (!spellChecker) {
+    spellChecker = nspell(en);
+  }
+  return spellChecker;
+}
+
+async function performSpellCheck(transcription: string) {
+  const checker = await initSpellChecker();
+  const errors: any[] = [];
+  
+  // Strip out cancellations completely for spell checking
+  const cleanText = transcription.replace(/\[(?:CANCELLED|MAYBE-CANCELLED):\s*([^\]]+)\]/gi, ' ');
+  
+  // Split into words
+  const words = cleanText.split(/\s+/);
+  
+  const wordOccurrences = new Map<string, number>();
+  
+  for (const rawWord of words) {
+    // Check if the word is hyphenated
+    if (rawWord.includes('-')) {
+      const parts = rawWord.split('-');
+      for (const part of parts) {
+        const cleanPart = part.replace(/[.,/#!$%^&*;:{}=\_`~()]/g, '').trim();
+        if (!cleanPart || !/[a-zA-Z]/.test(cleanPart)) continue;
+        
+        const lowerWord = cleanPart.toLowerCase();
+        const count = (wordOccurrences.get(lowerWord) || 0) + 1;
+        wordOccurrences.set(lowerWord, count);
+        
+        if (!checker.correct(cleanPart)) {
+          errors.push({
+            written: cleanPart,
+            intended: checker.suggest(cleanPart)[0] || cleanPart,
+            confidence: 100,
+            reason: "Dictionary check (hyphenated part)",
+            gradeLevel: "All",
+            occurrence: count
+          });
+        }
+      }
+      continue;
+    }
+
+    const cleanWord = rawWord.replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, '').trim();
+    if (!cleanWord || !/[a-zA-Z]/.test(cleanWord)) continue;
+    
+    // Ignore common names or single letters if needed, but nspell handles 'a' and 'I' correctly usually
+    const lowerWord = cleanWord.toLowerCase();
+    const count = (wordOccurrences.get(lowerWord) || 0) + 1;
+    wordOccurrences.set(lowerWord, count);
+    
+    if (!checker.correct(cleanWord)) {
+      errors.push({
+        written: cleanWord,
+        intended: checker.suggest(cleanWord)[0] || cleanWord,
+        confidence: 100,
+        reason: "Dictionary check",
+        gradeLevel: "All",
+        occurrence: count
+      });
+    }
+  }
+  return errors;
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // VALIDATION LAYER - GPT Output Consistency Checks
@@ -298,37 +368,16 @@ SECOND WORD RULE:
    - Do NOT normalize anything else.
    - Example: transcription has "en" and uncertainWords says en->in (80), then normalizedTranscription uses "in".
 
-5. SPELLING DETECTION — EXHAUSTIVE (flag everything suspicious):
-- Flag only words that clearly deviate from standard spelling
-- Do NOT flag correctly spelled English words used in context
-- Confidence threshold: flag anything 85%+ confident as a misspelling (stricter to avoid false positives)
-- Valid English words used correctly are NOT errors ("met", "had", "get", "we", "family", "fun", "talk")
-- CRITICAL: Cancellations should NOT affect spelling detection
-- If a word is cancelled, it should still be flagged as a spelling error if it is misspelled
-- The cancellation shows the word was struck, not that it's correctly spelled
-- GRAMMAR DETECTION: Continue detecting grammar errors normally
-- Grammar mistakes in cancelled text should still be flagged
-- The highlighting system will handle priority (cancelled > grammar > spelling)
-
 ANTI-HALLUCINATION RULE:
 - Do NOT transcribe words that are not visible in the handwriting
 - Do NOT complete partial words based on context
 - Do NOT add helper words like "reimposed" if not clearly written
 - If a word is ambiguous or unclear, add to uncertainWords instead of guessing
 - Better to leave a word uncertain than to add words that don't exist
-- BUT: wrong plural forms ("lifes"), missing letters, phonetic spellings, merged words, wrong tense forms — ALL must be flagged
 - Count EACH occurrence separately
-- If uncertain about a word, add to uncertainWords instead of spellingErrors
-- Provide confidence (0-100), reason for each, AND approximate grade level (e.g., "approx 2nd grade", "approx 4th grade", "approx 6th grade")
-- CRITICAL MUTUAL EXCLUSIVITY RULE: If a word is marked as [CANCELLED], it MUST NOT appear in spellingErrors, wordChoiceMistakes, or grammarMistakes. Cancelled words are mutually exclusive from all error classifications.
-- IMPORTANT: Do NOT flag words that appear in cancelledWords as spelling errors. Cancelled words should only appear in the cancelledWords list, not in spellingErrors.
-- IMPORTANT: "met" is a correctly spelled word - if used incorrectly as tense, flag as grammar/syntax error, NOT spelling error.
-- OCCURRENCE TRACKING: For each spelling error, specify which occurrence (1-based) in the transcription. If the same word appears multiple times and only some are errors, specify the exact occurrence number. If unclear, use 1.
-
-   AMBIGUOUS LETTER PAIRS - EXTRA STRICT:
-   - For easily confused pairs (spot↔sport, were↔where, their↔there, to↔too, etc.), require 98%+ confidence to flag as spelling error.
-   - If confidence < 98% for ambiguous pairs, add to uncertainWords instead of spellingErrors.
-   - Common ambiguous pairs to watch: spot/sport, were/where, their/there, to/too/two, here/hear, write/right, no/know, new/knew.
+- Provide confidence (0-100), reason for each
+- CRITICAL MUTUAL EXCLUSIVITY RULE: If a word is marked as [CANCELLED], it MUST NOT appear in wordChoiceMistakes or grammarMistakes. Cancelled words are mutually exclusive from all error classifications.
+- IMPORTANT: "met" is a correctly spelled word - if used incorrectly as tense, flag as grammar/syntax error.
 
 Grade context: ${grade}
 
@@ -400,9 +449,7 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
   ],
   "uncertainWords": [{ "word": "en", "confidence": 45, "possibleAlternatives": ["in"] }],
 
-  "spellingErrors": [
-    { "written": "gettogether", "intended": "get-together", "confidence": 95, "reason": "written as one word without hyphen", "gradeLevel": "approx 2nd grade", "occurrence": 1 }
-  ],
+
   "wordChoiceMistakes": [
     { "written": "their", "intended": "there", "confidence": 95, "type": "homophone" }
   ],
@@ -1535,6 +1582,14 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       } else {
         console.warn('[Step 1B] Cancellation pass returned unparseable JSON — ignored.');
       }
+    }
+
+    // Perform deterministic spell checking
+    if (extracted.transcription) {
+      console.log('[Step 1] Running deterministic spell check...');
+      extracted.spellingErrors = await performSpellCheck(extracted.transcription);
+    } else {
+      extracted.spellingErrors = [];
     }
 
     const plainTranscription = stripCancellationTags(modelTranscription);

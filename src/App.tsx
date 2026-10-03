@@ -4268,18 +4268,9 @@ ${result.report}
                                   {result.summary.confirmedCancellations && result.summary.confirmedCancellations.length > 0 && (
                                     <div className="text-[6pt] text-gray-500 italic mt-0.5 font-mono">
                                       {(() => {
-                                        const sorted = [...result.summary.confirmedCancellations].sort((a, b) => b.text.length - a.text.length);
-                                        const deduped: string[] = [];
-                                        for (const c of sorted) {
-                                          if (!c.text) continue;
-                                          const text = c.text.toLowerCase().trim();
-                                          if (!deduped.some(d => d.includes(text))) {
-                                            deduped.push(text);
-                                          }
-                                        }
-                                        const cancelledWords = deduped.reduce((sum: number, text: string) => {
-                                          return sum + text.split(/\s+/).filter((w: string) => w.length > 0).length;
-                                        }, 0);
+                                        const transcriptionText = result.summary.displayTranscription || '';
+                                        const cancelledWords = transcriptionText.match(/\[CANCELLED:\s*([^\]]+)\]/gi)?.reduce((n, t) => 
+                                          n + t.replace(/\[CANCELLED:\s*|\]/gi, '').trim().split(/\s+/).length, 0) || 0;
                                         return `${cancelledWords} cancelled (excluded from count)`;
                                       })()}
                                     </div>
@@ -4324,7 +4315,7 @@ ${result.report}
 
                         <div>
                           <div className="flex justify-between items-center mb-1">
-                            <p className="text-[7.5pt] text-gray-400 italic font-mono">Note: Red = spelling error / overwritten / grammar error. Strikethrough = cancelled.</p>
+
                             <button
                               onClick={() => {
                                 setIsEditingTranscription(!isEditingTranscription);
@@ -4707,18 +4698,9 @@ ${result.report}
                                   {result.summary.confirmedCancellations && result.summary.confirmedCancellations.length > 0 && (
                                     <div className="text-[5pt] text-gray-500 mt-0.5">
                                       {(() => {
-                                        const sorted = [...result.summary.confirmedCancellations].sort((a, b) => b.text.length - a.text.length);
-                                        const deduped: string[] = [];
-                                        for (const c of sorted) {
-                                          if (!c.text) continue;
-                                          const text = c.text.toLowerCase().trim();
-                                          if (!deduped.some(d => d.includes(text))) {
-                                            deduped.push(text);
-                                          }
-                                        }
-                                        const cancelledWords = deduped.reduce((sum: number, text: string) => {
-                                          return sum + text.split(/\s+/).filter((w: string) => w.length > 0).length;
-                                        }, 0);
+                                        const transcriptionText = result.summary.displayTranscription || '';
+                                        const cancelledWords = transcriptionText.match(/\[CANCELLED:\s*([^\]]+)\]/gi)?.reduce((n, t) => 
+                                          n + t.replace(/\[CANCELLED:\s*|\]/gi, '').trim().split(/\s+/).length, 0) || 0;
                                         return `${cancelledWords} cancelled (excluded from count)`;
                                       })()}
                                     </div>
