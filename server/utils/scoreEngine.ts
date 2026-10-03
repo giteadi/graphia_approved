@@ -78,12 +78,7 @@ export function countWordsDeterministic(transcription: string): number {
 
   // 2. Sirf readable (visible) words count karein
   return bodyText
-    .replace(/-/g, ' ')
-    .replace(/\bget\s+to\s+gether\b/gi, 'get together')
-    .replace(/\bgettogther\b/gi, 'get together')
-    .replace(/\bget\s*togther\b/gi, 'get together')
-    .replace(/\btogther\b/gi, 'together')
-    .replace(/\bgether\b/gi, 'together')
+    .replace(/[\[\]]/g, '') // optionally strip remaining brackets if any
     .split(/\s+/)
     .filter(word => word.length > 0) // Empty strings filter out
     .length;
@@ -150,8 +145,11 @@ function scoreSentenceBoundaries(
     penaltyMultiplier = 1.5; // High school/College ke liye strict penalty
   }
 
-  const estimatedSentences = Math.max(1, totalWords / 10);
-  const totalBoundaryErrors = (runOnSentences * 2.0) + missingCapitals + missingPunctuation;
+  const estimatedSentences = Math.max(5, totalWords / 10);
+  const totalBoundaryErrors = Math.min(
+    (runOnSentences * 1.0) + missingCapitals + missingPunctuation,
+    estimatedSentences * 0.6 // cap at 60% error rate maximum
+  );
   
   const errorRate = (totalBoundaryErrors / estimatedSentences) * 100;
   const adjustedDeduction = errorRate * penaltyMultiplier;

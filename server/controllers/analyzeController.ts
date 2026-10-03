@@ -51,23 +51,8 @@ function validateExtraction(evidence: any): any {
  */
 function extractGrammarTarget(phrase: string): string {
   if (!phrase) return phrase;
-  const p = phrase.toLowerCase();
-
-  const patterns = [
-    /\bwill\s+can\b/i,
-    /\bcan\s+will\b/i,
-    /\bresult\s+increase\b/i,
-    /\bthis\s+can\s+result\b/i,
-    /\bbea\s+decresse\b/i,
-    /\btheir\s+are\b/i,
-  ];
-
-  for (const rx of patterns) {
-    const m = phrase.match(rx);
-    if (m) return m[0];
-  }
-
-  // fallback: avoid full sentence highlight
+  
+  // Generic fallback: avoid full sentence highlight
   const words = phrase.trim().split(/\s+/);
   return words.slice(0, Math.min(2, words.length)).join(' ');
 }
@@ -80,13 +65,9 @@ function qualityGate(evidence: any): any {
   if (!evidence) return evidence;
 
   const suspiciousConditions = [
-    // Zero cancellations but clear grammar issues suggest missed cross-outs
+    // Zero cancellations but multiple grammar issues might suggest missed cross-outs
     (evidence.confirmedCancellations?.length || 0) === 0 && 
-    (evidence.grammarMistakes || []).some((g: any) => 
-      g.example?.toLowerCase().includes('will can') ||
-      g.example?.toLowerCase().includes('their are') ||
-      g.example?.toLowerCase().includes('be decrease')
-    ),
+    (evidence.grammarMistakes?.length || 0) >= 3,
     
     // Zero cancellations but multiple overwrites in uncertainCancellations
     (evidence.confirmedCancellations?.length || 0) === 0 && 
@@ -151,33 +132,33 @@ CRITICAL — NO AUTOCORRECTION WHATSOEVER:
    - Mark as CONFIRMED cancellation ONLY if the word is clearly and unambiguously struck out (e.g. with a horizontal line) to remove it.
    - Overwriting / rewriting / messy strokes (like writing letters on top of other letters) are NOT confirmed cancellations. Put them in uncertainCancellations instead.
    - If uncertain (e.g. word just looks heavily overwritten but no clear strike line): KEEP the word in transcription AND add it to uncertainCancellations (do NOT cancel).
-   - CRITICAL: "get-together" or similar overwritten words with NO horizontal strike line must NEVER be confirmed cancellations.
+   - CRITICAL: A word that is only overwritten or retraced, with no separate strike line through it, must NEVER be a confirmed cancellation.
    - Cancel ONLY the exact struck word(s), not surrounding context words.
-   - Example correct: "my [CANCELLED: cousin] cousins"
-   - Example wrong: "[CANCELLED: my cousin cousins]"
+   - Example correct: "my [CANCELLED: word1] word1s"
+   - Example wrong: "[CANCELLED: my word1 word1s]"
    - Preserve cancellations inline in transcription as [CANCELLED: ...] for display.
    - Also return the same cancellation in confirmedCancellations array.
 
-   IMPORTANT: Check the LAST LINE carefully. If any word is struck on the last line (e.g., "lego" in "lego lego"), it MUST be returned in confirmedCancellations and shown inline as [CANCELLED: ...].
+   IMPORTANT: Check the LAST LINE carefully. If any word is struck on the last line, it MUST be returned in confirmedCancellations and shown inline as [CANCELLED: ...].
 
    IMPORTANT: Evaluate each occurrence independently.
    - Mark ONLY the exact word(s) through which a strike line visibly passes.
    - Do NOT cancel repeated words automatically.
-   - Example: If "lego lego" appears and only the first "lego" is struck, cancel ONLY the first occurrence.
+   - Example: If "word1 word1" appears and only the first "word1" is struck, cancel ONLY the first occurrence.
    - If the same word appears multiple times, determine separately whether each occurrence is struck.
    - Never infer cancellation based only on repetition. A repeated word is not automatically a cancellation.
    - Return cancellations exactly as they appear from left to right in the handwriting sample.
 
    CRITICAL: Mark ONLY the exact crossed-out word(s), not surrounding readable words.
    - Do NOT include helper/context words inside [CANCELLED].
-   - If the writing shows "my cousin cousins" and only the first "cousin" is crossed out, transcribe exactly:
-     "my [CANCELLED: cousin] cousins"
+   - If the writing shows "my wordA wordAs" and only the first "wordA" is crossed out, transcribe exactly:
+     "my [CANCELLED: wordA] wordAs"
      NOT:
-     "[CANCELLED: my cousin cousins]"
+     "[CANCELLED: my wordA wordAs]"
 
    TRANSCRIPTION REQUIREMENT:
    - Include confirmed cancellations inline in transcription as [CANCELLED: text]
-   - Example: "In my family we have get-together every month [CANCELLED: every sunday] we go out"
+   - Example: "we have fun every month [CANCELLED: every sunday] we go out"
 
    - If a phrase is crossed out and then rewritten immediately after it, include the crossed phrase in uncertainCancellations even if partially legible.
    - For overwritten phrases such as "went to" rewritten as "wanted to go", preserve the visible wrong text in transcription and also add the crossed phrase to uncertainCancellations.
@@ -229,8 +210,21 @@ STRIKE-THROUGH CONFIDENCE RULE:
    - A horizontal line clearly passing THROUGH a word = CONFIRMED cancellation (confidence >= 85)
    - If you can see ANY strike-through line through a word, confidence MUST be >= 80.
    - NEVER give confidence < 75 for a word that has a visible line through it.
-   - Overwriting/rewriting on top without a strike-through = uncertainCancellation ONLY. DO NOT put in confirmedCancellations.
    - Messy strokes around = uncertainCancellation ONLY.
+
+   OVERWRITTEN WORDS (letters written on top of other letters):
+   - A word is "overwritten" when the student retraced, corrected, or wrote
+     letters over existing letters in place, so the underlying strokes are
+     still partly visible.
+   - Every such word MUST be listed in uncertainCancellations with reason
+     "overwrite", even if you also kept it as normal text in the transcription.
+   - Do NOT put overwritten words in confirmedCancellations unless a separate
+     strike line passes through them.
+   - Check every line from first to last. Do not limit this to any particular
+     type of word; short words, long words, and compound words can all be
+     overwritten.
+   - If you are not sure whether a word is overwritten or just messy
+     handwriting, skip it. Do not guess.
    - When student writes a word, then draws a line through it and writes replacement = 
      CANCELLED the original, keep replacement
    - Single underline = NOT a cancellation (could be emphasis)
@@ -365,9 +359,8 @@ COUNTING RULES (BE STRICT):
 - missingCapitals: Count sentences that do NOT start with a capital letter (first letter should be uppercase)
   - Example: "the dog is hungry." = 1 missing capital (should be "The")
   - Example: "i went to the store." = 1 missing capital (should be "I")
-- missingPunctuation: Count sentences that do NOT have ending punctuation (period, question mark, exclamation)
-  - Example: "The dog is hungry" = 1 missing punctuation (should be "The dog is hungry.")
-  - Example: "I went to the store" = 1 missing punctuation (should be "I went to the store.")
+- missingPunctuation: Count only if a sentence clearly ends without any mark. Look at the page carefully: if periods appear as dots after words (e.g. 'time.', 'together.', 'movies.'), do NOT count them as missing.
+  - Example: "The dog is hungry" (with no dot visible) = 1 missing punctuation.
 - runOnSentences: Count instances where multiple independent clauses are joined without proper punctuation
   - Example: "The dog is hungry he wants food" = 1 run-on (should be "The dog is hungry. He wants food.")
   - Example: "I went to the store I bought milk" = 1 run-on (should be "I went to the store. I bought milk.")
@@ -867,22 +860,14 @@ function buildDeterministicSummary(params: {
 }
 
 // ─── Normalize over-cancelled phrases (AI guardrail) ─────────────────────────────
-function normalizeOverCancelledPhrases(transcription: string): string {
-  // Fix cases where AI cancels entire phrases instead of just struck words
-  // Common helper words that should not be inside [CANCELLED]
-  return transcription
-    .replace(/\[CANCELLED:\s*my cousin cousins\]/gi, 'my [CANCELLED: cousin] cousins')
-    .replace(/\[CANCELLED:\s*my cousin cousin\]/gi, 'my [CANCELLED: cousin] cousin')
-    .replace(/\[CANCELLED:\s*my cousin\]/gi, 'my [CANCELLED: cousin]')
-    .replace(/\[CANCELLED:\s*my cousins\]/gi, 'my [CANCELLED: cousins]')
-    .replace(/\[CANCELLED:\s*the\s+([^\]]+)\]/gi, (_match, content: string) => {
-      const words = content.trim();
-      return `the [CANCELLED: ${words}]`;
-    })
-    .replace(/\[CANCELLED:\s*i \w+\s*\w*\]/gi, (match, content) => {
-      const words = content.replace(/i\s*/i, '').trim();
-      return `i [CANCELLED: ${words}]`;
-    });
+function normalizeOverCancelledPhrases(t: string): string {
+  const HELPERS = new Set(['my','the','a','an','his','her','their','our','your','this','that','its','i']);
+  return t.replace(/\[CANCELLED:\s*([^\]]+)\]/gi, (m, inner: string) => {
+    const words = inner.trim().split(/\s+/);
+    const lead: string[] = [];
+    while (words.length > 1 && HELPERS.has(words[0].toLowerCase())) lead.push(words.shift()!);
+    return (lead.length ? lead.join(' ') + ' ' : '') + `[CANCELLED: ${words.join(' ')}]`;
+  });
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1351,6 +1336,9 @@ function injectCancellationTags(
   for (const c of confirmed) injectOne(c, 'CANCELLED');
   for (const c of uncertain) injectOne(c, 'MAYBE-CANCELLED');
 
+  // Prevent words from sticking together when tags are injected next to each other
+  result = result.replace(/\](?=\S)/g, '] ').replace(/\s{2,}/g, ' ');
+
   return result;
 }
 
@@ -1521,16 +1509,16 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         const aConfirmed = extracted.confirmedCancellations || [];
         const bConfirmed = parsedB.confirmedCancellations || [];
         
-        const aKeys = new Set(aConfirmed.map((c: any) => `${c.text.toLowerCase()}#${c.occurrence || 1}`));
+        const aKeys = new Set(aConfirmed.map((c: any) => c.text.toLowerCase().trim()));
         
         const demotedFromB = bConfirmed
-          .filter((c: any) => !aKeys.has(`${c.text.toLowerCase()}#${c.occurrence || 1}`))
+          .filter((c: any) => !aKeys.has(c.text.toLowerCase().trim()))
           .map((c: any) => ({ ...c, confidence: Math.min(c.confidence ?? 60, 65), reason: 'single-pass' }));
 
         // mergedConfirmed is just Pass A's confirmed (Pass B can't add new confirmed, it can only add uncertain)
         // Note: we still merge if Pass B found the same one with higher confidence, but that's handled by mergeCancellations
         // if we just merge Pass A with (Pass B - demoted).
-        const bConfirmedKept = bConfirmed.filter((c: any) => aKeys.has(`${c.text.toLowerCase()}#${c.occurrence || 1}`));
+        const bConfirmedKept = bConfirmed.filter((c: any) => aKeys.has(c.text.toLowerCase().trim()));
         let mergedConfirmed = mergeCancellations(aConfirmed, bConfirmedKept);
 
         let mergedUncertain = mergeCancellations(
