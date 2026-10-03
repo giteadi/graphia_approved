@@ -26,61 +26,73 @@ async function initSpellChecker() {
 async function performSpellCheck(transcription: string) {
   const checker = await initSpellChecker();
   const errors: any[] = [];
-  
-  // Strip out cancellations completely for spell checking
   const cleanText = transcription.replace(/\[(?:CANCELLED|MAYBE-CANCELLED):\s*([^\]]+)\]/gi, ' ');
-  
-  // Split into words
-  const words = cleanText.split(/\s+/);
-  
-  const wordOccurrences = new Map<string, number>();
-  
-  for (const rawWord of words) {
-    // Check if the word is hyphenated
-    if (rawWord.includes('-')) {
-      const parts = rawWord.split('-');
-      for (const part of parts) {
-        const cleanPart = part.replace(/[.,/#!$%^&*;:{}=\_`~()]/g, '').trim();
-        if (!cleanPart || !/[a-zA-Z]/.test(cleanPart)) continue;
-        
-        const lowerWord = cleanPart.toLowerCase();
-        const count = (wordOccurrences.get(lowerWord) || 0) + 1;
-        wordOccurrences.set(lowerWord, count);
-        
-        if (!checker.correct(cleanPart)) {
-          errors.push({
-            written: cleanPart,
-            intended: checker.suggest(cleanPart)[0] || cleanPart,
-            confidence: 100,
-            reason: "Dictionary check (hyphenated part)",
-            gradeLevel: "All",
-            occurrence: count
-          });
-        }
-      }
-      continue;
-    }
+  const counts = new Map<string, number>();
 
-    const cleanWord = rawWord.replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, '').trim();
-    if (!cleanWord || !/[a-zA-Z]/.test(cleanWord)) continue;
-    
-    // Ignore common names or single letters if needed, but nspell handles 'a' and 'I' correctly usually
-    const lowerWord = cleanWord.toLowerCase();
-    const count = (wordOccurrences.get(lowerWord) || 0) + 1;
-    wordOccurrences.set(lowerWord, count);
-    
-    if (!checker.correct(cleanWord)) {
-      errors.push({
-        written: cleanWord,
-        intended: checker.suggest(cleanWord)[0] || cleanWord,
-        confidence: 100,
-        reason: "Dictionary check",
-        gradeLevel: "All",
-        occurrence: count
-      });
-    }
+  for (const raw of cleanText.split(/\s+/)) {
+    const token = raw.replace(/^[^A-Za-z']+|[^A-Za-z']+$/g, '');
+    if (!token || !/[a-zA-Z]/.test(token)) continue;
+
+    const parts = token.split('-').filter(Boolean);
+    const valid = parts.every(p => checker.correct(p));
+    const key = token.toLowerCase();
+    const occ = (counts.get(key) || 0) + 1;
+    counts.set(key, occ);
+    if (valid) continue;
+
+    const badPart = parts.find(p => !checker.correct(p)) || token;
+    errors.push({
+      written: token,                                   // poora token (get-togther)
+      intended: parts.length > 1 ? token : (checker.suggest(token)[0] || token),
+      confidence: 100,
+      reason: 'Dictionary check',
+      gradeLevel: '',
+      occurrence: occ,
+      badPart,
+    });
   }
   return errors;
+}
+
+async function verifySpellingWithGPT(candidates: any[], fullText: string, model: string) {
+  if (!candidates.length) return [];
+  const words = [...new Set(candidates.map(c => c.written))];
+
+  const prompt = `A dictionary flagged these words from a student's handwritten sample.
+Decide for EACH word whether it is a genuine student spelling/word-formation mistake.
+
+NOT an error: proper nouns, names, brand names, game/product names, abbreviations,
+valid inflected forms, valid hyphenated compounds.
+
+Context (cancelled words removed):
+"""${stripCancellationTags(fullText)}"""
+
+Words: ${JSON.stringify(words)}
+
+Return ONLY JSON:
+{"results":[{"word":"<as given>","isError":true|false,"intended":"<correct form the student meant, in context>","gradeLevel":"approx Nth grade"}]}`;
+
+  try {
+    const r = await withFallback((client, m) => (client as any).chat.completions.create({
+      model: m,
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' }
+    }), model);
+
+    const parsed = parseJsonLoose(responseText(r));
+    const verdict = new Map<string, any>();
+    for (const v of parsed?.results || []) verdict.set(String(v.word).toLowerCase(), v);
+
+    return candidates
+      .filter(c => verdict.get(c.written.toLowerCase())?.isError === true)
+      .map(c => {
+        const v = verdict.get(c.written.toLowerCase());
+        return { ...c, intended: v.intended || c.intended, gradeLevel: v.gradeLevel || c.gradeLevel, reason: 'Dictionary + AI verified' };
+      });
+  } catch (e: any) {
+    console.warn('[SpellVerify] failed, using raw dictionary result:', e?.message);
+    return candidates;
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -115,17 +127,6 @@ function validateExtraction(evidence: any): any {
   return evidence;
 }
 
-/**
- * Extracts the specific grammar target phrase from a larger example
- * Returns the first 2-3 words to ensure it's short enough for the token matcher to find
- */
-function extractGrammarTarget(phrase: string): string {
-  if (!phrase) return phrase;
-  
-  // Generic fallback: avoid full sentence highlight
-  const words = phrase.trim().split(/\s+/);
-  return words.slice(0, Math.min(2, words.length)).join(' ');
-}
 
 /**
  * Quality Gate - Detects suspicious AI extraction patterns
@@ -388,6 +389,7 @@ GRAMMAR COUNTING RULES:
 - Count missing/wrong prepositions, articles as "other"
 - Count EVERY mistake — do not merge or summarise
 - IMPORTANT: Avoid double counting - if "lifes" is already in spellingErrors, do NOT count it again in grammarMistakes
+- IMPORTANT: errorWord must be ONE word that appears in the example and represents the mistake.
 
 PAST TENSE COUNTING RULES:
 - Count each instance where past tense is incorrectly formed or missing
@@ -455,7 +457,7 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
   ],
 
   "grammarMistakes": [
-    { "type": "agreement|plural|syntax|other", "example": "exact phrase from transcription" }
+    { "type": "agreement|plural|syntax|other", "example": "exact phrase from transcription", "errorWord": "the single word that is wrong" }
   ],
   "runOnSentences": 0,
   "missingCapitals": 0,
@@ -938,7 +940,25 @@ type SpellingError = {
 type GrammarMistake = {
   type: 'agreement' | 'plural' | 'syntax' | 'other';
   example: string;
+  errorWord?: string;
+  occurrence?: number;
 };
+
+function extractGrammarTarget(g: GrammarMistake): string {
+  if (g.errorWord && g.example.toLowerCase().includes(g.errorWord.toLowerCase())) return g.errorWord;
+  return g.example.trim().split(/\s+/)[0]; // fallback: sirf pehla word
+}
+
+function withGrammarOccurrence(list: GrammarMistake[], plainText: string): GrammarMistake[] {
+  const t = plainText.toLowerCase();
+  return list.map(g => {
+    const w = (g.errorWord || g.example.split(/\s+/)[0]).toLowerCase();
+    const at = t.indexOf(g.example.toLowerCase());
+    if (at < 0) return { ...g, occurrence: 1 };
+    const before = t.slice(0, at).match(new RegExp(`\\b${escapeRegExp(w)}\\b`, 'g'))?.length || 0;
+    return { ...g, occurrence: before + 1 };
+  });
+}
 
 type UncertainWord = {
   word: string;
@@ -1012,6 +1032,19 @@ function dedupeSpellingErrors(spellingErrors: SpellingError[] = []): SpellingErr
   }
 
   return result;
+}
+
+function capBoundaryEvidence(model: any, plainText: string) {
+  const text = plainText.replace(/\s+/g, ' ').trim();
+  const chunks = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const detCaps = chunks.filter(c => /^[a-z]/.test(c)).length;
+  const detRunOn = chunks.filter(c => c.split(/\s+/).length >= 28).length;
+  const detPunct = /[.!?]["']?$/.test(text) ? 0 : 1;
+  return {
+    runOnSentences: Math.min(model.runOnSentences ?? 0, detRunOn),
+    missingCapitals: Math.min(model.missingCapitals ?? 0, detCaps),
+    missingPunctuation: Math.min(model.missingPunctuation ?? 0, detPunct),
+  };
 }
 
 function isPlacedInText(text: string, phrase: string): boolean {
@@ -1126,7 +1159,7 @@ function buildHighlightMap(params: {
   } = params;
 
   const redWords = uniqueNormalized(spellingErrors.map(s => s.written)); // uncertainWords removed
-  const redPhrases = uniqueNormalized(grammarMistakes.map(g => extractGrammarTarget(g.example)).filter(Boolean));
+  const redPhrases = uniqueNormalized(grammarMistakes.map(g => extractGrammarTarget(g)).filter(Boolean));
   const strikePhrases = uniqueNormalized(confirmedCancellations.map(c => c.text));
 
   // Build targets array with respect to treatUncertainCancellationsAsStrike flag
@@ -1138,10 +1171,10 @@ function buildHighlightMap(params: {
       tokenSpan: 1 // spelling is always single word
     })),
     ...grammarMistakes.map(g => ({
-      text: extractGrammarTarget(g.example) || g.example,
-      occurrence: 1,
+      text: extractGrammarTarget(g),
+      occurrence: g.occurrence || 1,
       kind: 'grammar' as const,
-      tokenSpan: (extractGrammarTarget(g.example) || g.example).trim().split(/\s+/).length
+      tokenSpan: 1
     }))
     // confirmedCancellations excluded from targets because they are handled via inline [CANCELLED:] tags
     // Uncertain cancellations excluded from targets
@@ -1584,10 +1617,11 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       }
     }
 
-    // Perform deterministic spell checking
+    // Perform deterministic spell checking with GPT verification
     if (extracted.transcription) {
       console.log('[Step 1] Running deterministic spell check...');
-      extracted.spellingErrors = await performSpellCheck(extracted.transcription);
+      const candidates = await performSpellCheck(modelTranscription);
+      extracted.spellingErrors = await verifySpellingWithGPT(candidates, modelTranscription, preferredModel);
     } else {
       extracted.spellingErrors = [];
     }
@@ -1689,13 +1723,8 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // SIMPLIFIED: Use LLM values directly, no heuristic override
     // Removed: computeSentenceBoundaryEvidence override
 
-    // Deduplicate grammar mistakes
-    const grammarMistakes = dedupeGrammarMistakes(extracted.grammarMistakes || []);
-
     // Deduplicate spelling errors
     spellingErrors = dedupeSpellingErrors(spellingErrors || []);
-
-    extracted.grammarMistakes = grammarMistakes;
 
     // As-is OCR approach with uncertain cancellations for scribbles/overwrites
     const displayTranscription = injectCancellationTags(
@@ -1758,17 +1787,23 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // Build final spelling errors and highlight map after all post-processing
     const finalSpellingErrors = dedupeSpellingErrors(spellingErrors);
     
-    // FIX: Removed filterVisibleSpellingErrors so autocorrected words don't get deleted from the error list.
-    
+    // Process grammar mistakes and remove those already in spellingErrors
+    const spellSet = new Set(finalSpellingErrors.map(e => normalizeForUiMatch(e.written)));
+    const grammarMistakes = withGrammarOccurrence(
+      dedupeGrammarMistakes(extracted.grammarMistakes || []),
+      plainTranscription
+    ).filter(g => !spellSet.has(normalizeForUiMatch(g.errorWord || g.example)));
+
     const highlightMap = buildHighlightMap({
       spellingErrors: finalSpellingErrors,
-      grammarMistakes: extracted.grammarMistakes || [], // FIX: Restored grammar highlights (orange color)
+      grammarMistakes: grammarMistakes,
       uncertainWords: extracted.uncertainWords || [],
       confirmedCancellations: extracted.confirmedCancellations || [],
       uncertainCancellations: extracted.uncertainCancellations || [],
       treatUncertainCancellationsAsStrike: true,
     });
 
+    extracted.grammarMistakes = grammarMistakes;
     extracted.spellingErrors = finalSpellingErrors;
     extracted.highlightMap = highlightMap;
 
@@ -1793,6 +1828,8 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     const safeTime = timeTaken && timeTaken > 0 ? timeTaken : undefined;
     const wpm = safeTime && wordCount > 0 ? Math.round(wordCount / safeTime) : 0;
 
+    const boundary = capBoundaryEvidence(extracted, plainTranscription);
+
     const evidenceData: EvidenceData = {
       transcription:              extracted.transcription,
       rawTranscription:            extracted.rawTranscription,
@@ -1810,9 +1847,9 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       })),
       wordChoiceMistakes:        allWordChoiceMistakes,
       grammarMistakes,
-      runOnSentences:           extracted.runOnSentences,
-      missingCapitals:          extracted.missingCapitals,
-      missingPunctuation:       extracted.missingPunctuation,
+      runOnSentences:           boundary.runOnSentences,
+      missingCapitals:          boundary.missingCapitals,
+      missingPunctuation:       boundary.missingPunctuation,
       pastTenseErrors:            extracted.pastTenseErrors || 0,
       letterFormationObservations: cleanObs(extracted.letterFormationObservations),
       observedLetterFormationLetters: (extracted.observedLetterFormationLetters || [])
@@ -1933,9 +1970,9 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         confirmedCancellations: extracted.confirmedCancellations || [],
         uncertainCancellations: extracted.uncertainCancellations || [],
         highlightMap: highlightMap,
-        runOnSentences: extracted.runOnSentences ?? 0,
-        missingCapitals: extracted.missingCapitals ?? 0,
-        missingPunctuation: extracted.missingPunctuation ?? 0,
+        runOnSentences: boundary.runOnSentences ?? 0,
+        missingCapitals: boundary.missingCapitals ?? 0,
+        missingPunctuation: boundary.missingPunctuation ?? 0,
       }
     };
 
