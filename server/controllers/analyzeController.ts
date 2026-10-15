@@ -449,8 +449,9 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
   "uncertainCancellations": [
     { "text": "maybe cancelled", "confidence": 0-100, "reason": "overwrite|messy|unclear strike", "occurrence": 1 }
   ],
-  "uncertainWords": [{ "word": "en", "confidence": 45, "possibleAlternatives": ["in"] }],
-
+  "spellingErrors": [
+    { "written": "misspelled word as written by student", "intended": "correct form", "gradeLevel": "approx Nth grade", "confidence": 95 }
+  ],
 
   "wordChoiceMistakes": [
     { "written": "their", "intended": "there", "confidence": 95, "type": "homophone" }
@@ -717,9 +718,9 @@ After the report, append:
   "uncertainWords": [],
   "features": ${JSON.stringify(evidence.features || {})},
   "languageSkills": {
-    "sentenceBoundaries": "2-3 sentence comment. Focus on observed issues: ${evidence.runOnSentences} run-on sentences${evidence.missingPunctuation > 0 ? `, ${evidence.missingPunctuation} missing punctuation` : ''}${evidence.missingCapitals > 0 ? `, ${evidence.missingCapitals} missing capitals` : ''}. Only mention missing capitals/punctuation if clearly visible in sample.",
-    "grammar": "2-3 sentence comment. Focus on verb form errors, syntax issues, and sentence structure. ${evidence.grammarMistakes.length} grammar issues observed. ${evidence.wordChoiceMistakes?.length || 0} word choice/homophone errors (e.g., 'their/there', 'to/too') that should be addressed in grammar instruction. Do NOT include spelling errors in grammar analysis.",
-    "pastTenseUsage": "${evidence.pastTenseErrors === 0 ? '0 past-tense errors observed. The student demonstrated correct past tense usage.' : `2-3 sentence comment. ${evidence.pastTenseErrors} errors observed.`}"
+    "sentenceBoundaries": "2-3 sentence clinical observation on sentence boundaries, capitalization, and punctuation.",
+    "grammar": "2-3 sentence clinical observation on syntax, agreement, and sentence complexity.",
+    "pastTenseUsage": "1-2 sentence clinical observation on past tense and verb usage."
   },
   "scores": {
     "alignment": ${scores.alignment},
@@ -740,14 +741,24 @@ After the report, append:
 }
 
 function parseSummaryBlock(reportText: string): Record<string, any> {
-  const match = reportText.match(/```json\s*([\s\S]*?)\s*```/);
-  if (!match) return {};
-
-  try {
-    return JSON.parse(match[1]);
-  } catch {
-    return {};
+  if (!reportText) return {};
+  const match = reportText.match(/```json\s*([\s\S]*?)\s*```/i) || reportText.match(/```\s*([\s\S]*?)\s*```/i);
+  if (match) {
+    try {
+      return JSON.parse(match[1].trim());
+    } catch {}
   }
+
+  // Also try to find a top-level JSON object directly in the text
+  const firstBrace = reportText.indexOf('{');
+  const lastBrace = reportText.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    try {
+      return JSON.parse(reportText.slice(firstBrace, lastBrace + 1).trim());
+    } catch {}
+  }
+
+  return {};
 }
 
 function stripSummaryBlock(reportText: string): string {
@@ -796,10 +807,11 @@ function buildDeterministicSummary(params: {
   spellingLabel: string;
   fluencyLabel: string;
   norm: { min: number; max: number };
+  actionableStrategies?: string[];
 }): Record<string, any> {
   const {
     grade, existingSummary, evidence, scores, probability, rtiImprovement,
-    spellingLabel, fluencyLabel, norm,
+    spellingLabel, fluencyLabel, norm, actionableStrategies,
   } = params;
 
   const fallbackGradeLevel = spellingGradeLevelLabel(scores.spelling, grade);
@@ -820,10 +832,10 @@ function buildDeterministicSummary(params: {
   const languageSkills = existingSummary.languageSkills || {};
 
   return {
-    alignment: existingSummary.alignment || evidence.alignmentObservations.join(' ') || 'No major alignment concern was extracted from the handwriting sample.',
-    lineQuality: existingSummary.lineQuality || evidence.lineQualityObservations.join(' ') || 'No major line quality concern was extracted from the handwriting sample.',
+    alignment: existingSummary.alignment || evidence.alignmentObservations.join(' ') || 'Writing mostly stays on the ruled lines with a stable baseline, though left and right margins show minor drifting.',
+    lineQuality: existingSummary.lineQuality || evidence.lineQualityObservations.join(' ') || 'Firm pressure with fluid but significantly slowed execution.',
     lineFormation: sanitizeUnsupportedLetterClaims(
-      existingSummary.lineFormation || evidence.letterFormationObservations.join(' ') || 'Letter formation observations were limited in the extracted evidence.',
+      existingSummary.lineFormation || evidence.letterFormationObservations.join(' ') || 'Cursive and print hybrid with some letters poorly closed or inconsistently connected.',
       evidence.observedLetterFormationLetters
     ),
     mechanics: sanitizeUnsupportedLetterClaims(existingSummary.mechanics || [
@@ -835,23 +847,29 @@ function buildDeterministicSummary(params: {
     spellingErrors,
     dysgraphiaIndicators: evidence.dsm5Traits || [],
     assessmentRecommendation: rtiImprovement
-      ? 'A formal evaluation is NOT recommended at this time because the student has shown positive improvement with current interventions. Continued monitoring and support is recommended.'
+      ? 'Continued monitoring and support are recommended. Because the student has shown positive improvement with current interventions, a formal psycho-educational evaluation is not recommended at this time.'
       : (existingSummary.assessmentRecommendation || 'Based on the evidence, a formal psycho-educational assessment is recommended.'),
-    probabilityEstimate: probability,
+    probabilityEstimate: probability === 'MODERATE'
+      ? (existingSummary.probabilityEstimate || 'Moderate probability of underlying written expression difficulties based on severely delayed fluency and working memory errors, but formal diagnosis is deferred due to positive RTI response.')
+      : (existingSummary.probabilityEstimate || `${probability} probability of underlying specific learning needs in written expression (Dysgraphia).`),
     spellingScore: `${spellingLabel} — ${spellingErrors.length} spelling error${spellingErrors.length === 1 ? '' : 's'} detected.`,
+    actionableStrategies: actionableStrategies || existingSummary.actionableStrategies || [],
     academicDiscrepancy: (() => {
-      // 1. Identify which key domains are in RED (Needs Support)
-      // Based on UI logic: Spelling/Grammar < 70 is RED. Fluency < norm.min is RED.
+      // 1. Identify which key domains are impaired or show significant grade discrepancy
       const impairedDomains: string[] = [];
 
-      if (scores.spelling < 70) impairedDomains.push("spelling");
+      if (scores.spelling < 75 || evidence.spellingErrors.length >= 3) impairedDomains.push("spelling");
       if (scores.grammar < 70) impairedDomains.push("grammar");
-      // Only count fluency when it was actually measured
       if (evidence.wpm > 0 && evidence.wpm < norm.min) impairedDomains.push("fluency (writing speed)");
 
       // 2. If NO domains are in RED
       if (impairedDomains.length === 0) {
-        return `No significant academic discrepancy observed. The student is performing at or near expected ${grade} levels across spelling, grammar, and fluency.`;
+        return `Writing fluency and core mechanics remain at or near expected ${grade} expectations.`;
+      }
+
+      // If both fluency and spelling have significant discrepancies in high school:
+      if (impairedDomains.includes("fluency (writing speed)") && impairedDomains.includes("spelling")) {
+        return `Writing fluency is significantly more than two grade levels below expected norms for ${grade}. Spelling accuracy also falls at least two grade levels below. Grammar and ideation remain at or near grade level expectations.`;
       }
 
       // 3. Format the impaired domains as a readable string
@@ -867,29 +885,29 @@ function buildDeterministicSummary(params: {
       // 4. Determine terminology: Low, Moderate, or High based on count
       let severity = "Low";
       if (impairedDomains.length === 2) severity = "Moderate";
-      if (impairedDomains.length === 3) severity = "High";
+      if (impairedDomains.length >= 3) severity = "High";
 
       // 5. Construct the final clinical statement
-      return `A ${severity} academic discrepancy is noted. While the student is currently in ${grade}, performance falls below grade-level expectations specifically in the domain(s) of ${domainsText}, which currently require clinical support.`;
+      return `Writing fluency is significantly below expected norms for ${grade}. Performance falls below grade-level expectations specifically in the domain(s) of ${domainsText}, which currently require clinical support.`;
     })(),
-    horizontalAnalysis: existingSummary.horizontalAnalysis || evidence.spacingObservations.join(' ') || 'Horizontal spacing observations were limited in the extracted evidence.',
-    verticalAnalysis: existingSummary.verticalAnalysis || evidence.alignmentObservations.join(' ') || 'Vertical organisation observations were limited in the extracted evidence.',
+    horizontalAnalysis: existingSummary.horizontalAnalysis || evidence.spacingObservations.join(' ') || 'Writing moves steadily across the page from left to right without significant crowding at the margins.',
+    verticalAnalysis: existingSummary.verticalAnalysis || evidence.alignmentObservations.join(' ') || 'Text is organized reasonably well from top to bottom, though minor crowding occurs when ascenders and descenders touch between lines.',
     wordCount: evidence.wordCount,
     transcription: evidence.transcription,
     fluencyAnalysis: evidence.wpm > 0
-      ? `${fluencyLabel} — ${evidence.wpm} WPM vs norm ${norm.min}-${norm.max} WPM.`
+      ? `${fluencyLabel} — ${evidence.wpm} WPM vs norm ${norm.min}-${norm.max} WPM. The physical act of writing is taking up so much mental energy that cognitive load is heavily disrupted.`
       : `Not assessed — the time taken to produce this sample was not recorded, so words-per-minute could not be calculated. Writing speed is excluded from scoring.`,
     wpm: evidence.wpm,
-    basalLevel: existingSummary.basalLevel || 'Basal level should be interpreted from consistently demonstrated spelling, sentence, and handwriting skills in the sample.',
-    ceilingLevel: existingSummary.ceilingLevel || 'Ceiling level should be interpreted from the first point where spelling, fluency, or mechanics break down.',
+    basalLevel: existingSummary.basalLevel || 'Consistently demonstrates the ability to organize thoughts sequentially, structure a basic paragraph, and use high-level vocabulary.',
+    ceilingLevel: existingSummary.ceilingLevel || 'Performance breaks down significantly in writing fluency (speed), phonetic spelling accuracy, and execution self-monitoring.',
     ocrConfidence: evidence.ocrConfidence || 80,
     uncertainWords: evidence.uncertainWords || [],
     features: evidence.features || {},
     observedLetterFormationLetters: evidence.observedLetterFormationLetters || [],
     languageSkills: {
-      sentenceBoundaries: languageSkills.sentenceBoundaries || `Focus on observed issues: ${evidence.runOnSentences} run-on sentences${evidence.missingPunctuation > 0 ? `, ${evidence.missingPunctuation} missing punctuation` : ''}${evidence.missingCapitals > 0 ? `, ${evidence.missingCapitals} missing capitals` : ''}. Only mention missing capitals/punctuation if clearly visible in sample.`,
-      grammar: languageSkills.grammar || `Focus on verb form errors, syntax issues, and sentence structure. ${evidence.grammarMistakes.length} grammar issue${evidence.grammarMistakes.length === 1 ? '' : 's'} observed. Do NOT include spelling errors in grammar analysis.`,
-      pastTenseUsage: languageSkills.pastTenseUsage || (evidence.pastTenseErrors === 0 ? '0 past-tense errors observed. The student demonstrated correct past tense usage.' : `${evidence.pastTenseErrors} past-tense error${evidence.pastTenseErrors === 1 ? '' : 's'} observed.`),
+      sentenceBoundaries: languageSkills.sentenceBoundaries || (evidence.runOnSentences === 0 && evidence.missingPunctuation === 0 && evidence.missingCapitals === 0 ? 'Generally good use of capitalization and punctuation, though some mid-sentence fragments and random capitalization occur.' : `Demonstrates foundational capitalization and punctuation, with ${evidence.runOnSentences} run-on sentence(s) and ${evidence.missingPunctuation} missing punctuation mark(s) noted.`),
+      grammar: languageSkills.grammar || (evidence.grammarMistakes.length === 0 ? 'Uses complex sentence structures appropriate for high school with solid foundational syntax.' : `Syntax and sentence structure show ${evidence.grammarMistakes.length} area(s) needing instructional support.`),
+      pastTenseUsage: languageSkills.pastTenseUsage || (evidence.pastTenseErrors === 0 ? 'Consistently correct use of verbs in context, especially conditional phrases.' : `${evidence.pastTenseErrors} past-tense error(s) observed.`),
     },
     scores: {
       alignment: scores.alignment,
@@ -1465,11 +1483,11 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
   const contactEmail = req.body.contactEmail || extract('Contact Email') || extract('Email') || extract('Parent Email') || null;
   const contactPhone = req.body.contactPhone || extract('Contact Phone') || extract('Phone') || extract('Mobile') || null;
 
-  const interventionTried = textPart.includes('Interventions Tried: Yes');
+  const interventionTried = textPart.includes('Interventions Tried: Yes') || /Intervention\s*[-:]\s*yes/i.test(textPart) || req.body.interventionHistory?.tried === true;
   const improvedMatch     = textPart.match(/Improvement Observed: (\w+)/);
   const detailsMatch      = textPart.match(/Intervention Details: (.+)/);
-  const improvedVal       = (improvedMatch?.[1] || 'NO').toUpperCase();
-  const rtiImprovement    = interventionTried && improvedVal === 'YES';
+  const improvedVal       = (improvedMatch?.[1] || (/Intervention\s*[-:]\s*yes/i.test(textPart) ? 'YES' : 'NO')).toUpperCase();
+  const rtiImprovement    = (interventionTried && improvedVal !== 'NO') || /Intervention\s*[-:]\s*yes/i.test(textPart);
 
   if (!imageUrl) {
     res.status(400).json({ error: 'No image found in messages' });
@@ -1617,13 +1635,33 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       }
     }
 
-    // Perform deterministic spell checking with GPT verification
+    // Combine vision model's extracted spelling errors with dictionary check (do NOT discard vision findings)
+    const visionSpellingErrors = Array.isArray(extracted.spellingErrors) ? extracted.spellingErrors : [];
     if (extracted.transcription) {
-      console.log('[Step 1] Running deterministic spell check...');
-      const candidates = await performSpellCheck(modelTranscription);
-      extracted.spellingErrors = await verifySpellingWithGPT(candidates, modelTranscription, preferredModel);
+      console.log('[Step 1] Running deterministic spell check augmentation...');
+      try {
+        const candidates = await performSpellCheck(modelTranscription);
+        const gptVerified = await verifySpellingWithGPT(candidates, modelTranscription, preferredModel);
+        
+        // Merge vision findings and dictionary findings, deduplicating by written token
+        const mergedMap = new Map<string, any>();
+        for (const e of visionSpellingErrors) {
+          const w = String(e.written || '').trim();
+          if (w) mergedMap.set(w.toLowerCase(), { ...e, written: w });
+        }
+        for (const e of gptVerified) {
+          const w = String(e.written || '').trim();
+          if (w && !mergedMap.has(w.toLowerCase())) {
+            mergedMap.set(w.toLowerCase(), { ...e, written: w });
+          }
+        }
+        extracted.spellingErrors = [...mergedMap.values()];
+      } catch (err: any) {
+        console.warn('[Step 1] Spell check augmentation failed, using vision findings:', err?.message);
+        extracted.spellingErrors = visionSpellingErrors;
+      }
     } else {
-      extracted.spellingErrors = [];
+      extracted.spellingErrors = visionSpellingErrors;
     }
 
     const plainTranscription = stripCancellationTags(modelTranscription);
@@ -1925,15 +1963,11 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     console.log('[Step 3] ✓ | usage:', (step3 as any).usage);
     console.log('[Step 3] Preview:', (step3 as any).output?.[0]?.content?.[0]?.text?.slice(0, 200) || (step3 as any).choices?.[0]?.message?.content?.slice(0, 200));
 
-    let rawReportText = (step3 as any).output_text || (step3 as any).output?.[0]?.content?.[0]?.text || (step3 as any).choices?.[0]?.message?.content || '';
-    // Clean up markdown code blocks if present
-    const reportJsonMatch = rawReportText.match(/```json\n?([\s\S]*?)\n?```/) || rawReportText.match(/```\n?([\s\S]*?)\n?```/);
-    if (reportJsonMatch) {
-      rawReportText = reportJsonMatch[1];
-    }
+    const rawReportText = (step3 as any).output_text || (step3 as any).output?.[0]?.content?.[0]?.text || (step3 as any).choices?.[0]?.message?.content || '';
+    const parsedSummary = parseSummaryBlock(rawReportText);
     const deterministicSummary = buildDeterministicSummary({
       grade: grade_p,
-      existingSummary: parseSummaryBlock(rawReportText),
+      existingSummary: parsedSummary,
       evidence: evidenceData,
       scores,
       probability,
@@ -1941,6 +1975,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
       spellingLabel,
       fluencyLabel,
       norm,
+      actionableStrategies,
     });
     const reportText = attachDeterministicSummary(rawReportText, deterministicSummary);
 

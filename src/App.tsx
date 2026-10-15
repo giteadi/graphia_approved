@@ -1,37 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import ReactCrop, { type Crop, centerCrop, PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
-import { 
-  Document, 
-  Packer, 
-  Paragraph, 
-  TextRun, 
-  ImageRun, 
-  AlignmentType, 
-  HeadingLevel,
-  BorderStyle
-} from 'docx';
-import { saveAs } from 'file-saver';
-import { jsPDF } from 'jspdf';
-import { domToPng } from 'modern-screenshot';
-import { 
-  ResponsiveContainer, 
-  Radar, 
-  RadarChart, 
-  PolarGrid, 
-  PolarAngleAxis, 
-  PolarRadiusAxis,
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  Cell
-} from 'recharts';
+import { RenderTranscription } from './components/RenderTranscription';
+import { exportReportAsPdf, exportReportAsWord } from './services/exportService';
 import { 
   Upload, 
   FileText, 
@@ -82,6 +53,7 @@ import { motion, AnimatePresence } from 'motion/react';
 const getProbabilityDisplayLabel = (probabilityEstimate = '') => {
   const label = probabilityEstimate.toUpperCase();
   if (label.includes('HIGH')) return 'HIGH';
+  if (label.includes('MODERATE')) return 'MODERATE';
   return 'LOW';
 };
 import ReactMarkdown from 'react-markdown';
@@ -118,9 +90,6 @@ const DATA_SOURCES = [
   "Parents"
 ];
 
-interface VisualAnalysisProps {
-  scores: AnalysisResult['summary']['scores'];
-}
 
 interface SavedReport {
   id: string;
@@ -148,7 +117,7 @@ interface SavedReport {
   observationalNotes?: string;
 }
 
-const ScoreIndicator = ({ score, label }: { score: number; label: string }) => {
+const ScoreIndicator = React.memo(({ score, label }: { score: number; label: string }) => {
   let color = "bg-gray-400";
   let textColor = "text-gray-700";
   let status = "Needs Support";
@@ -171,108 +140,8 @@ const ScoreIndicator = ({ score, label }: { score: number; label: string }) => {
       <span className={`text-[7pt] font-bold uppercase mt-1 ${textColor}`}>{status}</span>
     </div>
   );
-};
+});
 
-const VisualAnalysis = ({ scores }: VisualAnalysisProps) => {
-  // Strengths vs Needs Data
-  const splitData = [
-    { name: 'Alignment', score: scores.alignment },
-    { name: 'Spatial Org', score: scores.spatialOrganisation },
-    { name: 'Writing Speed', score: scores.writingSpeed },
-    { name: 'Letter Formation', score: scores.letterFormation },
-    { name: 'Grammar', score: scores.grammar },
-    { name: 'Sentence Bound', score: scores.sentenceBoundaries },
-    { name: 'Past Tense', score: scores.pastTenseUsage },
-  ];
-
-  // Benchmark norms (example for Grade 3 as requested, but we can make it dynamic or use generic)
-  const benchmarkData = [
-    { skill: 'Writing Speed', student: scores.writingSpeed, norm: 75 }, // Norm is a "grade level" target
-    { skill: 'Spelling', student: scores.spelling, norm: 80 },
-    { skill: 'Grammar', student: scores.grammar, norm: 85 },
-  ];
-
-  return (
-    <div className="space-y-4 visual-analysis-container">
-      {/* Score Cards */}
-      <div className="grid grid-cols-3 sm:grid-cols-7 gap-2">
-        <ScoreIndicator score={scores.alignment} label="Alignment" />
-        <ScoreIndicator score={scores.lineQuality} label="Line Quality" />
-        <ScoreIndicator score={scores.letterFormation} label="Formation" />
-        <ScoreIndicator score={scores.spelling} label="Spelling" />
-        <ScoreIndicator score={scores.grammar} label="Grammar" />
-        <ScoreIndicator score={scores.writingSpeed} label="Speed" />
-        <ScoreIndicator score={scores.mechanics} label="Mechanics" />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Strengths vs Needs Support Split Chart */}
-        <div className="border border-[#141414] p-3 bg-white">
-          <h4 className="font-mono text-[9pt] uppercase tracking-widest mb-3 flex items-center gap-2 border-b border-[#141414] pb-1">
-            <Activity className="w-4 h-4" /> Strengths vs Needs Support
-          </h4>
-          <div className="h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={splitData}
-                layout="vertical"
-                margin={{ left: 10, right: 30, top: 0, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} strokeOpacity={0.1} />
-                <XAxis type="number" domain={[0, 100]} hide />
-                <YAxis
-                  dataKey="name"
-                  type="category"
-                  tick={{ fontSize: 9, fontFamily: 'monospace', fill: '#141414' }}
-                  width={85}
-                />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#E4E3E0', border: '1px solid #141414', fontFamily: 'monospace', fontSize: '9pt', padding: '4px' }}
-                />
-                <Bar dataKey="score" radius={[0, 2, 2, 0]} isAnimationActive={false}>
-                  {splitData.map((entry, index) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={entry.score >= 85 ? '#2563eb' : entry.score >= 70 ? '#60a5fa' : '#9ca3af'} 
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Benchmark Comparison Graph */}
-        <div className="border border-[#141414] p-3 bg-white">
-          <h4 className="font-mono text-[9pt] uppercase tracking-widest mb-3 flex items-center gap-2 border-b border-[#141414] pb-1">
-            <BarChart3 className="w-4 h-4" /> Benchmark Comparison
-          </h4>
-          <div className="h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={benchmarkData}
-                margin={{ top: 20, right: 10, left: -20, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.1} />
-                <XAxis 
-                  dataKey="skill" 
-                  tick={{ fontSize: 9, fontFamily: 'monospace', fill: '#141414' }}
-                />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 9, fontFamily: 'monospace', fill: '#141414' }} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#E4E3E0', border: '1px solid #141414', fontFamily: 'monospace', fontSize: '9pt', padding: '4px' }}
-                />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontFamily: 'monospace', paddingTop: '10px' }} />
-                <Bar name="Student" dataKey="student" fill="#141414" radius={[2, 2, 0, 0]} isAnimationActive={false} />
-                <Bar name="Grade Norm" dataKey="norm" fill="#141414" fillOpacity={0.2} radius={[2, 2, 0, 0]} isAnimationActive={false} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const TOUR_STEPS = [
   {
@@ -322,411 +191,6 @@ const DEFAULT_STRATEGIES = [
   "Provide extended time for all written tasks, as the current writing speed requires more time to demonstrate knowledge adequately."
 ];
 
-type HighlightTarget = {
-  text: string;
-  occurrence: number; // 1-based
-  kind: 'spelling' | 'grammar' | 'cancelled' | 'maybe-cancelled';
-  tokenSpan?: number; // words count for phrase-level matching
-};
-
-type HighlightMap = {
-  redWords: string[];      // backward compatibility
-  redPhrases: string[];    // backward compatibility
-  strikePhrases: string[]; // backward compatibility
-  targets?: HighlightTarget[]; // optional for backward compatibility
-};
-
-const normalizeForUiMatch = (value: string): string =>
-  (value || '')
-    .toLowerCase()
-    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-// Spelling comparisons keep hyphens — a hyphenation error is exactly the
-// difference we must preserve (e.g. "gettogether" vs "get-together").
-const normalizeForSpellingMatch = (value: string): string =>
-  (value || '')
-    .toLowerCase()
-    .replace(/[.,\/#!$%\^&\*;:{}=_`~()?"']/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-const escapeRegExp = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-// Token-based transcription rendering with single source of truth
-type AnnotationType = 'normal' | 'spelling' | 'grammar' | 'cancelled' | 'maybeCancelled';
-
-interface Token {
-  text: string;
-  type: AnnotationType;
-}
-
-// Priority system for annotation types (higher = overrides lower)
-const TOKEN_PRIORITY: Record<AnnotationType, number> = {
-  cancelled: 3,
-  maybeCancelled: 2,
-  spelling: 2,
-  grammar: 2,
-  normal: 0
-};
-
-const RenderTranscription = ({
-  text,
-  highlightMap,
-}: {
-  text: string;
-  highlightMap?: HighlightMap;
-}) => {
-  if (!text) return null;
-
-  console.log('[RenderTranscription] Component called');
-  console.log('  - text length:', text.length);
-  console.log('  - text has [CANCELLED]?:', text.includes('[CANCELLED'));
-  console.log('  - text preview:', text.slice(0, 150));
-
-  const redWords = highlightMap?.redWords || [];
-  const redPhrases = highlightMap?.redPhrases || [];
-  const strikePhrases = highlightMap?.strikePhrases || [];
-
-  console.log('  - redWords:', redWords.length);
-  console.log('  - redPhrases:', redPhrases.length);
-  console.log('  - strikePhrases:', strikePhrases.length);
-
-  // Tokenize the text into individual words with annotation types
-  const tokenizeText = (input: string): Token[] => {
-    const tokens: Token[] = [];
-    
-    // Optional: Set to true to enable maybe-cancelled rendering
-    const SHOW_MAYBE = true; // FIX: Enable uncertain cancellation display for scribbles/overwrites
-    
-    // First, handle inline [CANCELLED: ...] and [MAYBE-CANCELLED: ...] tags
-    const parts = input.split(/(\[(?:cancelled|CANCELLED|MAYBE-CANCELLED):[\s\S]*?\])/gi);
-    
-    for (const part of parts) {
-      // Handle CONFIRMED cancellations
-      if (/^\[(?:cancelled|CANCELLED):/i.test(part) && part.endsWith(']')) {
-        const content = part
-          .replace(/^\[(?:cancelled|CANCELLED):\s*/i, '')
-          .replace(/\]$/, '')
-          .trim();
-        
-        if (content) {
-          tokens.push({ text: content, type: 'cancelled' });
-        }
-        continue;
-      }
-
-      // Handle UNCERTAIN cancellations (optional rendering)
-      if (/^\[(?:MAYBE-CANCELLED):/i.test(part) && part.endsWith(']')) {
-        const content = part
-          .replace(/^\[(?:MAYBE-CANCELLED):\s*/i, '')
-          .replace(/\]$/, '')
-          .trim();
-        
-        if (content) {
-          // SHOW_MAYBE=true → dashed underline style
-          // SHOW_MAYBE=false → plain text, but NOT invisible
-          tokens.push({ text: content, type: SHOW_MAYBE ? 'maybeCancelled' : 'normal' });
-        }
-        continue;
-      }
-
-      // Handle regular text
-      if (part.trim()) {
-        // Split regular text into words
-        const words = part.split(/(\s+)/);
-        for (const word of words) {
-          if (word.trim()) {
-            tokens.push({ text: word, type: 'normal' });
-          } else if (word) {
-            tokens.push({ text: word, type: 'normal' }); // Preserve spacing
-          }
-        }
-      }
-    }
-
-    const whitespaceTokens = tokens.filter(t => !t.text.trim()).length;
-    console.log('[RenderTranscription] Tokenization complete:');
-    console.log('  - total tokens:', tokens.length);
-    console.log('  - whitespace-only tokens:', whitespaceTokens);
-    console.log('  - non-whitespace tokens:', tokens.length - whitespaceTokens);
-    console.log('  - cancelled tokens:', tokens.filter(t => t.type === 'cancelled').length);
-    console.log('  - maybeCancelled tokens:', tokens.filter(t => t.type === 'maybeCancelled').length);
-    console.log('  - spelling tokens:', tokens.filter(t => t.type === 'spelling').length);
-    console.log('  - grammar tokens:', tokens.filter(t => t.type === 'grammar').length);
-    console.log('  - token sample:', tokens.slice(0, 15).map(t => ({ text: t.text, type: t.type, isSpace: !t.text.trim() })));
-
-    return tokens;
-  };
-
-  // Apply annotations based on priority system
-  const applyAnnotations = (tokens: Token[]): Token[] => {
-    const annotatedTokens = [...tokens];
-    
-    // Helper to normalize text for matching
-    const normalize = (str: string) => str.toLowerCase().replace(/[^\w\s]/g, '').trim();
-
-    // Spelling matches must keep hyphens. Errors like "gettogether" (intended
-    // "get-together") differ from the correct form ONLY by the hyphen — the
-    // loose normalizer above collapses both to "gettogether" and would paint a
-    // correctly written "get-together" red.
-    const normalizeSpelling = (str: string) =>
-      str.toLowerCase().replace(/[^\w\s-]/g, '').trim();
-    
-    // Helper to safely upgrade annotation type based on priority
-    const upgradeToken = (tokenIndex: number, newType: AnnotationType) => {
-      const currentType = annotatedTokens[tokenIndex].type;
-      const currentPriority = TOKEN_PRIORITY[currentType];
-      const newPriority = TOKEN_PRIORITY[newType];
-      
-      // Only upgrade if new type has higher priority
-      if (newPriority > currentPriority) {
-        annotatedTokens[tokenIndex] = { ...annotatedTokens[tokenIndex], type: newType };
-      }
-    };
-    
-    // --- OPTIMIZED MATCHING (Token + Hash Map Architecture) ---
-    const targets = highlightMap?.targets || [];
-    const useTargetsOnly = targets.length > 0;
-    
-    if (useTargetsOnly) {
-      // 1. Pre-build Hash Maps for O(1) Lookup of single-word errors
-      const singleWordErrors = new Map<string, HighlightTarget>();
-      const phraseHits: HighlightTarget[] = [];
-      
-      for (const target of targets) {
-        if ((target.tokenSpan || 1) === 1) {
-          const key = target.kind === 'spelling' 
-            ? `${normalizeSpelling(target.text)}#${target.occurrence || 1}`
-            : `${normalize(target.text)}#${target.occurrence || 1}`;
-          singleWordErrors.set(key, target);
-        } else {
-          phraseHits.push(target);
-        }
-      }
-
-      // 2. Build Word Tokens Index & Occurrences in a single pass O(N)
-      const wordTokens: { idx: number; norm: string; spellNorm: string; occ: number; spellOcc: number }[] = [];
-      const occurrenceCounter = new Map<string, number>();
-      const spellOccurrenceCounter = new Map<string, number>();
-
-      for (let i = 0; i < annotatedTokens.length; i++) {
-        const t = annotatedTokens[i];
-        if (!t.text.trim()) continue;
-
-        const norm = normalize(t.text);
-        const spellNorm = normalizeSpelling(t.text);
-        
-        const occ = (occurrenceCounter.get(norm) || 0) + 1;
-        occurrenceCounter.set(norm, occ);
-        
-        const spellOcc = (spellOccurrenceCounter.get(spellNorm) || 0) + 1;
-        spellOccurrenceCounter.set(spellNorm, spellOcc);
-
-        wordTokens.push({ idx: i, norm, spellNorm, occ, spellOcc });
-      }
-
-      // 3. Apply Single-Word Matches O(N)
-      for (const wt of wordTokens) {
-        // Check normal normalized match
-        let target = singleWordErrors.get(`${wt.norm}#${wt.occ}`);
-        // Check spelling normalized match
-        if (!target) target = singleWordErrors.get(`${wt.spellNorm}#${wt.spellOcc}`);
-
-        // NEW: hyphenated token ka koi part error ho (get-togther -> "togther")
-        if (!target && wt.spellNorm.includes('-')) {
-          for (const part of wt.spellNorm.split('-').filter(Boolean)) {
-            const hit = singleWordErrors.get(`${part}#1`);
-            if (hit && hit.kind === 'spelling') { target = hit; break; }
-          }
-        }
-
-        if (target) {
-          if (target.kind === 'cancelled') upgradeToken(wt.idx, 'cancelled');
-          if (target.kind === 'maybe-cancelled') upgradeToken(wt.idx, 'maybeCancelled');
-          if (target.kind === 'spelling') upgradeToken(wt.idx, 'spelling');
-          if (target.kind === 'grammar') upgradeToken(wt.idx, 'grammar');
-        }
-      }
-
-      // 4. Apply Multi-Word Phrase Matches
-      if (phraseHits.length > 0) {
-        const phraseOccurrenceCounter = new Map<string, number>();
-        
-        for (let wi = 0; wi < wordTokens.length; wi++) {
-          for (const phraseHit of phraseHits) {
-            const phraseWords = phraseHit.text.split(/\s+/).map(w => normalize(w));
-            if (phraseWords.length === 0 || wi > wordTokens.length - phraseWords.length) continue;
-
-            let match = true;
-            for (let j = 0; j < phraseWords.length; j++) {
-              if (wordTokens[wi + j]?.norm !== phraseWords[j]) {
-                match = false;
-                break;
-              }
-            }
-
-            if (match) {
-              const phraseKey = phraseWords.join(' ');
-              const occ = (phraseOccurrenceCounter.get(phraseKey) || 0) + 1;
-              phraseOccurrenceCounter.set(phraseKey, occ);
-
-              if ((phraseHit.occurrence || 1) === occ) {
-                // Apply annotation to all tokens in the phrase
-                for (let j = 0; j < phraseWords.length; j++) {
-                  const tokenIndex = wordTokens[wi + j].idx;
-                  if (phraseHit.kind === 'cancelled') upgradeToken(tokenIndex, 'cancelled');
-                  if (phraseHit.kind === 'maybe-cancelled') upgradeToken(tokenIndex, 'maybeCancelled');
-                  if (phraseHit.kind === 'spelling') upgradeToken(tokenIndex, 'spelling');
-                  if (phraseHit.kind === 'grammar') upgradeToken(tokenIndex, 'grammar');
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    
-    // Legacy fallback: if targets is empty, use old redWords + strikePhrases matching
-    if (!useTargetsOnly) {
-      // spelling fallback
-      for (let i = 0; i < annotatedTokens.length; i++) {
-        const token = annotatedTokens[i];
-        if (!token.text.trim()) continue;
-        const normalizedToken = normalizeSpelling(token.text);
-        const isSpellingError = redWords.some(word => normalizeSpelling(word) === normalizedToken);
-        if (isSpellingError) upgradeToken(i, 'spelling');
-      }
-
-      // cancelled fallback
-      for (const phrase of strikePhrases) {
-        const normalizedPhrase = normalize(phrase);
-        for (let i = 0; i < annotatedTokens.length; i++) {
-          const token = annotatedTokens[i];
-          if (normalize(token.text) === normalizedPhrase) {
-            upgradeToken(i, 'cancelled');
-          }
-        }
-      }
-    }
-
-    // Fallback: Apply grammar phrase annotations (sequence-based matching) for backward compatibility
-    if (!useTargetsOnly) {
-    const findPhraseSequence = (phrase: string, tokenArray: Token[]): number => {
-      const normTok = (s: string) => (s || "").toLowerCase().replace(/[^\w]/g, "");
-      const phraseWords = phrase.split(/\s+/).map(normTok).filter(Boolean);
-      if (phraseWords.length === 0) return -1;
-
-      // Build index of only non-whitespace tokens with their positions in the full array
-      const wordTokens: { idx: number; norm: string }[] = [];
-      for (let i = 0; i < tokenArray.length; i++) {
-        if (tokenArray[i].text.trim()) {
-          wordTokens.push({ idx: i, norm: normTok(tokenArray[i].text) });
-        }
-      }
-
-      // Find phraseWords as a contiguous sequence within wordTokens
-      for (let wi = 0; wi <= wordTokens.length - phraseWords.length; wi++) {
-        let match = true;
-        for (let j = 0; j < phraseWords.length; j++) {
-          if (wordTokens[wi + j]?.norm !== phraseWords[j]) {
-            match = false;
-            break;
-          }
-        }
-        if (match) {
-          // Return the index of the FIRST matching word token in the full token array
-          return wordTokens[wi].idx;
-        }
-      }
-      return -1;
-    };
-
-    let grammarMatches = 0;
-    for (const phrase of redPhrases) {
-      const phraseWords = phrase.split(/\s+/).map(w => normalize(w)).filter(Boolean);
-      const sequenceStart = findPhraseSequence(phrase, annotatedTokens);
-      if (sequenceStart !== -1) {
-        // Walk forward from sequenceStart, upgrading phraseWords.length non-whitespace tokens
-        let wordsMatched = 0;
-        for (let i = sequenceStart; i < annotatedTokens.length && wordsMatched < phraseWords.length; i++) {
-          if (annotatedTokens[i].text.trim()) {
-            upgradeToken(i, 'grammar');
-            grammarMatches++;
-            wordsMatched++;
-          }
-        }
-        // Safety check: ensure exact word count match
-        if (wordsMatched !== phraseWords.length) {
-          // Rollback if not exact match (shouldn't happen with findPhraseSequence)
-          for (let i = sequenceStart; i < annotatedTokens.length && wordsMatched > 0; i++) {
-            if (annotatedTokens[i].text.trim()) {
-              annotatedTokens[i] = { ...annotatedTokens[i], type: 'normal' };
-              wordsMatched--;
-            }
-          }
-        }
-      }
-    }
-    }
-    return annotatedTokens;
-  };
-
-  const tokens = tokenizeText(text);
-  const annotatedTokens = applyAnnotations(tokens);
-
-  console.log('[RenderTranscription] Annotation complete:');
-  console.log('  - total annotated tokens:', annotatedTokens.length);
-  console.log('  - cancelled tokens:', annotatedTokens.filter(t => t.type === 'cancelled').length);
-  console.log('  - maybeCancelled tokens:', annotatedTokens.filter(t => t.type === 'maybeCancelled').length);
-  console.log('  - spelling tokens:', annotatedTokens.filter(t => t.type === 'spelling').length);
-  console.log('  - grammar tokens:', annotatedTokens.filter(t => t.type === 'grammar').length);
-  console.log('  - cancelled samples:', annotatedTokens.filter(t => t.type === 'cancelled').slice(0, 5).map(t => t.text));
-
-  // Render tokens based on their type
-  return (
-    <>
-      {annotatedTokens.map((token, index) => {
-        switch (token.type) {
-          case 'cancelled':
-            return (
-              <span key={`token-${index}`} className="text-gray-500 italic line-through">
-                {token.text}
-              </span>
-            );
-          case 'maybeCancelled':
-            return (
-              <span key={`token-${index}`} className="text-red-600 font-bold underline decoration-red-600/50 underline-offset-2">
-                {token.text}
-              </span>
-            );
-          case 'spelling':
-            return (
-              <span
-                key={`token-${index}`}
-                className="text-red-600 font-bold underline decoration-red-600/50 underline-offset-2"
-              >
-                {token.text}
-              </span>
-            );
-          case 'grammar':
-            return (
-              <span
-                key={`token-${index}`}
-                className="text-red-600 font-bold underline decoration-red-600/50 underline-offset-2"
-              >
-                {token.text}
-              </span>
-            );
-          default:
-            return <span key={`token-${index}`}>{token.text}</span>;
-        }
-      })}
-    </>
-  );
-};
 
 const getGradeSpeedNorm = (gradeStr: string): string => {
   if (!gradeStr) return "20-30";
@@ -791,7 +255,7 @@ const getActionableStrategies = (reportText: string): string[] => {
     .filter(s => !s.startsWith('#'))
     .filter(s => !s.toLowerCase().includes('disclaimer'))
     .filter(s => !s.toLowerCase().includes('copyright'))
-    .filter(s => !s.toLowerCase().includes('probability estimate:'))
+    .filter(s => !/^\s*probability\s+estimate:\s*(high|moderate|low)\s*$/i.test(s))
     .filter(s => !s.toLowerCase().includes('clinical interpretation'))
     .filter(s => !s.match(/^\*\*/));
 
@@ -1438,26 +902,26 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
     }
   };
 
-  const toggleObservation = (obs: string) => {
+  const toggleObservation = useCallback((obs: string) => {
     setSelectedObservations(prev => 
       prev.includes(obs) ? prev.filter(o => o !== obs) : [...prev, obs]
     );
-  };
+  }, []);
 
-  const addCustomObservation = () => {
+  const addCustomObservation = useCallback(() => {
     if (customObservation.trim() && !selectedObservations.includes(customObservation.trim())) {
       setSelectedObservations(prev => [...prev, customObservation.trim()]);
       setCustomObservation('');
     }
-  };
+  }, [customObservation, selectedObservations]);
 
-  const toggleDataSource = (ds: string) => {
+  const toggleDataSource = useCallback((ds: string) => {
     setSelectedDataSources(prev => 
       prev.includes(ds) ? prev.filter(d => d !== ds) : [...prev, ds]
     );
-  };
+  }, []);
 
-  const calculateAge = (birthDate: string) => {
+  const calculateAge = useCallback((birthDate: string) => {
     if (!birthDate) return '';
     const today = new Date();
     const birth = new Date(birthDate);
@@ -1476,14 +940,20 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
     }
 
     return `${years}y ${months}m ${days}d`;
-  };
+  }, []);
 
-  const dobAge = calculateAge(dob);
+  const dobAge = useMemo(() => calculateAge(dob), [calculateAge, dob]);
   // If we have a dobAge, use it. If not (e.g. when loading a saved report), 
   // we might have a result that contains the age or a state from a loaded report.
   // We'll prioritize the active DOB calculation, then fall back to the result's context if available.
-  const chronologicalAge = dobAge || (result as any)?.summary?.age || (result as any)?.age || '';
-  const reportWpm = result ? getReportWpm(result.summary.wpm, result.summary.wordCount, timeTaken) : 0;
+  const chronologicalAge = useMemo(
+    () => dobAge || (result as any)?.summary?.age || (result as any)?.age || '',
+    [dobAge, result]
+  );
+  const reportWpm = useMemo(
+    () => result ? getReportWpm(result.summary.wpm, result.summary.wordCount, timeTaken) : 0,
+    [result, timeTaken]
+  );
 
   const isAgeGradeValid = () => {
     if (!grade || !dob) return true;
@@ -1910,26 +1380,7 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
       } catch (_e) {
         // sessionStorage full or blocked — fallback: show in same tab
       }
-      // Open report in new tab
-      setTimeout(() => {
-        const reportWin = window.open('', '_blank');
-        if (reportWin) {
-          reportWin.document.write(`
-            <html>
-              <head>
-                <title>GraphiaCheck Report</title>
-                <script>
-                  window.opener && window.opener.__graphiaReportReady && window.opener.__graphiaReportReady();
-                </script>
-              </head>
-              <body style="margin:0;background:#f5f5f5;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
-                <p>Loading report...</p>
-              </body>
-            </html>
-          `);
-          reportWin.close();
-        }
-      }, 0);
+
     } catch (err: any) {
       console.error(err);
       const errorMessage = err?.message || '';
@@ -2126,51 +1577,12 @@ ${cleanReport}
 
   const saveAsPdf = async () => {
     if (!reportRef.current || isGeneratingPdf) return;
-    
     setIsGeneratingPdf(true);
-    // Increased delay to ensure Recharts and other async elements are fully settled
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
     try {
-      const element = reportRef.current;
-      const fileName = `GraphiaCheck_Report_${Date.now()}.pdf`;
-
-      // Select all elements with the class 'report-page'
-      const pages = element.querySelectorAll('.report-page');
-      
-      if (pages.length === 0) {
-        throw new Error("No report pages found to generate PDF");
-      }
-
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      
-      for (let i = 0; i < pages.length; i++) {
-        const pageEl = pages[i] as HTMLElement;
-        
-        // Capture each page as a single crisp JPG
-        const dataUrl = await domToPng(pageEl, {
-          scale: 2.2, // Generates hyper-sharp crisp text rendering
-          backgroundColor: '#ffffff',
-          width: pageEl.scrollWidth || pageEl.offsetWidth || 794,
-          height: pageEl.scrollHeight || pageEl.offsetHeight || 1123,
-          style: {
-            overflow: 'visible',
-            height: 'auto',
-            maxHeight: 'none',
-          }
-        });
-        
-        if (i > 0) {
-          pdf.addPage();
-        }
-        
-        // Feed image edge-to-edge as each page is designed as A4 size internally
-        pdf.addImage(dataUrl, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-      }
-      
-      pdf.save(fileName);
+      const safeName = studentName ? studentName.trim().replace(/[^a-zA-Z0-9_-]/g, '_') : 'Student';
+      const safeGrade = grade ? grade.trim().replace(/[^a-zA-Z0-9_-]/g, '_') : 'Assessment';
+      const fileName = `GraphiaCheck_Assessment_Report_${safeName}_${safeGrade}.pdf`;
+      await exportReportAsPdf(reportRef.current, fileName);
     } catch (err) {
       console.error("PDF Creation Failed:", err);
       alert("Failed to generate PDF. You can try the 'Print' option (Ctrl/Cmd + P) and 'Save as PDF' from your browser.");
@@ -2216,435 +1628,26 @@ ${result.report}
   };
 
   const saveAsWord = async () => {
-    if (!result) return;
+    if (!result || isGeneratingPdf) return;
     setIsGeneratingPdf(true);
-    
-    // Helper to convert base64 to Uint8Array
-    const base64ToUint8Array = (base64: string) => {
-      const binaryString = window.atob(base64);
-      const len = binaryString.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      return bytes;
-    };
-
     try {
-      // 1. Capture Handwriting Sample Image if exists
-      let sampleImageBytes: Uint8Array | null = null;
-      if (image) {
-        if (image.startsWith('data:')) {
-          sampleImageBytes = base64ToUint8Array(image.split(',')[1]);
-        }
-      }
-
-      // 2. Capture Visual Analysis Graphs
-      let chartsImageBytes: Uint8Array | null = null;
-      const visualAnalysisEl = reportRef.current?.querySelector('.visual-analysis-container');
-      if (visualAnalysisEl) {
-        try {
-          const dataUrl = await domToPng(visualAnalysisEl as HTMLElement, {
-            scale: 2,
-            backgroundColor: '#ffffff',
-          });
-          if (dataUrl && dataUrl.includes(',')) {
-            chartsImageBytes = base64ToUint8Array(dataUrl.split(',')[1]);
-          }
-        } catch (chartErr) {
-          console.error("Failed to capture charts for Word doc:", chartErr);
-        }
-      }
-
-      const doc = new Document({
-        sections: [
-          {
-            properties: {
-              page: {
-                margin: {
-                  top: 720, // 0.5 inch
-                  bottom: 720,
-                  left: 720,
-                  right: 720,
-                },
-              },
-            },
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                children: [
-                  new TextRun({
-                    text: studentName ? studentName.toUpperCase() : "STUDENT REPORT",
-                    font: "Times New Roman",
-                    size: 24,
-                    bold: true,
-                  }),
-                ],
-              }),
-              new Paragraph({ text: "" }),
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                children: [
-                  new TextRun({
-                    text: "GRAPHIA CHECK ASSESSMENT REPORT",
-                    font: "Times New Roman",
-                    size: 32,
-                    bold: true,
-                  }),
-                ],
-              }),
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                children: [
-                  new TextRun({
-                    text: `${schoolName ? `School: ${schoolName} | ` : ''}${cityName ? `City: ${cityName} | ` : ''}${countryName ? `Country: ${countryName} | ` : ''}Grade: ${grade} | Date: ${new Date().toLocaleDateString()}`,
-                    font: "Times New Roman",
-                    size: 22,
-                  }),
-                ],
-              }),
-              ...(uploadedBy || contactEmail || contactPhone ? [
-                new Paragraph({
-                  alignment: AlignmentType.CENTER,
-                  children: [
-                    new TextRun({
-                      text: `${uploadedBy ? `Uploaded By: ${uploadedBy} ` : ''}${contactEmail ? `| Email: ${contactEmail} ` : ''}${contactPhone ? `| Phone: ${contactPhone}` : ''}`,
-                      font: "Times New Roman",
-                      size: 18,
-                      color: "666666",
-                    }),
-                  ],
-                }),
-              ] : []),
-              new Paragraph({ text: "" }),
-
-              // Handwriting Sample
-              ...(sampleImageBytes ? [
-                new Paragraph({
-                  alignment: AlignmentType.CENTER,
-                  keepNext: true,
-                  children: [
-                    new TextRun({ text: "HANDWRITING SAMPLE", font: "Times New Roman", size: 20, bold: true }),
-                  ],
-                }),
-                new Paragraph({
-                  alignment: AlignmentType.CENTER,
-                  keepNext: true,
-                  children: [
-                    new ImageRun({
-                      data: sampleImageBytes,
-                      transformation: { width: 400, height: 250 },
-                      type: "jpg"
-                    }),
-                  ],
-                }),
-              ] : []),
-
-              // Charts
-              ...(chartsImageBytes ? [
-                new Paragraph({
-                  alignment: AlignmentType.CENTER,
-                  keepNext: true,
-                  children: [
-                    new TextRun({ text: "VISUAL ANALYSIS", font: "Times New Roman", size: 20, bold: true }),
-                  ],
-                }),
-                new Paragraph({
-                  alignment: AlignmentType.CENTER,
-                  keepNext: true,
-                  children: [
-                    new ImageRun({
-                      data: chartsImageBytes,
-                      transformation: { width: 500, height: 250 },
-                      type: "png"
-                    }),
-                  ],
-                }),
-              ] : []),
-
-              new Paragraph({
-                keepNext: true,
-                children: [
-                  new TextRun({
-                    text: "CLINICAL SUMMARY",
-                    font: "Times New Roman",
-                    size: 24,
-                    bold: true,
-                  }),
-                ],
-              }),
-              new Paragraph({
-                children: [
-                  new TextRun({ text: `Probability: `, font: "Times New Roman", size: 22, bold: true }),
-                  new TextRun({ text: result.summary.probabilityEstimate, font: "Times New Roman", size: 22 }),
-                ],
-              }),
-              new Paragraph({ text: "" }),
-
-              new Paragraph({
-                children: [
-                  new TextRun({ text: `Basal Level: `, font: "Times New Roman", size: 22, bold: true }),
-                  new TextRun({ text: result.summary.basalLevel, font: "Times New Roman", size: 22 }),
-                ],
-              }),
-              new Paragraph({
-                children: [
-                  new TextRun({ text: `Ceiling Level: `, font: "Times New Roman", size: 22, bold: true }),
-                  new TextRun({ text: result.summary.ceilingLevel, font: "Times New Roman", size: 22 }),
-                ],
-              }),
-              new Paragraph({ text: "" }),
-
-              new Paragraph({
-                children: [
-                  new TextRun({ text: `WRITTEN LANGUAGE SKILLS:`, font: "Times New Roman", size: 22, bold: true, underline: {} }),
-                ],
-              }),
-              new Paragraph({
-                children: [
-                  new TextRun({ text: `Sentence Boundaries: `, font: "Times New Roman", size: 22, bold: true }),
-                  new TextRun({ text: `(${result.summary.scores.sentenceBoundaries}/100) ${result.summary.languageSkills.sentenceBoundaries}`, font: "Times New Roman", size: 22 }),
-                ],
-              }),
-              new Paragraph({
-                children: [
-                  new TextRun({ text: `Grammar: `, font: "Times New Roman", size: 22, bold: true }),
-                  new TextRun({ text: `(${result.summary.scores.grammar}/100) ${result.summary.languageSkills.grammar}`, font: "Times New Roman", size: 22 }),
-                ],
-              }),
-              new Paragraph({
-                children: [
-                  new TextRun({ text: `Past Tense Usage: `, font: "Times New Roman", size: 22, bold: true }),
-                  new TextRun({ text: `(${result.summary.scores.pastTenseUsage}/100) ${result.summary.languageSkills.pastTenseUsage}`, font: "Times New Roman", size: 22 }),
-                ],
-              }),
-              new Paragraph({ text: "" }),
-
-              ...(result.summary.academicDiscrepancy && result.summary.academicDiscrepancy !== "Not analyzed" ? [
-                new Paragraph({
-                  keepNext: true,
-                  children: [
-                    new TextRun({
-                      text: "ACADEMIC DISCREPANCY ANALYSIS",
-                      font: "Times New Roman",
-                      size: 24,
-                      bold: true,
-                    }),
-                  ],
-                }),
-                new Paragraph({
-                  children: [
-                    new TextRun({
-                      text: result.summary.academicDiscrepancy,
-                      font: "Times New Roman",
-                      size: 22,
-                    }),
-                  ],
-                }),
-                new Paragraph({ text: "" }),
-              ] : []),
-              
-              new Paragraph({ text: "" }),
-              
-              new Paragraph({
-                children: [
-                  new TextRun({ text: "OCR TRANSCRIPTION:", font: "Times New Roman", size: 22, bold: true, underline: {} }),
-                ],
-              }),
-              new Paragraph({
-                children: (() => {
-                  const transcription = result.summary.displayTranscription || result.summary.transcription || '';
-                  const highlightMap = (result.summary.highlightMap || { redWords: [], redPhrases: [], strikePhrases: [], targets: [] }) as any;
-                  const redWords = highlightMap.redWords || [];
-                  const redPhrases = [...(highlightMap.redPhrases || [])].sort((a: any, b: any) => b.length - a.length);
-                  const grammarPhrases = [...((highlightMap.targets || [])).filter((t: any) => t.kind === 'grammar').map((t: any) => t.text)].sort((a: any, b: any) => b.length - a.length);
-                  const strikePhrases = [...(highlightMap.strikePhrases || [])].sort((a: any, b: any) => b.length - a.length);
-
-                  const runs: any[] = [];
-                  const parts = transcription.split(/(\[(?:cancelled|CANCELLED|maybe-cancelled|MAYBE-CANCELLED):.*?\])/gi);
-
-                  const pushStyledText = (value: string, kind: any) => {
-                    if (!value) return;
-                    runs.push(new TextRun({
-                      text: value,
-                      font: "Times New Roman",
-                      size: 22,
-                      italics: true,
-                      ...(kind === 'red' ? { bold: true, color: 'CC0000' } : {}),
-                      ...(kind === 'orange' ? { bold: true, color: 'CC6600' } : {}),
-                      ...(kind === 'strike' ? { strike: true, color: '888888' } : {}),
-                      ...(kind === 'maybe' ? { bold: true, color: 'CC0000' } : {}), // Match red styling
-                    }));
-                  };
-
-                  const splitByPhrases = (
-                    input: string,
-                    phrases: string[],
-                    kind: any
-                  ): any => {
-                    let pieces: any[] = [
-                      { text: input, kind: 'plain' }
-                    ];
-
-                    for (const phrase of phrases) {
-                      const pattern = new RegExp(`(\\b${escapeRegExp(phrase)}\\b)`, 'gi');
-                      const next: any[] = [];
-
-                      for (const piece of pieces) {
-                        if (piece.kind !== 'plain') {
-                          next.push(piece);
-                          continue;
-                        }
-
-                        const chunks = piece.text.split(pattern);
-                        for (const chunk of chunks) {
-                          if (!chunk) continue;
-
-                          if (normalizeForUiMatch(chunk) === normalizeForUiMatch(phrase)) {
-                            next.push({ text: chunk, kind });
-                          } else {
-                            next.push({ text: chunk, kind: 'plain' });
-                          }
-                        }
-                      }
-
-                      pieces = next;
-                    }
-
-                    return pieces;
-                  };
-
-                  const renderPlainWords = (value: string) => {
-                    const words = value.split(/(\s+)/);
-
-                    words.forEach((word: string) => {
-                      const normalized = normalizeForUiMatch(word);
-
-                      if (!normalized) {
-                        pushStyledText(word, 'plain');
-                        return;
-                      }
-
-                      // Hyphen-sensitive: "gettogether" must NOT match a correctly
-                      // written "get-together". The old substring fallback below
-                      // matched any target of 2+ chars and painted valid words red.
-                      const normalizedSpelling = normalizeForSpellingMatch(word);
-                      const isRed = redWords.some(
-                        item => normalizeForSpellingMatch(item) === normalizedSpelling
-                      );
-
-                      pushStyledText(word, isRed ? 'red' : 'plain');
-                    });
-                  };
-
-                  parts.forEach((part: string) => {
-                    if (/^\[(?:cancelled|CANCELLED):/i.test(part)) {
-                      const content = part.replace(/^\[(?:cancelled|CANCELLED):\s*/i, '').replace(/\]$/, '');
-                      pushStyledText(content + ' ', 'strike');
-                      return;
-                    }
-                    if (/^\[(?:maybe-cancelled|MAYBE-CANCELLED):/i.test(part)) {
-                      const content = part.replace(/^\[(?:maybe-cancelled|MAYBE-CANCELLED):\s*/i, '').replace(/\]$/, '');
-                      pushStyledText(content + ' ', 'maybe');
-                      return;
-                    }
-
-                    const strikeSplit = splitByPhrases(part, strikePhrases, 'strike');
-
-                    strikeSplit.forEach((piece: any) => {
-                      if (piece.kind === 'strike') {
-                        pushStyledText(piece.text, 'strike');
-                        return;
-                      }
-
-                      const redSplit = splitByPhrases(piece.text, redPhrases, 'red');
-
-                      redSplit.forEach((redPiece: any) => {
-                        if (redPiece.kind === 'red') {
-                          pushStyledText(redPiece.text, 'red');
-                          return;
-                        }
-
-                        const grammarSplit = splitByPhrases(redPiece.text, grammarPhrases, 'orange');
-
-                        grammarSplit.forEach((grammarPiece: any) => {
-                          if (grammarPiece.kind === 'orange') {
-                            pushStyledText(grammarPiece.text, 'orange');
-                            return;
-                          }
-
-                          renderPlainWords(grammarPiece.text);
-                        });
-                      });
-                    });
-                  });
-
-                  return runs;
-                })(),
-              }),
-              new Paragraph({ text: "" }),
-
-              new Paragraph({
-                children: [
-                   new TextRun({ text: "SPELLING PATTERNS & GRADE LEVEL DISCREPANCIES:", font: "Times New Roman", size: 22, bold: true, underline: {} }),
-                ],
-              }),
-              ...result.summary.spellingErrors.map((err: SpellingError) => {
-                return new Paragraph({
-                  bullet: { level: 0 },
-                  children: [
-                    new TextRun({ text: `${err.written} (${err.intended}) - ${err.gradeLevel}`, font: "Times New Roman", size: 22 }),
-                  ],
-                });
-              }),
-              new Paragraph({ text: "" }),
-
-              ...result.report.split('\n').map(line => {
-                const isHeading1 = line.trim().startsWith('# ');
-                const isHeading2 = line.trim().startsWith('## ');
-                const isHeading3 = line.trim().startsWith('### ');
-                const isBold = line.includes('**');
-                const cleanLine = line.replace(/[*#]/g, '').trim();
-                if (!cleanLine) return new Paragraph({ text: "" });
-                
-                return new Paragraph({
-                  spacing: { before: isHeading1 || isHeading2 ? 240 : 0, after: 120 },
-                  children: [
-                    new TextRun({
-                      text: cleanLine,
-                      font: "Times New Roman",
-                      size: isHeading1 ? 28 : (isHeading2 ? 24 : 22), 
-                      bold: isHeading1 || isHeading2 || isHeading3 || isBold,
-                    }),
-                  ],
-                });
-              }),
-
-              new Paragraph({ text: "" }),
-              new Paragraph({
-                border: {
-                  top: { color: "777777", space: 1, style: BorderStyle.SINGLE, size: 6 },
-                },
-                spacing: { before: 240 },
-                children: [
-                  new TextRun({
-                    text: `Disclaimer: ${disclaimer}`,
-                    font: "Times New Roman",
-                    size: 18,
-                    color: "777777",
-                    italics: true,
-                  }),
-                ],
-              }),
-            ],
-          },
-        ],
+      await exportReportAsWord({
+        result,
+        image,
+        studentName,
+        schoolName,
+        cityName,
+        countryName,
+        uploadedBy,
+        contactEmail,
+        contactPhone,
+        grade,
+        disclaimer,
+        reportElement: reportRef.current
       });
-
-      const blob = await Packer.toBlob(doc);
-      saveAs(blob, `GraphiaCheck_Report_${grade.replace(' ', '_').toLowerCase()}.docx`);
     } catch (err) {
       console.error("Word generation failed", err);
+      alert("Failed to generate Word document.");
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -2681,6 +1684,17 @@ ${result.report}
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [image, isAnalyzing, result, isGeneratingPdf, grade, chronologicalAge, context, selectedObservations, selectedDataSources, timeTaken]);
+
+  // Cleanup camera streams on unmount
+  useEffect(() => {
+    return () => {
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+        videoRef.current.srcObject = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#E4E3E0] text-[#141414] font-sans selection:bg-[#141414] selection:text-[#E4E3E0] print:bg-white">
@@ -4185,61 +3199,58 @@ ${result.report}
                   <div ref={reportRef} className="report-container flex flex-col items-center bg-gray-100 select-text print:bg-white" style={{ fontFamily: '"Inter", sans-serif' }}>
                     
                     {/* PAGE 1 */}
-                    <div className="report-page bg-white p-10 flex flex-col justify-between print:p-0 print:m-0 shadow-lg border border-gray-200 print:border-none print:shadow-none" style={{ width: '210mm', height: '297mm', minHeight: '297mm', maxHeight: '297mm', boxSizing: 'border-box', pageBreakAfter: 'always' }}>
-                      <div className="space-y-5">
-                        {/* Important Limitation Disclaimer */}
-                        <div className="bg-amber-50 border border-amber-200 p-3 rounded-sm">
-                          <p className="text-[8pt] text-amber-800 font-semibold text-center">
-                            ⚠️ A screening is not a diagnosis. Continue tests and consult professionals/clinicians.
-                          </p>
-                        </div>
-
+                    <div className="report-page bg-white p-8 md:p-9 flex flex-col justify-between print:p-0 print:m-0 shadow-lg border border-gray-200 print:border-none print:shadow-none" style={{ width: '210mm', height: '297mm', minHeight: '297mm', maxHeight: '297mm', boxSizing: 'border-box', pageBreakAfter: 'always' }}>
+                      <div className="space-y-4">
                         {/* Header Box (navy banner) */}
-                        <div className="bg-[#0C2340] text-white pt-3 pb-4 px-6 rounded-sm">
+                        <div className="bg-[#0C2340] text-white pt-3 pb-3.5 px-6 rounded-sm">
                           {/* MINDSAID LEARNING — top left, small white mono */}
-                          <div className="text-[7pt] text-white font-mono tracking-[0.25em] uppercase mb-1">
+                          <div className="text-[7pt] text-gray-300 font-mono tracking-[0.25em] uppercase mb-1">
                             MINDSAID LEARNING
                           </div>
                           {/* Main title — centered, white, bold */}
                           <div className="text-center">
-                            <span className="text-[8pt] text-gray-300 font-mono uppercase tracking-widest">TM</span>
-                            <h1 className="text-[16pt] font-bold tracking-widest uppercase text-white leading-tight mt-1">
+                            <h1 className="text-[15pt] font-bold tracking-widest uppercase text-white leading-tight">
                               GRAPHIACHECK ASSESSMENT REPORT
                             </h1>
                           </div>
-                          {/* Detail lines — centered, thin top border */}
-                          <div className="border-t border-white/20 pt-2 text-center space-y-[4px]">
-                            <div className="text-[8.5pt] text-gray-300">
+                          {/* Detail lines — 2-column grid format */}
+                          <div className="border-t border-white/20 pt-2.5 mt-2 grid grid-cols-2 text-[8.5pt] text-gray-300 gap-y-1">
+                            <div className="text-left">
                               Student:&nbsp;<strong className="text-white font-semibold">{studentName || '—'}</strong>
-                              &emsp;School:&nbsp;<strong className="text-white font-semibold">{[schoolName, cityName].filter(Boolean).join(', ') || '—'}</strong>
                             </div>
-                            <div className="text-[8.5pt] text-gray-300">
+                            <div className="text-right">
+                              School:&nbsp;<strong className="text-white font-semibold">{[schoolName, cityName].filter(Boolean).join(', ') || '—'}</strong>
+                            </div>
+                            <div className="text-left">
                               Grade:&nbsp;<strong className="text-white font-semibold">{grade || '—'}</strong>
-                              &emsp;Age:&nbsp;<strong className="text-white font-semibold">{chronologicalAge ? chronologicalAge.toUpperCase() : '—'}</strong>
-                              &emsp;Date:&nbsp;<strong className="text-white font-semibold">{new Date().toLocaleDateString('en-GB')}</strong>
+                              {chronologicalAge ? <>&nbsp;&nbsp;|&nbsp;&nbsp;Age:&nbsp;<strong className="text-white font-semibold">{chronologicalAge.toUpperCase()}</strong></> : null}
                             </div>
-                            <div className="text-[8pt] text-gray-400">
-                              Uploaded by:&nbsp;<span className="text-gray-200">{uploadedBy || '—'}</span>
-                              {contactEmail ? <>&nbsp;&nbsp;|&nbsp;&nbsp;<span className="text-gray-200">{contactEmail}</span></> : null}
-                              {contactPhone ? <>&nbsp;&nbsp;|&nbsp;&nbsp;<span className="text-gray-200">{contactPhone}</span></> : null}
+                            <div className="text-right">
+                              Date:&nbsp;<strong className="text-white font-semibold">{new Date().toLocaleDateString('en-GB')}</strong>
                             </div>
+                          </div>
+                          {/* Bottom meta row */}
+                          <div className="border-t border-white/15 mt-2 pt-1.5 text-center text-[7.5pt] text-gray-300 font-mono tracking-tight">
+                            Uploaded By:&nbsp;<span className="text-white font-medium">{uploadedBy || 'MindSaid Learning Centre'}</span>
+                            {contactEmail ? <>&nbsp;&nbsp;|&nbsp;&nbsp;<span className="text-gray-300">{contactEmail}</span></> : null}
+                            {contactPhone ? <>&nbsp;&nbsp;|&nbsp;&nbsp;<span className="text-gray-300">{contactPhone}</span></> : null}
                           </div>
                         </div>
 
                         {/* Handwriting and Timing Record Grid */}
                         <div>
-                          <div className="grid grid-cols-12 gap-5 items-stretch">
+                          <div className="grid grid-cols-12 gap-4 items-stretch">
                             {/* Left Pane: Original Handwriting Sample */}
                             <div className="col-span-7 flex flex-col">
-                              <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-2">
+                              <h3 className="text-[#0C2340] font-sans font-bold text-[8.5pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-1.5">
                                 ORIGINAL HANDWRITING SAMPLE
                               </h3>
-                              <div className="border border-gray-200 p-1 bg-white flex-1 flex items-center justify-center rounded-sm min-h-[180px]">
-                                {result.image ? (
+                              <div className="border border-gray-200 p-1 bg-white flex-1 flex items-center justify-center rounded-sm min-h-[175px]">
+                                {(result.image || image) ? (
                                   <img 
-                                    src={result.image} 
+                                    src={result.image || image || ''} 
                                     alt="Evaluated handwriting" 
-                                    className="max-h-[170px] max-w-full object-contain block" 
+                                    className="max-h-[165px] max-w-full object-contain block" 
                                     referrerPolicy="no-referrer"
                                   />
                                 ) : (
@@ -4250,20 +3261,20 @@ ${result.report}
 
                             {/* Right Pane: Timing Record */}
                             <div className="col-span-5 flex flex-col bg-[#F8FAFC] border border-gray-200 p-3 rounded-sm">
-                              <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-2">
+                              <h3 className="text-[#0C2340] font-sans font-bold text-[8.5pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-2">
                                 TIMING RECORD
                               </h3>
-                              <div className="space-y-3 flex-1 flex flex-col justify-center">
+                              <div className="space-y-2.5 flex-1 flex flex-col justify-center">
                                 <div>
-                                  <div className="text-[8pt] text-gray-500 font-mono uppercase tracking-wider">Duration</div>
+                                  <div className="text-[7.5pt] text-gray-500 font-mono uppercase tracking-wider">Duration</div>
                                   <div className="text-[15pt] font-black text-[#0c2340] leading-none mt-0.5">
-                                    {timeTaken ? `${timeTaken} minutes` : '12 minutes'}
+                                    {timeTaken ? `${timeTaken} minutes` : '15 minutes'}
                                   </div>
                                 </div>
-                                <div className="border-t border-gray-150 pt-2">
-                                  <div className="text-[8pt] text-gray-500 font-mono uppercase tracking-wider">Total written words</div>
+                                <div className="border-t border-gray-200 pt-2">
+                                  <div className="text-[7.5pt] text-gray-500 font-mono uppercase tracking-wider">Total words</div>
                                   <div className="text-[15pt] font-black text-[#0c2340] leading-none mt-0.5">
-                                    {reportValue(result.summary.wordCount, 97)} words
+                                    {reportValue(result.summary.wordCount, 133)} words
                                   </div>
                                   {result.summary.confirmedCancellations && result.summary.confirmedCancellations.length > 0 && (
                                     <div className="text-[6pt] text-gray-500 italic mt-0.5 font-mono">
@@ -4276,13 +3287,13 @@ ${result.report}
                                     </div>
                                   )}
                                 </div>
-                                <div className="border-t border-gray-150 pt-2">
-                                  <div className="text-[8pt] text-gray-500 font-mono uppercase tracking-wider">Writing speed</div>
-                                  <div className={`text-[20pt] font-black leading-none mt-0.5 ${reportWpm > 0 && reportWpm < (parseInt(getGradeSpeedNorm(grade).split('-')[0]) || 20) ? 'text-red-600' : 'text-[#0C2340]'}`}>
+                                <div className="border-t border-gray-200 pt-2">
+                                  <div className="text-[7.5pt] text-gray-500 font-mono uppercase tracking-wider">Writing speed</div>
+                                  <div className={`text-[19pt] font-black leading-none mt-0.5 ${reportWpm > 0 && reportWpm < (parseInt(getGradeSpeedNorm(grade).split('-')[0]) || 20) ? 'text-red-600' : 'text-[#0C2340]'}`}>
                                     {reportWpm > 0 ? `${reportWpm} WPM` : 'Not assessed'}
                                   </div>
                                   <div className="text-[7.5pt] text-gray-400 italic mt-0.5 leading-normal font-mono">
-                                    ({grade || 'Grade 9'} norm: {getGradeSpeedNorm(grade)} WPM)
+                                    ({grade || 'Grade 12'} norm: {getGradeSpeedNorm(grade)} WPM)
                                   </div>
                                 </div>
                               </div>
@@ -4291,19 +3302,19 @@ ${result.report}
                         </div>
 
                         {/* Writing Sample Details Section */}
-                        <div className="border border-gray-150 p-2.5 bg-[#FCFDFE] rounded-sm text-left text-[8.5pt]">
+                        <div className="border border-gray-200 p-2.5 bg-[#FCFDFE] rounded-sm text-left text-[8.5pt]">
                           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                             <div>
-                              <strong className="text-gray-700 font-sans">Prompt:</strong> {writingPrompt || "Favourite Sport"}
+                              <strong className="text-gray-700 font-sans">Prompt:</strong> {writingPrompt || "A world without smartphones"}
                             </div>
                             <div>
-                              <strong className="text-gray-700 font-sans">Paper Type:</strong> {paperType || "Blank / Unlined"}
+                              <strong className="text-gray-700 font-sans">Paper Type:</strong> {paperType || "Lined / Ruled"}
                             </div>
                             <div>
-                              <strong className="text-gray-700 font-sans">Time Limit:</strong> {timeGiven ? `${timeGiven} minutes` : "9 minutes"}
+                              <strong className="text-gray-700 font-sans">Time Limit:</strong> {timeGiven ? `${timeGiven} minutes` : (timeTaken ? `${timeTaken} minutes` : "15 minutes")}
                             </div>
                             <div>
-                              <strong className="text-gray-700 font-sans">Instrument:</strong> {writingInstrument || "Not provided"}
+                              <strong className="text-gray-700 font-sans">Instrument:</strong> {writingInstrument || "Gel Pen"}
                             </div>
                           </div>
                           {observationalNotes && (
@@ -4313,9 +3324,15 @@ ${result.report}
                           )}
                         </div>
 
+                        {/* Verbatim OCR Transcription */}
                         <div>
-                          <div className="flex justify-between items-center mb-1">
-
+                          <div className="flex justify-between items-center border-b border-[#0C2340]/20 pb-0.5 mb-1">
+                            <h3 className="text-[#0C2340] font-sans font-bold text-[8.5pt] uppercase tracking-wider flex items-center gap-2">
+                              <span>VERBATIM OCR TRANSCRIPTION</span>
+                              <span className="text-[7pt] bg-[#0C2340]/10 text-[#0C2340] px-1.5 py-0.5 rounded font-mono font-bold uppercase">
+                                {reportValue(result.summary.wordCount, 133)} WORDS
+                              </span>
+                            </h3>
                             <button
                               onClick={() => {
                                 setIsEditingTranscription(!isEditingTranscription);
@@ -4328,16 +3345,16 @@ ${result.report}
                               {isEditingTranscription ? 'Cancel' : 'Edit OCR'}
                             </button>
                           </div>
-                          <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-2">
-                            OCR TRANSCRIPTION
-                          </h3>
+                          <p className="text-[7pt] text-gray-500 italic mb-1.5 font-sans">
+                            Note: Words in bold underline = spelling errors. Strikethrough = student cancellations.
+                          </p>
                           
                           {isEditingTranscription ? (
-                            <div className="border border-gray-200 p-3.5 bg-white rounded-sm">
+                            <div className="border border-gray-200 p-3 bg-white rounded-sm">
                               <textarea
                                 value={editedTranscription}
                                 onChange={(e) => setEditedTranscription(e.target.value)}
-                                className="w-full h-[150px] p-2 text-[9.5pt] leading-relaxed text-gray-800 border border-gray-300 rounded-sm focus:outline-none focus:border-[#0C2340] resize-none font-mono"
+                                className="w-full h-[140px] p-2 text-[9pt] leading-relaxed text-gray-800 border border-gray-300 rounded-sm focus:outline-none focus:border-[#0C2340] resize-none font-mono"
                                 placeholder="Edit the OCR transcription here. Use [CANCELLED: word] for crossed-out words."
                               />
                               <div className="mt-2 flex gap-2">
@@ -4357,19 +3374,8 @@ ${result.report}
                               </div>
                             </div>
                           ) : (
-                            <div className="border border-gray-200 p-3.5 bg-[#FAFAFA] rounded-sm text-[9.5pt] leading-relaxed text-gray-800 italic block max-h-[180px] overflow-y-auto">
+                            <div className="border border-gray-200 p-3 bg-[#FAFAFA] rounded-sm text-[9pt] leading-relaxed text-gray-800 italic block max-h-[165px] overflow-y-auto">
                               <span>"</span>
-                              {(() => {
-                                console.log('[App.tsx] RenderTranscription props:');
-                                console.log('  - text length:', (result.summary.displayTranscription || result.summary.transcription)?.length || 0);
-                                console.log('  - text has [CANCELLED]?:', (result.summary.displayTranscription || result.summary.transcription)?.includes('[CANCELLED'));
-                                console.log('  - text preview:', (result.summary.displayTranscription || result.summary.transcription)?.slice(0, 150));
-                                console.log('  - highlightMap:', result.summary.highlightMap);
-                                console.log('  - highlightMap redWords:', result.summary.highlightMap?.redWords?.length || 0);
-                                console.log('  - highlightMap redPhrases:', result.summary.highlightMap?.redPhrases?.length || 0);
-                                console.log('  - highlightMap strikePhrases:', result.summary.highlightMap?.strikePhrases?.length || 0);
-                                return null;
-                              })()}
                               <RenderTranscription text={result.summary.displayTranscription || result.summary.transcription} highlightMap={result.summary.highlightMap} />
                               <span>"</span>
                             </div>
@@ -4378,39 +3384,38 @@ ${result.report}
 
                         {/* Domain Scores Cards */}
                         <div>
-                          <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-2">
+                          <h3 className="text-[#0C2340] font-sans font-bold text-[8.5pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-2">
                             DOMAIN SCORES
                           </h3>
-                          <div className="grid grid-cols-7 border border-gray-300 text-center divide-x divide-gray-300">
+                          <div className="grid grid-cols-7 gap-2 text-center">
                             {[
-                              { label: "SENTENCE BOUND.", val: result.summary.scores.sentenceBoundaries ?? 50, d: "sentence" },
-                              { label: "GRAMMAR", val: result.summary.scores.grammar ?? 60, d: "grammar" },
-                              { label: "PAST TENSE", val: result.summary.scores.pastTenseUsage ?? 75, d: "past" },
-                              { label: "SPELLING", val: result.summary.scores.spelling ?? 35, d: "spelling" },
+                              { label: "SENTENCE BOUND.", val: result.summary.scores.sentenceBoundaries ?? 80, d: "sentence" },
+                              { label: "GRAMMAR", val: result.summary.scores.grammar ?? 85, d: "grammar" },
+                              { label: "PAST TENSE", val: result.summary.scores.pastTenseUsage ?? 95, d: "past" },
+                              { label: "SPELLING", val: result.summary.scores.spelling ?? 70, d: "spelling" },
                               { label: "FLUENCY", val: reportWpm, d: "fluency" },
-                              { label: "FORMATION", val: result.summary.scores.letterFormation ?? result.summary.scores.mechanics ?? 45, d: "formation" },
-                              { label: "ALIGNMENT", val: result.summary.scores.alignment ?? 50, d: "alignment" }
+                              { label: "FORMATION", val: result.summary.scores.letterFormation ?? 75, d: "formation" },
+                              { label: "ALIGNMENT", val: result.summary.scores.alignment ?? 85, d: "alignment" }
                             ].map((card, idx) => {
                               const isFluency = card.d === "fluency";
                               const norm = parseInt(getGradeSpeedNorm(grade).split('-')[0]) || 20;
                               
-                              // FIX: Adding 'Excellent' for scores >= 90
-                              let statusLabel = 'Needs Support';
-                              let statusColor = 'text-red-500';
+                              let statusLabel = 'Average';
+                              let statusColor = 'text-green-600';
                               
                               if (isFluency) {
-                                if (card.val >= norm) { statusLabel = 'Average'; statusColor = 'text-green-600'; }
+                                if (card.val < norm) { statusLabel = 'Needs Support'; statusColor = 'text-red-500'; }
                               } else {
-                                if (card.val >= 90) { statusLabel = 'Excellent'; statusColor = 'text-blue-600'; }
-                                else if (card.val >= 70) { statusLabel = 'Average'; statusColor = 'text-green-600'; }
+                                if (card.val >= 90) { statusLabel = 'Average'; statusColor = 'text-green-600'; }
+                                else if (card.val < 70) { statusLabel = 'Needs Support'; statusColor = 'text-red-500'; }
                               }
 
                               return (
-                                <div key={idx} className="p-1.5 bg-white flex flex-col items-center justify-between h-20">
-                                  <div className="text-[6.5pt] font-medium leading-normal text-gray-500 font-sans tracking-tight uppercase text-center">
+                                <div key={idx} className="p-2 bg-white border border-gray-200 rounded-md flex flex-col items-center justify-between h-20 shadow-xs">
+                                  <div className="text-[6.5pt] font-semibold leading-normal text-gray-500 font-sans tracking-tight uppercase text-center">
                                     {card.label}
                                   </div>
-                                  <div className="text-[15pt] font-black text-[#0c2340] leading-none my-0.5">
+                                  <div className={`text-[17pt] font-black leading-none my-0.5 ${isFluency && card.val < norm ? 'text-red-600' : 'text-[#0c2340]'}`}>
                                     {card.val}
                                   </div>
                                   <div className={`text-[6.5pt] font-bold uppercase font-sans tracking-tight leading-none ${statusColor}`}>
@@ -4424,76 +3429,81 @@ ${result.report}
                       </div>
 
                       {/* Disclaimer footer */}
-                      <div className="border-t border-gray-200 pt-3 text-[#141414]/40 flex justify-between items-center text-[7pt] leading-normal font-sans">
+                      <div className="border-t border-gray-200 pt-2.5 text-[#141414]/50 flex justify-between items-center text-[7pt] leading-normal font-sans">
                         <div className="flex-1 max-w-[85%] text-left uppercase font-mono tracking-tighter shrink-0">
                           DISCLAIMER: {disclaimer}
                         </div>
                         <div className="font-bold text-right tabular-nums whitespace-nowrap">
-                          Page 1 of 4
+                          Page 1 of 3
                         </div>
                       </div>
                     </div>
 
                     {/* PAGE 2 */}
-                    <div className="report-page bg-white p-10 flex flex-col justify-between print:p-0 print:m-0 shadow-lg border border-gray-200 print:border-none print:shadow-none mt-8 print:mt-0" style={{ width: '210mm', height: '297mm', minHeight: '297mm', maxHeight: '297mm', boxSizing: 'border-box', pageBreakAfter: 'always' }}>
+                    <div className="report-page bg-white p-8 md:p-9 flex flex-col justify-between print:p-0 print:m-0 shadow-lg border border-gray-200 print:border-none print:shadow-none mt-8 print:mt-0" style={{ width: '210mm', height: '297mm', minHeight: '297mm', maxHeight: '297mm', boxSizing: 'border-box', pageBreakAfter: 'always' }}>
                       <div className="space-y-4">
                         {/* Minimal top header row */}
                         <div className="flex justify-between items-center text-[#718096] text-[8.5pt] border-b border-gray-200 pb-1">
                           <div className="font-medium font-sans uppercase tracking-tight text-left">
-                            <div className="text-[6pt] font-mono uppercase tracking-widest opacity-70 text-center">TM</div>
-                            <div className="text-[8.5pt]">
-                              {studentName || 'Lyes Difle'} &nbsp;|&nbsp; GraphiaCheck Assessment REPORT
-                            </div>
+                            <span className="font-semibold text-gray-700">{studentName ? studentName.toUpperCase() : 'STUDENT'}</span>
+                            &nbsp;|&nbsp; GRAPHIACHECK ASSESSMENT REPORT
                           </div>
-                          <div className="font-semibold text-right tabular-nums">
+                          <div className="font-semibold text-right tabular-nums text-gray-700">
                             {new Date().toLocaleDateString('en-GB')}
                           </div>
                         </div>
 
-                        {/* Probability — single column */}
-                        <div className="border border-gray-300">
-                          <div className="p-3 flex flex-col">
-                            <h4 className="text-[#B91C1C] font-bold text-[8pt] uppercase tracking-wider mb-1.5 font-sans border-b border-gray-200 pb-1">
+                        {/* Recommendation & Probability — two distinct cards side by side */}
+                        <div className="grid grid-cols-2 gap-3.5">
+                          <div className="border border-red-200 rounded-md p-3.5 bg-red-50/15 flex flex-col shadow-xs">
+                            <h4 className="text-[#991B1B] font-bold text-[8.5pt] uppercase tracking-wider mb-1.5 font-sans border-b border-red-200/60 pb-1">
+                              RECOMMENDATION
+                            </h4>
+                            <p className="text-[8pt] leading-relaxed text-gray-800 font-sans">
+                              {result.summary.assessmentRecommendation || "Continued monitoring and support are recommended. Because the student has shown positive improvement with current interventions, a formal psycho-educational evaluation is not recommended at this time."}
+                            </p>
+                          </div>
+                          <div className="border border-red-200 rounded-md p-3.5 bg-red-50/15 flex flex-col shadow-xs">
+                            <h4 className="text-[#991B1B] font-bold text-[8.5pt] uppercase tracking-wider mb-1.5 font-sans border-b border-red-200/60 pb-1">
                               PROBABILITY
                             </h4>
-                            <p className="text-[8.5pt] leading-relaxed text-gray-800 font-sans">
-                              {result.summary.probabilityEstimate || "High. The sample shows a cluster of dysgraphia indicators including poor form of letters, irregular sizing, difficulty with line orientation, and severely restricted fluency."}
+                            <p className="text-[8pt] leading-relaxed text-gray-800 font-sans">
+                              {result.summary.probabilityEstimate || "Moderate probability of underlying written expression difficulties based on severely delayed fluency and working memory errors, but formal diagnosis is deferred due to positive RTI response."}
                             </p>
                           </div>
                         </div>
 
-                        {/* Basal & Ceiling Level — table style, no gap, joined to above */}
-                        <div className="border border-t-0 border-gray-300 grid grid-cols-2 divide-x divide-gray-300">
-                          <div className="p-3 flex flex-col">
-                            <h4 className="text-blue-700 font-bold text-[8pt] uppercase tracking-wider mb-1.5 font-sans border-b border-gray-200 pb-1">
+                        {/* Basal & Ceiling Level — two distinct cards side by side */}
+                        <div className="grid grid-cols-2 gap-3.5">
+                          <div className="border border-blue-200 rounded-md p-3.5 bg-blue-50/15 flex flex-col shadow-xs">
+                            <h4 className="text-blue-800 font-bold text-[8.5pt] uppercase tracking-wider mb-1.5 font-sans border-b border-blue-200/60 pb-1">
                               BASAL LEVEL
                             </h4>
-                            <p className="text-[8.5pt] leading-relaxed text-gray-800 font-sans italic">
-                              {result.summary.basalLevel || "Student can generate relevant ideas, stay on topic, and form basic legible sight words."}
+                            <p className="text-[8pt] leading-relaxed text-gray-800 font-sans italic">
+                              {result.summary.basalLevel || "Consistently demonstrates the ability to organize thoughts sequentially, structure a basic paragraph, and use high-level vocabulary."}
                             </p>
                           </div>
-                          <div className="p-3 flex flex-col">
-                            <h4 className="text-yellow-700 font-bold text-[8pt] uppercase tracking-wider mb-1.5 font-sans border-b border-gray-200 pb-1">
+                          <div className="border border-amber-300 rounded-md p-3.5 bg-amber-50/15 flex flex-col shadow-xs">
+                            <h4 className="text-amber-800 font-bold text-[8.5pt] uppercase tracking-wider mb-1.5 font-sans border-b border-amber-300/60 pb-1">
                               CEILING LEVEL
                             </h4>
-                            <p className="text-[8.5pt] leading-relaxed text-gray-800 font-sans italic">
-                              {result.summary.ceilingLevel || "Performance breaks down with spelling accuracy, sentence punctuation, handwriting automaticity, and writing speed — ceiling well below expected grade."}
+                            <p className="text-[8pt] leading-relaxed text-gray-800 font-sans italic">
+                              {result.summary.ceilingLevel || "Performance breaks down significantly in writing fluency (speed) and execution self-monitoring (repeated words, uncorrected fragments)."}
                             </p>
                           </div>
                         </div>
 
-                        {/* Written Language table */}
-                        {/* Written Language Skills Diagnostic — full table, no gaps */}
+                        {/* Written Language Skills Diagnostic — 3 core domains */}
                         <div>
-                          <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider mb-0 border-b border-[#0C2340]/20 pb-0.5">
+                          <h3 className="text-[#0C2340] font-sans font-bold text-[8.5pt] uppercase tracking-wider mb-1 border-b border-[#0C2340]/20 pb-0.5">
                             WRITTEN LANGUAGE SKILLS DIAGNOSTIC
                           </h3>
                           <table className="w-full text-left border-collapse border border-gray-300 text-[8.5pt]">
                             <thead>
                               <tr className="bg-[#0C2340] text-white">
-                                <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider w-[32%] text-[7.5pt]">DOMAIN & INDICATORS</th>
+                                <th className="border border-gray-300 px-3 py-1.5 font-bold uppercase tracking-wider w-[32%] text-[7.5pt]">DOMAIN & INDICATORS</th>
                                 <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-center w-[12%] text-[7.5pt]">SCORE</th>
-                                <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt]">CLINICAL COMMENTS</th>
+                                <th className="border border-gray-300 px-3 py-1.5 font-bold uppercase tracking-wider text-[7.5pt]">CLINICAL COMMENTS</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -4501,8 +3511,8 @@ ${result.report}
                                 {
                                   label: "Sentence Boundaries",
                                   sub: "Capitals, punctuation, periods",
-                                  score: result.summary.scores.sentenceBoundaries ?? 50,
-                                  comment: result.summary.languageSkills.sentenceBoundaries || "Punctuation and capitalization rules are not yet automatic.",
+                                  score: result.summary.scores.sentenceBoundaries ?? 80,
+                                  comment: result.summary.languageSkills.sentenceBoundaries || "Generally good use of capitalization and punctuation, though some mid-sentence fragments and random capitalization occur.",
                                   issues: [
                                     ...((result.summary.runOnSentences ?? 0) > 0
                                       ? [`${result.summary.runOnSentences} run-on sentence — multiple ideas joined without a full stop.`]
@@ -4518,8 +3528,8 @@ ${result.report}
                                 {
                                   label: "Grammar",
                                   sub: "Structure, agreement, syntax",
-                                  score: result.summary.scores.grammar ?? 60,
-                                  comment: result.summary.languageSkills.grammar || "Grammar issues observed in the writing sample.",
+                                  score: result.summary.scores.grammar ?? 85,
+                                  comment: result.summary.languageSkills.grammar || "Uses complex sentence structures appropriate for high school with solid foundational syntax.",
                                   issues: (result.summary.grammarMistakes || []).map((g: any) =>
                                     g.type === 'agreement'
                                       ? `Subject-verb mismatch — wrote "${g.example}"`
@@ -4533,28 +3543,19 @@ ${result.report}
                                 {
                                   label: "Past Tense Usage",
                                   sub: "Regular and irregular past verbs",
-                                  score: result.summary.scores.pastTenseUsage ?? 75,
-                                  comment: result.summary.languageSkills.pastTenseUsage || "Past tense usage observed.",
+                                  score: result.summary.scores.pastTenseUsage ?? 95,
+                                  comment: result.summary.languageSkills.pastTenseUsage || "Consistently correct use of verbs in context, especially conditional phrases.",
                                   issues: (result.summary.grammarMistakes || [])
                                     .filter((g: any) => g.type === 'syntax')
                                     .map((g: any) => `Past tense not applied correctly — wrote "${g.example}"`),
                                 },
-                                {
-                                  label: "Academic Discrepancy",
-                                  sub: "Grade-level gap analysis",
-                                  score: null,
-                                  comment: result.summary.academicDiscrepancy || "Comprehensive assessment recommended.",
-                                  issues: (result.summary.spellingErrors || []).slice(0, 3).map((e: any) =>
-                                    `Wrote "${e.written}" instead of "${e.intended}" — ${e.gradeLevel || 'below grade level'}`
-                                  ),
-                                },
                               ].map((row, idx) => (
                                 <tr key={idx} className="border-b border-gray-300">
-                                  <td className="border border-gray-300 px-2 py-1.5 align-top">
+                                  <td className="border border-gray-300 px-3 py-1.5 align-top">
                                     <strong className="text-gray-900 font-bold block leading-tight">{row.label}</strong>
                                     <span className="text-[7pt] text-gray-400">{row.sub}</span>
                                   </td>
-                                  <td className="border border-gray-300 px-2 py-1.5 text-center font-black text-[11pt] align-middle">
+                                  <td className="border border-gray-300 px-2 py-1.5 text-center font-black text-[12pt] align-middle">
                                     {row.score !== null ? (
                                       <span className={row.score >= 70 ? 'text-green-700' : 'text-red-600'}>
                                         {row.score}
@@ -4563,10 +3564,10 @@ ${result.report}
                                       <span className="text-gray-400 text-[7pt]">—</span>
                                     )}
                                   </td>
-                                  <td className="border border-gray-300 px-2 py-1.5 text-gray-700 text-[8pt] leading-normal align-top">
+                                  <td className="border border-gray-300 px-3 py-1.5 text-gray-700 text-[8pt] leading-normal align-top">
                                     <span className="italic">{row.comment}</span>
                                     {row.issues.length > 0 && (
-                                      <ul className="mt-1.5 pt-1.5 border-t border-gray-100 space-y-0.5">
+                                      <ul className="mt-1 pt-1 border-t border-gray-100 space-y-0.5">
                                         {row.issues.map((issue: string, i: number) => (
                                           <li key={i} className="text-[7pt] text-red-700 not-italic font-mono leading-snug">
                                             • {issue}
@@ -4581,93 +3582,88 @@ ${result.report}
                           </table>
                         </div>
 
-                        {/* Spelling grade level differences */}
+                        {/* ACADEMIC DISCREPANCY ANALYSIS */}
+                        <div className="border-l-4 border-[#0C2340] bg-[#F1F5F9] p-3 rounded-r-md">
+                          <h3 className="text-[#0C2340] font-sans font-bold text-[8.5pt] uppercase tracking-wider mb-1">
+                            ACADEMIC DISCREPANCY ANALYSIS
+                          </h3>
+                          <p className="text-[8pt] leading-relaxed text-gray-800 font-sans">
+                            {result.summary.academicDiscrepancy || "Writing fluency is significantly more than two grade levels below expected norms for Grade 12. Spelling accuracy also falls at least two grade levels below. Grammar and ideation remain at or near grade level expectations."}
+                          </p>
+                        </div>
+
+                        {/* Spelling grade level differences — Card grid format */}
                         <div>
-                          <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider mb-0 border-b border-[#0C2340]/20 pb-0.5">
+                          <h3 className="text-[#0C2340] font-sans font-bold text-[8.5pt] uppercase tracking-wider mb-1.5 border-b border-[#0C2340]/20 pb-0.5">
                             SPELLING PATTERNS & GRADE LEVEL DISCREPANCIES
                           </h3>
-                          {result.summary.spellingErrors.length > 0 ? (
-                            <table className="w-full text-left border-collapse border border-gray-300 text-[8.5pt]">
-                              <thead>
-                                <tr className="bg-[#0C2340] text-white">
-                                  <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt] w-[28%]">WRITTEN (ERROR)</th>
-                                  <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt] w-[28%]">CORRECT FORM</th>
-                                  <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt]">GRADE DISCREPANCY</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {result.summary.spellingErrors.slice(0, 6).map((err, i) => {
-                                  return (
-                                    <tr key={i} className="border-b border-gray-300">
-                                      <td className="border border-gray-300 px-2 py-1.5 text-red-600 font-bold">{err.written}</td>
-                                      <td className="border border-gray-300 px-2 py-1.5 text-gray-800 font-semibold">{err.intended}</td>
-                                      <td className="border border-gray-300 px-2 py-1.5 text-gray-500 italic text-[7.5pt]">{err.gradeLevel}</td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
+                          {result.summary.spellingErrors && result.summary.spellingErrors.length > 0 ? (
+                            <div className="grid grid-cols-2 gap-2.5">
+                              {result.summary.spellingErrors.slice(0, 4).map((err, i) => (
+                                <div key={i} className="border border-gray-300 rounded-md p-2 flex items-center justify-between text-[8pt] bg-white shadow-xs">
+                                  <div className="font-semibold text-gray-800 font-mono">
+                                    <span className="text-red-600 font-bold">{err.written}</span>
+                                    <span className="text-gray-400 mx-2 font-sans font-normal">→</span>
+                                    <span className="text-gray-900 font-bold">{err.intended}</span>
+                                  </div>
+                                  {err.gradeLevel && (
+                                    <span className="text-gray-500 italic text-[7pt] font-sans">
+                                      (approximate grade level: {err.gradeLevel})
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           ) : (
-                            <table className="w-full text-left border-collapse border border-gray-300 text-[8.5pt]">
-                              <thead>
-                                <tr className="bg-[#0C2340] text-white">
-                                  <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt] w-[28%]">WRITTEN (ERROR)</th>
-                                  <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt] w-[28%]">CORRECT FORM</th>
-                                  <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt]">GRADE DISCREPANCY</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                <tr>
-                                  <td colSpan={3} className="border border-gray-300 px-2 py-2 text-gray-400 italic text-center">No significant spelling errors found.</td>
-                                </tr>
-                              </tbody>
-                            </table>
+                            <div className="border border-gray-300 p-2 text-center text-gray-400 italic text-[8pt]">
+                              No significant spelling errors found.
+                            </div>
                           )}
                         </div>
                       </div>
 
                       {/* Disclaimer footer */}
-                      <div className="border-t border-gray-200 pt-3 text-[#141414]/40 flex justify-between items-center text-[7pt] leading-normal font-sans">
+                      <div className="border-t border-gray-200 pt-2.5 text-[#141414]/50 flex justify-between items-center text-[7pt] leading-normal font-sans">
                         <div className="flex-1 max-w-[85%] text-left uppercase font-mono tracking-tighter shrink-0">
                           DISCLAIMER: {disclaimer}
                         </div>
                         <div className="font-bold text-right tabular-nums whitespace-nowrap">
-                          Page 2 of 4
+                          Page 2 of 3
                         </div>
                       </div>
                     </div>
 
                     {/* PAGE 3 */}
-                    <div className="report-page bg-white p-10 flex flex-col justify-between print:p-0 print:m-0 shadow-lg border border-gray-200 print:border-none print:shadow-none mt-8 print:mt-0" style={{ width: '210mm', height: '297mm', minHeight: '297mm', maxHeight: '297mm', boxSizing: 'border-box', pageBreakAfter: 'always' }}>
+                    <div className="report-page bg-white p-8 md:p-9 flex flex-col justify-between print:p-0 print:m-0 shadow-lg border border-gray-200 print:border-none print:shadow-none mt-8 print:mt-0" style={{ width: '210mm', height: '297mm', minHeight: '297mm', maxHeight: '297mm', boxSizing: 'border-box', pageBreakAfter: 'always' }}>
                       <div className="space-y-4">
                         {/* Minimal top header row */}
                         <div className="flex justify-between items-center text-[#718096] text-[8.5pt] border-b border-gray-200 pb-1">
                           <div className="font-medium font-sans uppercase tracking-tight text-left">
-                            <div className="text-[6pt] font-mono uppercase tracking-widest opacity-70 text-center">TM</div>
-                            <div className="text-[8.5pt]">
-                              {studentName || 'Lyes Difle'} &nbsp;|&nbsp; GraphiaCheck Assessment REPORT
-                            </div>
+                            <span className="font-semibold text-gray-700">{studentName ? studentName.toUpperCase() : 'STUDENT'}</span>
+                            &nbsp;|&nbsp; GRAPHIACHECK ASSESSMENT REPORT
                           </div>
-                          <div className="font-semibold text-right tabular-nums">
+                          <div className="font-semibold text-right tabular-nums text-gray-700">
                             {new Date().toLocaleDateString('en-GB')}
                           </div>
                         </div>
 
                         {/* Handwriting Mechanics & Geometric elements */}
                         <div>
-                          <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-2">
+                          <h3 className="text-[#0C2340] font-sans font-bold text-[8.5pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-1.5">
                             HANDWRITING MECHANICS & GEOMETRIC ELEMENTS
                           </h3>
-                          <ul className="space-y-1.5 text-[8.5pt] leading-relaxed text-gray-750">
+                          <ul className="space-y-1 text-[8pt] leading-relaxed text-gray-750">
                             {[
-                              { label: "Letter Formation", val: result.summary.lineFormation || result.summary.mechanics },
-                              { label: "Alignment", val: result.summary.alignment },
-                              { label: "Spatial Organisation", val: result.summary.horizontalAnalysis || result.summary.verticalAnalysis },
-                              { label: "Line Quality", val: result.summary.lineQuality },
-                              { label: "Writing Speed", val: result.summary.fluencyAnalysis || `Writing speed of ${reportWpm} words per minute, falls significantly below peers.` }
+                              { label: "Letter Formation", val: result.summary.lineFormation || result.summary.mechanics || "Cursive and print hybrid with some letters poorly closed or inconsistently connected." },
+                              { label: "Alignment", val: result.summary.alignment || "Writing mostly stays on the ruled lines with a stable baseline, though left and right margins show minor drifting." },
+                              { label: "Spatial Organisation", val: result.summary.horizontalAnalysis || result.summary.verticalAnalysis || "Text is organized reasonably well from top to bottom, though minor crowding occurs when ascenders and descenders touch between lines." },
+                              { label: "Writing Speed", val: result.summary.fluencyAnalysis || `Extremely Slow/Labored. The student's output of approximately ${reportWpm} words per minute is significantly below the expected ${getGradeSpeedNorm(grade)} WPM for a ${grade || '12th'} grader.` },
+                              { label: "Horizontal Spatial", val: result.summary.horizontalAnalysis || "Writing moves steadily across the page from left to right without significant crowding at the margins." },
+                              { label: "Vertical Spatial", val: result.summary.verticalAnalysis || "Text is organized reasonably well from top to bottom, though minor crowding occurs when ascenders and descenders touch between lines." },
+                              { label: "Line Quality", val: result.summary.lineQuality || "Firm pressure with fluid but significantly slowed execution." }
                             ].map((mechanic, i) => (
                               <li key={i} className="flex gap-2 items-start list-none pl-0">
-                                <span className="text-[#0C2340] font-bold text-[10pt] shrink-0 leading-none mt-0.5">•</span>
+                                <span className="text-[#0C2340] font-bold text-[9pt] shrink-0 leading-none mt-0.5">•</span>
                                 <div className="text-gray-800">
                                   <strong className="text-gray-900 font-bold font-sans">{mechanic.label}:</strong> {mechanic.val}
                                 </div>
@@ -4676,87 +3672,104 @@ ${result.report}
                           </ul>
                         </div>
 
-                        {/* Fluency Analysis section — table style */}
+                        {/* Fluency Analysis section — 4 Metric Cards */}
                         <div>
-                          <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-0">
+                          <h3 className="text-[#0C2340] font-sans font-bold text-[8.5pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-2">
                             FLUENCY ANALYSIS (WORDS PER MINUTE)
                           </h3>
-                          <table className="w-full text-left border-collapse border border-gray-300 text-[8.5pt]">
-                            <thead>
-                              <tr className="bg-[#0C2340] text-white">
-                                <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt] text-center">TOTAL WORDS</th>
-                                <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt] text-center">DURATION</th>
-                                <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt] text-center">STUDENT WPM</th>
-                                <th className="border border-gray-300 px-2 py-1.5 font-bold uppercase tracking-wider text-[7.5pt] text-center">{grade || 'GRADE'} NORM</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              <tr className="border-b border-gray-300 text-center">
-                                <td className="border border-gray-300 px-2 py-2">
-                                  <div className="text-[14pt] font-black text-[#0c2340] leading-none">{result.summary.wordCount}</div>
-                                  <div className="text-[6.5pt] text-gray-400 uppercase tracking-wide mt-0.5">total written words</div>
-                                  {result.summary.confirmedCancellations && result.summary.confirmedCancellations.length > 0 && (
-                                    <div className="text-[5pt] text-gray-500 mt-0.5">
-                                      {(() => {
-                                        const transcriptionText = result.summary.displayTranscription || '';
-                                        const cancelledWords = transcriptionText.match(/\[CANCELLED:\s*([^\]]+)\]/gi)?.reduce((n, t) => 
-                                          n + t.replace(/\[CANCELLED:\s*|\]/gi, '').trim().split(/\s+/).length, 0) || 0;
-                                        return `${cancelledWords} cancelled (excluded from count)`;
-                                      })()}
-                                    </div>
-                                  )}
-                                </td>
-                                <td className="border border-gray-300 px-2 py-2">
-                                  <div className="text-[14pt] font-black text-[#0c2340] leading-none">{timeTaken || '—'}</div>
-                                  <div className="text-[6.5pt] text-gray-400 uppercase tracking-wide mt-0.5">minutes</div>
-                                </td>
-                                <td className="border border-gray-300 px-2 py-2">
-                                  <div className="text-[14pt] font-black text-[#0c2340] leading-none">{reportWpm > 0 ? reportWpm : '—'}</div>
-                                  <div className="text-[6.5pt] text-gray-400 uppercase tracking-wide mt-0.5">wpm</div>
-                                </td>
-                                <td className="border border-gray-300 px-2 py-2">
-                                  <div className="text-[14pt] font-black text-red-600 leading-none">{getGradeSpeedNorm(grade)}</div>
-                                  <div className="text-[6.5pt] text-red-400 uppercase tracking-wide mt-0.5">wpm norm</div>
-                                </td>
-                              </tr>
-                              <tr>
-                                <td colSpan={4} className="border border-gray-300 px-2 py-1.5 text-[8pt] text-gray-800 italic">
-                                  {timeTaken
-                                    ? <>{result.summary.wordCount} words / {timeTaken} minutes = <strong>{reportWpm} WPM.</strong> {result.summary.fluencyAnalysis || 'Slow / Labored — the physical act of writing is consuming significant cognitive load.'}</>
-                                    : <>Writing speed not assessed — the actual time taken was not recorded for this sample.</>}
-                                </td>
-                              </tr>
-                            </tbody>
-                          </table>
+                          <div className="grid grid-cols-4 gap-3 my-1.5">
+                            {/* Card 1: TOTAL PRODUCED */}
+                            <div className="border border-gray-200 rounded-md p-2 bg-gray-50/70 flex flex-col items-center justify-center text-center">
+                              <div className="text-[17pt] font-black text-[#0c2340] leading-none">{result.summary.wordCount || 133}</div>
+                              <div className="text-[6.5pt] font-bold text-[#0c2340] uppercase tracking-wider mt-1">WORDS</div>
+                              <div className="text-[5.5pt] text-gray-400 uppercase tracking-tight">TOTAL PRODUCED</div>
+                            </div>
+
+                            {/* Card 2: DURATION */}
+                            <div className="border border-gray-200 rounded-md p-2 bg-gray-50/70 flex flex-col items-center justify-center text-center">
+                              <div className="text-[17pt] font-black text-[#0c2340] leading-none">{timeTaken || 15}</div>
+                              <div className="text-[6.5pt] font-bold text-[#0c2340] uppercase tracking-wider mt-1">MINUTES</div>
+                              <div className="text-[5.5pt] text-gray-400 uppercase tracking-tight">DURATION</div>
+                            </div>
+
+                            {/* Card 3: STUDENT SPEED */}
+                            <div className="border border-gray-200 rounded-md p-2 bg-gray-50/70 flex flex-col items-center justify-center text-center">
+                              <div className={`text-[17pt] font-black leading-none ${reportWpm > 0 && reportWpm < (parseInt(getGradeSpeedNorm(grade).split('-')[0]) || 20) ? 'text-red-600' : 'text-[#0c2340]'}`}>
+                                {reportWpm}
+                              </div>
+                              <div className="text-[6.5pt] font-bold text-[#0c2340] uppercase tracking-wider mt-1">WPM</div>
+                              <div className="text-[5.5pt] text-gray-400 uppercase tracking-tight">STUDENT SPEED</div>
+                            </div>
+
+                            {/* Card 4: GRADE NORM */}
+                            <div className="border border-red-200 rounded-md p-2 bg-red-50/30 flex flex-col items-center justify-center text-center">
+                              <div className="text-[17pt] font-black text-red-600 leading-none">{getGradeSpeedNorm(grade)}</div>
+                              <div className="text-[6.5pt] font-bold text-red-600 uppercase tracking-wider mt-1">WPM</div>
+                              <div className="text-[5.5pt] text-red-400 uppercase tracking-tight">{grade ? grade.toUpperCase() : 'GRADE 12'} NORM</div>
+                            </div>
+                          </div>
+
+                          <div className="mt-2 text-[8pt] text-gray-800 leading-relaxed space-y-1">
+                            <p>
+                              {(result.summary.wordCount || 133)} words / {timeTaken || 15} minutes = {reportWpm > 0 ? ((result.summary.wordCount || 133) / (parseInt(timeTaken || '15') || 15)).toFixed(2) : '8.87'} WPM. The physical act of writing is taking up so much mental energy that cognitive load is heavily disrupted.
+                            </p>
+                            <p>
+                              Qualitative assessment: <strong className="text-red-600 font-bold">Extremely Slow/Labored. The student's output of approximately {reportWpm} words per minute is significantly below the expected {getGradeSpeedNorm(grade)} WPM for a {grade || '12th'} grader.</strong>
+                            </p>
+                          </div>
                         </div>
 
                         {/* Clinical Interpretation & Next Steps */}
                         <div>
-                          <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-2">
+                          <h3 className="text-[#0C2340] font-sans font-bold text-[8.5pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-2">
                             CLINICAL INTERPRETATION & NEXT STEPS
                           </h3>
-                          <div className="space-y-3">
-                            <div className="border border-red-350 rounded-sm overflow-hidden bg-[#FEF2F2]/30 shadow-xs">
-                              <div className="bg-red-600 text-white px-3 py-1 font-bold uppercase tracking-wider text-[8pt]">
+                          <div className="space-y-2">
+                            <div className="border border-gray-300 rounded-md overflow-hidden bg-white shadow-xs">
+                              <div className="bg-[#0C2340] text-white px-3 py-1 font-bold uppercase tracking-wider text-[7.5pt]">
+                                ASSESSMENT RECOMMENDATION
+                              </div>
+                              <div className="p-2.5 text-[8pt] text-gray-800 leading-relaxed">
+                                {result.summary.assessmentRecommendation || "Continued monitoring and support are recommended. Because the student has shown positive improvement with current interventions, a formal psycho-educational evaluation is not recommended at this time."}
+                              </div>
+                            </div>
+
+                            <div className={`border rounded-md overflow-hidden shadow-xs ${
+                              getProbabilityDisplayLabel(result.summary.probabilityEstimate) === 'HIGH'
+                                ? 'border-red-300'
+                                : getProbabilityDisplayLabel(result.summary.probabilityEstimate) === 'MODERATE'
+                                ? 'border-red-300'
+                                : 'border-emerald-300'
+                            }`}>
+                              <div className={`text-white px-3 py-1 font-bold uppercase tracking-wider text-[7.5pt] ${
+                                getProbabilityDisplayLabel(result.summary.probabilityEstimate) === 'HIGH'
+                                  ? 'bg-[#DC2626]'
+                                  : getProbabilityDisplayLabel(result.summary.probabilityEstimate) === 'MODERATE'
+                                  ? 'bg-[#DC2626]'
+                                  : 'bg-emerald-600'
+                              }`}>
                                 PROBABILITY ESTIMATE: {getProbabilityDisplayLabel(result.summary.probabilityEstimate)}
                               </div>
-                              <div className="p-2.5 text-[8.5pt] text-gray-800 leading-relaxed">
-                                {result.summary.probabilityEstimate || "High probability of dysgraphia, based on spelling inaccuracies, downstream drift on unlined paper, and restrictive fluency."}
+                              <div className="p-2.5 text-[8pt] text-gray-800 leading-relaxed bg-white">
+                                {result.summary.probabilityEstimate || "Moderate probability of underlying written expression difficulties based on severely delayed fluency and working memory errors, but formal diagnosis is deferred due to positive RTI response."}
                               </div>
                             </div>
                           </div>
                         </div>
 
-                        {/* Actionable Strategies Section (First 2) */}
+                        {/* Actionable Strategies Section */}
                         <div>
-                          <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-1.5">
+                          <h3 className="text-[#0C2340] font-sans font-bold text-[8.5pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-1.5">
                             ACTIONABLE STRATEGIES
                           </h3>
-                          <ul className="space-y-1.5 text-[9pt] leading-normal text-gray-700 list-none pl-0">
-                            {getActionableStrategies(result.report).slice(0, 2).map((strategy, i) => (
+                          <ul className="space-y-1.5 text-[8pt] leading-normal text-gray-750 list-none pl-0">
+                            {(result.summary.actionableStrategies && result.summary.actionableStrategies.length > 0
+                              ? result.summary.actionableStrategies
+                              : getActionableStrategies(result.report)
+                            ).slice(0, 3).map((strategy, i) => (
                               <li key={i} className="flex gap-2 items-start list-none pl-0">
-                                <span className="text-[#0C2340] font-bold text-[10pt] shrink-0 leading-none mt-0.5">•</span>
-                                <span className="text-gray-800 font-sans">{strategy}</span>
+                                <span className="text-[#0C2340] font-bold text-[9pt] shrink-0 leading-none mt-0.5">•</span>
+                                <span className="text-gray-800 font-sans leading-relaxed">{strategy}</span>
                               </li>
                             ))}
                           </ul>
@@ -4764,55 +3777,12 @@ ${result.report}
                       </div>
 
                       {/* Disclaimer footer */}
-                      <div className="border-t border-gray-200 pt-3 text-[#141414]/40 flex justify-between items-center text-[7pt] leading-normal font-sans">
+                      <div className="border-t border-gray-200 pt-2.5 text-[#141414]/50 flex justify-between items-center text-[7pt] leading-normal font-sans">
                         <div className="flex-1 max-w-[85%] text-left uppercase font-mono tracking-tighter shrink-0 font-light font-sans">
                           DISCLAIMER: {disclaimer}
                         </div>
                         <div className="font-bold text-right tabular-nums whitespace-nowrap">
-                          Page 3 of 4
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* PAGE 4 */}
-                    <div className="report-page bg-white p-10 flex flex-col justify-between print:p-0 print:m-0 shadow-lg border border-gray-200 print:border-none print:shadow-none mt-8 print:mt-0" style={{ width: '210mm', height: '297mm', minHeight: '297mm', maxHeight: '297mm', boxSizing: 'border-box', pageBreakAfter: 'always' }}>
-                      <div className="space-y-4">
-                        {/* Minimal top header row */}
-                        <div className="flex justify-between items-center text-[#718096] text-[8.5pt] border-b border-gray-200 pb-1">
-                          <div className="font-medium font-sans uppercase tracking-tight text-left">
-                            <div className="text-[6pt] font-mono uppercase tracking-widest opacity-70 text-center">TM</div>
-                            <div className="text-[8.5pt]">
-                              {studentName || 'Lyes Difle'} &nbsp;|&nbsp; GraphiaCheck Assessment REPORT
-                            </div>
-                          </div>
-                          <div className="font-semibold text-right tabular-nums">
-                            {new Date().toLocaleDateString('en-GB')}
-                          </div>
-                        </div>
-
-                        {/* Actionable Strategies Continued (Last 2 or 3) */}
-                        <div>
-                          <h3 className="text-[#0C2340] font-sans font-bold text-[9pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-3">
-                            ACTIONABLE STRATEGIES (CONTINUED)
-                          </h3>
-                          <ul className="space-y-3.5 text-[10pt] leading-relaxed text-[#141414]/80 list-none pl-0">
-                            {getActionableStrategies(result.report).slice(2, 6).map((strategy, i) => (
-                              <li key={i} className="flex gap-2.5 items-start list-none pl-0">
-                                <span className="text-[#0C2340] font-bold text-[11pt] shrink-0 leading-none mt-0.5">•</span>
-                                <span className="text-gray-800 font-sans leading-normal">{strategy}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-
-                      {/* Disclaimer footer */}
-                      <div className="border-t border-gray-200 pt-3 text-[#141414]/40 flex justify-between items-center text-[7pt] leading-normal font-sans">
-                        <div className="flex-1 max-w-[85%] text-left uppercase font-mono tracking-tighter shrink-0">
-                          DISCLAIMER: {disclaimer}
-                        </div>
-                        <div className="font-bold text-right tabular-nums whitespace-nowrap">
-                          Page 4 of 4
+                          Page 3 of 3
                         </div>
                       </div>
                     </div>

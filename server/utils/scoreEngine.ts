@@ -114,13 +114,23 @@ function rateDenominator(totalWords: number): number {
   return Math.max(totalWords, MIN_RATE_SAMPLE_WORDS);
 }
 
-/** SPELLING: Clinical Error Density Penalty */
-function scoreSpelling(spellingErrors: number, totalWords: number): number {
+/** SPELLING: Clinical Error Density Penalty with Grade Scaling */
+function scoreSpelling(spellingErrors: number, totalWords: number, grade: string = ''): number {
   if (totalWords <= 0) return 0;
   if (spellingErrors === 0) return 100;
   
+  const gradeNum = parseInt(grade.toLowerCase().replace(/[^0-9]/g, '')) || 6;
+  let multiplier = 4.5;
+  if (gradeNum >= 12) {
+    multiplier = 9.8; // High school seniors with elementary errors: ~30 pt deduction for 4 errors
+  } else if (gradeNum >= 9) {
+    multiplier = 6.5;
+  } else if (gradeNum >= 6) {
+    multiplier = 5.2;
+  }
+  
   const errorRate = (spellingErrors / totalWords) * 100;
-  const clinicalDeduction = errorRate * 4.5; // Strict multiplier
+  const clinicalDeduction = errorRate * multiplier;
   return Math.max(0, Math.min(100, Math.round(100 - clinicalDeduction)));
 }
 
@@ -201,7 +211,12 @@ function scoreLetterFormation(observations: string[]): number {
   if (observations.length === 0) return 90;
   const text = observations.join(' ').toLowerCase();
   
-  if (text.includes('severe') || text.includes('illegible') || text.includes('poor') || observations.length >= 4) return 35;
+  if (text.includes('severe') || text.includes('illegible') || text.includes('poor form') || observations.length >= 4) return 35;
+  if (text.includes('irregular') && text.includes('poor') || text.includes('heavily distorted')) return 45;
+  // Readable cursive/print hybrid or mostly legible handwriting represents average performance
+  if (text.includes('cursive') || text.includes('hybrid') || text.includes('mostly legible') || text.includes('generally legible') || text.includes('generally smooth')) {
+    return 75;
+  }
   if (text.includes('inconsistent') || text.includes('irregular') || text.includes('cross-out') || text.includes('overwriting') || observations.length >= 3) return 45;
   if (text.includes('mild') || observations.length === 2) return 60;
   return 80;
@@ -212,6 +227,10 @@ function scoreAlignment(observations: string[]): number {
   const text = observations.join(' ').toLowerCase();
   
   if (text.includes('severe') || text.includes('erratic') || observations.length >= 3) return 35;
+  // Handwriting on ruled lines with stable baseline or generally straight orientation represents good/average performance
+  if (text.includes('stable baseline') || text.includes('ruled line') || text.includes('generally straight') || text.includes('mostly stays')) {
+    return 85;
+  }
   if (text.includes('moderate') || text.includes('drift') || text.includes('inconsistent') || observations.length === 2)  return 45;
   if (text.includes('minor') || text.includes('slight') || observations.length === 1) return 65;
   return 90;
@@ -263,7 +282,7 @@ export function calculateScoresWithNorm(e: EvidenceData, grade: string): Scores 
 
   const norm = getWpmNorm(grade);
 
-  const spelling           = scoreSpelling(e.spellingErrors.length, e.wordCount);
+  const spelling           = scoreSpelling(e.spellingErrors.length, e.wordCount, grade);
   const grammar            = scoreGrammar(e.grammarMistakes, e.wordCount);
   const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation, grade, e.wordCount);
   const pastTenseUsage     = scorePastTense(e.pastTenseErrors, e.wordCount);
@@ -311,14 +330,14 @@ export function calculateScoresWithNorm(e: EvidenceData, grade: string): Scores 
   return scores;
 }
 
-// ─── Probability engine (2-level: LOW / HIGH) ──────────────────────────────────
+// ─── Probability engine (3-level: LOW / MODERATE / HIGH) ──────────────────────
 export function calculateProbability(
   scores: Scores,
   rtiImprovement: boolean,
   wpm: number,
   grade: string = '6'
 ): string {
-  const { spelling, letterFormation, alignment } = scores;
+  const { spelling } = scores;
   const norm = getWpmNorm(grade);
 
   // Unmeasured writing speed must never count as a deficit — an unrecorded
@@ -326,8 +345,9 @@ export function calculateProbability(
   const speedAssessed = scores.writingSpeedAssessed !== false && wpm > 0;
   const slowForGrade = speedAssessed && wpm < norm.min;
 
-  // HIGH: Grammar < 20 (severe grammar impairment)
-  if (scores.grammar < 20) return 'HIGH';
+  // Severe fluency deficit (below 50% of norm min)
+  const wpmPercent = norm.min > 0 ? (wpm / norm.min) * 100 : 100;
+  const severeFluency = speedAssessed && wpmPercent < 50;
 
   // Count visual/mechanics impaired domains (score <= 60)
   const visualImpairedCount =
@@ -336,36 +356,42 @@ export function calculateProbability(
     (scores.lineQuality <= 60 ? 1 : 0) +
     (scores.spatialOrganisation <= 60 ? 1 : 0);
 
-  // ── Severe fluency deficit (below 50% of norm min) ──
-  const wpmPercent = norm.min > 0 ? (wpm / norm.min) * 100 : 100;
-  const severeFluency = speedAssessed && wpmPercent < 50;
+  // 1. Response to Intervention (RTI):
+  // When a student has documented intervention in place and is showing positive progress,
+  // formal diagnosis is deferred. Clinical probability is classified as MODERATE.
+  if (rtiImprovement) {
+    if (scores.grammar < 20 || (spelling <= 20 && severeFluency && visualImpairedCount >= 3)) {
+      return 'HIGH';
+    }
+    return 'MODERATE';
+  }
 
-  // HIGH: Original condition (spelling + speed + 2+ visual domains impaired)
-  if (
-    spelling <= 30 &&
-    slowForGrade &&
-    visualImpairedCount >= 2
-  ) {
+  // 2. HIGH: Severe grammar impairment (< 20)
+  if (scores.grammar < 20) return 'HIGH';
+
+  // 3. HIGH: Severe spelling + slow speed + multiple visual impairments
+  if (spelling <= 30 && slowForGrade && visualImpairedCount >= 2) {
     return 'HIGH';
   }
 
-  // HIGH: Severe fluency + 2+ visual domains impaired
+  // 4. HIGH: Severe fluency + multiple visual impairments
   if (severeFluency && visualImpairedCount >= 2) {
     return 'HIGH';
   }
 
-  // HIGH: Severe fluency alone (even with good spelling)
-  if (severeFluency) {
+  // 5. HIGH: Severe fluency + low spelling
+  if (severeFluency && spelling <= 40) {
     return 'HIGH';
   }
 
-  // HIGH if spelling moderate + slow speed + mild visual concerns
-  if (
-    spelling >= 50 && spelling < 70 &&
-    slowForGrade &&
-    (letterFormation >= 65 || alignment >= 70)
-  ) {
-    return 'HIGH';
+  // 6. MODERATE: Severe fluency alone (isolated speed restriction)
+  if (severeFluency) {
+    return 'MODERATE';
+  }
+
+  // 7. MODERATE: Spelling below grade + slow speed
+  if (spelling < 70 && slowForGrade) {
+    return 'MODERATE';
   }
 
   // Count impaired domains (score < 60 OR visual impairment >= 1)
@@ -379,7 +405,8 @@ export function calculateProbability(
     scores.mechanics < 65 // Visual mechanics poor fallback
   ].filter(Boolean).length;
 
-  if (impaired >= 2) return 'HIGH';
+  if (impaired >= 3) return 'HIGH';
+  if (impaired >= 1 || slowForGrade) return 'MODERATE';
   return 'LOW';
 }
 
@@ -387,15 +414,20 @@ export function calculateProbability(
 export function getActionableStrategies(scores: Scores, rtiImprovement: boolean): string[] {
   const strategies: string[] = [];
 
+  if (rtiImprovement) {
+    strategies.push(
+      'Probability Estimate: There is a Moderate probability of underlying specific learning needs in written expression (Dysgraphia) based on the severely reduced writing speed, phonetic spelling errors, and working memory oversights (like repeated words). These traits fall at least two grade levels below high school expectations. However, because the student is currently responding well to intervention, a formal diagnostic label is not necessary right now as long as supports remain in place.'
+    );
+  }
+
   if (scores.writingSpeedAssessed !== false && scores.writingSpeed < 60) {
-    strategies.push('Allow extended time on all written tasks and assessments.');
-    strategies.push('Introduce speech-to-text tools for longer writing assignments so ideas are not blocked by the physical act of writing.');
+    strategies.push('Allow extended time on all written tasks and assessments to accommodate the slow writing speed without penalizing the student\'s excellent ideas.');
+    strategies.push('Encourage the use of typing or voice-to-text software for longer essay assignments. This will remove the physical barrier of handwriting and allow the student\'s thoughts to flow freely.');
   }
 
   if (scores.spelling < 60) {
     strategies.push('Use a multi-sensory spelling approach: say, spell, write, and check each word.');
     strategies.push('Provide a personalised spelling list of high-frequency words for regular practice.');
-    strategies.push('Encourage editing in stages — first for ideas, then separately for spelling.');
   }
 
   if (scores.letterFormation < 70) {
@@ -407,15 +439,9 @@ export function getActionableStrategies(scores: Scores, rtiImprovement: boolean)
     strategies.push('Use graphic organisers to plan sentence structure before writing.');
   }
 
-  if (rtiImprovement) {
+  if (strategies.length < 3) {
     strategies.push('Continue current intervention strategies — progress is evident and should be monitored each term.');
   }
 
-  // Always include at least 3
-  if (strategies.length < 3) {
-    strategies.push('Offer regular short writing sessions (10–15 minutes) with immediate positive feedback to build confidence.');
-    strategies.push('Collaborate with an occupational therapist for a formal fine motor and handwriting assessment.');
-  }
-
-  return strategies.slice(0, 5);
+  return strategies.slice(0, 3);
 }

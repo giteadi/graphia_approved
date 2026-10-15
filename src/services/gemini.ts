@@ -63,6 +63,7 @@ export interface AnalysisResult {
     runOnSentences?: number;
     missingCapitals?: number;
     missingPunctuation?: number;
+    actionableStrategies?: string[];
   };
 }
 

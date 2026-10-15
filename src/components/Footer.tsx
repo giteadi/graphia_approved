@@ -1,10 +1,12 @@
+import React, { memo } from "react";
+
 interface FooterProps {
   onTerms?: () => void;
   onPrivacy?: () => void;
   onRefund?: () => void;
 }
 
-export default function Footer({ onTerms, onPrivacy, onRefund }: FooterProps) {
+function Footer({ onTerms, onPrivacy, onRefund }: FooterProps) {
   return (
     <footer className="bg-[#1a1a2e] text-white py-12">
       <div className="max-w-6xl mx-auto px-6">
@@ -102,3 +104,5 @@ export default function Footer({ onTerms, onPrivacy, onRefund }: FooterProps) {
     </footer>
   );
 }
+
+export default memo(Footer);

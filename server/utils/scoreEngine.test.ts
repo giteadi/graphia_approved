@@ -306,6 +306,46 @@ if (smallTextScores.grammar < 50) {
 }
 console.log('MINIMAL TEST PASSED: Score does not collapse for 1-2 grammar mistakes in small text');
 
+// Test 5: Amaya Taneja Grade 12 reference case - rtiImprovement: true must yield MODERATE probability
+const amayaEvidence: EvidenceData = {
+  transcription: 'A world without smartphones would look very different...',
+  wordCount: 133,
+  confirmedCancellations: [],
+  uncertainCancellations: [],
+  spellingErrors: [
+    { written: 'eachother', intended: 'each other', gradeLevel: '3rd grade' },
+    { written: 'tetlephones', intended: 'telephones', gradeLevel: '4th grade' },
+    { written: 'conmenly', intended: 'commonly', gradeLevel: '5th grade' },
+    { written: 'critisizing', intended: 'criticizing', gradeLevel: '7th grade' },
+  ],
+  grammarMistakes: [],
+  runOnSentences: 0,
+  missingCapitals: 0,
+  missingPunctuation: 1,
+  pastTenseErrors: 0,
+  letterFormationObservations: ['Cursive and print hybrid with some letters poorly closed or inconsistently connected.'],
+  alignmentObservations: ['Writing mostly stays on the ruled lines with a stable baseline, though left and right margins show minor drifting.'],
+  spacingObservations: ['Text is organized reasonably well from top to bottom, though minor crowding occurs when ascenders and descenders touch between lines.'],
+  lineQualityObservations: ['Firm pressure with fluid but significantly slowed execution.'],
+  wpm: 9,
+  rtiImprovement: true,
+  dsm5Traits: [],
+};
+
+const amayaScores = calculateScoresWithNorm(amayaEvidence, 'Grade 12');
+const amayaProb = calculateProbability(amayaScores, true, amayaEvidence.wpm, 'Grade 12');
+
+if (amayaProb !== 'MODERATE') {
+  throw new Error(`AMAYA TEST FAILED: Expected MODERATE probability due to RTI response, got ${amayaProb}`);
+}
+if (amayaScores.letterFormation < 70) {
+  throw new Error(`AMAYA TEST FAILED: Expected Letter Formation >= 70 for cursive hybrid, got ${amayaScores.letterFormation}`);
+}
+if (amayaScores.alignment < 80) {
+  throw new Error(`AMAYA TEST FAILED: Expected Alignment >= 80 for ruled line baseline, got ${amayaScores.alignment}`);
+}
+console.log('AMAYA REFERENCE TEST PASSED: Formation:', amayaScores.letterFormation, 'Alignment:', amayaScores.alignment, 'Probability:', amayaProb);
+
 console.log('══════════════════════════════════════════════════════════════════════════════');
 console.log('ALL MINIMAL TESTS PASSED');
 console.log('══════════════════════════════════════════════════════════════════════════════');

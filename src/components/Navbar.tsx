@@ -1,5 +1,5 @@
+import React, { useState, memo } from "react";
 import { ArrowLeft, Menu, X } from "lucide-react";
-import { useState } from "react";
 
 interface NavbarProps {
   showBack?: boolean;
@@ -10,7 +10,7 @@ interface NavbarProps {
   activePage?: 'home' | 'about';
 }
 
-export default function Navbar({
+function Navbar({
   showBack = false,
   onAbout,
   onGetStarted,
@@ -167,3 +167,5 @@ export default function Navbar({
     </header>
   );
 }
+
+export default memo(Navbar);
