@@ -1,10 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Times New Roman", Times, serif;
-  --font-serif: "Times New Roman", Times, serif;
-  --font-mono: "Courier New", Courier, monospace;
+  --font-sans: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* Force standard colors to avoid oklab/oklch issues with html2canvas */
   --color-black: #000000;
@@ -239,7 +239,40 @@
     page-break-after: always !important;
     break-after: page !important;
     break-inside: avoid !important;
+    font-family: "Times New Roman", Times, serif !important;
   }
+}
+
+/* Ensure report pages keep standard academic serif styling */
+.report-page {
+  font-family: "Times New Roman", Times, serif;
+}
+.report-page .font-mono,
+.report-page code,
+.report-page pre {
+  font-family: "Courier New", Courier, monospace !important;
+}
+
+/* Modern scanner animation effects for the hero live visual */
+@keyframes scanner-sweep {
+  0% {
+    top: 0%;
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+.animate-scan-line {
+  animation: scanner-sweep 3s ease-in-out infinite;
 }
 
 /* ── Image cropper (react-image-crop) ─────────────────────────────────────── */
