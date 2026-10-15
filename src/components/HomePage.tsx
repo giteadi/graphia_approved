@@ -113,33 +113,33 @@ export default function HomePage({ onGetStarted, onHome, onAbout, onTerms, onPri
                 </button>
               </div>
 
-              {/* Quick Trust Highlights (Frosted Glass Tiles) */}
+              {/* Quick Trust Highlights (Frosted Glass Tiles - Generic Value Propositions) */}
               <div className="pt-4 grid grid-cols-3 gap-3.5 max-w-xl">
                 <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-3.5 hover:border-[#BD7A5C]/50 transition-colors">
                   <div className="flex items-center gap-1.5 text-slate-400 mb-1">
-                    <FileText className="w-3.5 h-3.5 text-[#BD7A5C]" />
-                    <span className="text-[10px] uppercase font-mono tracking-wider font-semibold text-slate-400">Min Sample</span>
+                    <Award className="w-3.5 h-3.5 text-[#BD7A5C]" />
+                    <span className="text-[10px] uppercase font-mono tracking-wider font-semibold text-slate-400">Norms</span>
                   </div>
-                  <div className="text-xl sm:text-2xl font-black text-white font-mono">75–100</div>
-                  <div className="text-[10px] text-slate-400 font-medium">Standard Word Count</div>
+                  <div className="text-xl sm:text-2xl font-black text-white font-mono">Grades 1–15</div>
+                  <div className="text-[10px] text-slate-400 font-medium">Calibrated Clinical Reference</div>
                 </div>
 
                 <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-3.5 hover:border-[#0284C7]/50 transition-colors">
                   <div className="flex items-center gap-1.5 text-slate-400 mb-1">
                     <Clock className="w-3.5 h-3.5 text-[#38BDF8]" />
-                    <span className="text-[10px] uppercase font-mono tracking-wider font-semibold text-slate-400">Speed</span>
+                    <span className="text-[10px] uppercase font-mono tracking-wider font-semibold text-slate-400">Turnaround</span>
                   </div>
-                  <div className="text-xl sm:text-2xl font-black text-white font-mono">&lt; 60s</div>
-                  <div className="text-[10px] text-slate-400 font-medium">Deterministic Time</div>
+                  <div className="text-xl sm:text-2xl font-black text-white font-mono">Instant</div>
+                  <div className="text-[10px] text-slate-400 font-medium">Automated Objective Scoring</div>
                 </div>
 
                 <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-3.5 hover:border-[#BD7A5C]/50 transition-colors">
                   <div className="flex items-center gap-1.5 text-slate-400 mb-1">
-                    <Award className="w-3.5 h-3.5 text-[#BD7A5C]" />
-                    <span className="text-[10px] uppercase font-mono tracking-wider font-semibold text-[#E8A588]">Standard</span>
+                    <FileText className="w-3.5 h-3.5 text-[#BD7A5C]" />
+                    <span className="text-[10px] uppercase font-mono tracking-wider font-semibold text-[#E8A588]">Documentation</span>
                   </div>
-                  <div className="text-xl sm:text-2xl font-black text-white font-mono">3 Pages</div>
-                  <div className="text-[10px] text-slate-400 font-medium">Fixed A4 Clinical PDF</div>
+                  <div className="text-xl sm:text-2xl font-black text-white font-mono">Multi-Page</div>
+                  <div className="text-[10px] text-slate-400 font-medium">Standardized Clinical Report</div>
                 </div>
               </div>
 
@@ -164,7 +164,7 @@ export default function HomePage({ onGetStarted, onHome, onAbout, onTerms, onPri
                       </span>
                     </div>
                     <span className="text-[10px] font-mono bg-[#BD7A5C]/20 text-[#E8A588] border border-[#BD7A5C]/40 px-2 py-0.5 rounded font-semibold">
-                      LIVE INFERENCE · 48ms
+                      REAL-TIME OCR & PATTERN RECOGNITION
                     </span>
                   </div>
 
@@ -180,52 +180,52 @@ export default function HomePage({ onGetStarted, onHome, onAbout, onTerms, onPri
                     <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-[#38BDF8] to-transparent shadow-[0_0_12px_#38bdf8] animate-scan-line pointer-events-none" />
 
                     {/* Holographic Vision Detection Box Overlay */}
-                    <div className="absolute top-1/4 left-1/4 w-32 h-14 border border-dashed border-sky-400/70 bg-sky-500/10 rounded flex flex-col justify-between p-1 pointer-events-none backdrop-blur-[1px]">
-                      <span className="text-[8px] font-mono text-sky-200 font-bold tracking-tight">LOOP_CLOSURE: 0.94</span>
-                      <span className="text-[8px] font-mono text-[#E8A588] self-end">SLANT: 12.4°</span>
+                    <div className="absolute top-1/4 left-1/4 w-36 h-14 border border-dashed border-sky-400/70 bg-sky-500/10 rounded flex flex-col justify-between p-1.5 pointer-events-none backdrop-blur-[1px]">
+                      <span className="text-[8px] font-mono text-sky-200 font-bold tracking-tight">FEATURE_EXTRACT: ACTIVE</span>
+                      <span className="text-[8px] font-mono text-[#E8A588] self-end">SLANT & SPACING: DETECTED</span>
                     </div>
 
-                    {/* Floating Diagnostic Score Chips */}
+                    {/* Floating Diagnostic Telemetry Chips */}
                     <div className="absolute top-3 left-3 bg-slate-950/85 backdrop-blur-md text-white text-[10px] font-mono px-3 py-1.5 rounded-lg border border-white/15 shadow-lg flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_#38bdf8]" />
-                      <span>Formation Score: <strong className="text-sky-300">75/100</strong></span>
+                      <span>Loop Geometry: <strong className="text-sky-300">Automated Analysis</strong></span>
                     </div>
 
                     <div className="absolute bottom-3 right-3 bg-slate-950/85 backdrop-blur-md text-white text-[10px] font-mono px-3 py-1.5 rounded-lg border border-white/15 shadow-lg flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-[#BD7A5C] shadow-[0_0_8px_#bd7a5c]" />
-                      <span>Baseline Alignment: <strong className="text-[#E8A588]">85/100</strong></span>
+                      <span>Spatial Adherence: <strong className="text-[#E8A588]">Continuous Tracking</strong></span>
                     </div>
                   </div>
 
-                  {/* Diagnostic Summary Snapshot Bar */}
+                  {/* Diagnostic Summary Snapshot Bar (Generic Clinical Capabilities) */}
                   <div className="p-4 bg-slate-900 border-t border-slate-800/90 space-y-3">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-slate-400 font-medium flex items-center gap-1.5">
                         <Target className="w-3.5 h-3.5 text-[#BD7A5C]" />
-                        Classification:
+                        Diagnostic Scope:
                       </span>
                       <span className="font-bold text-[#E8A588] bg-[#BD7A5C]/20 px-2.5 py-0.5 rounded-md border border-[#BD7A5C]/40 font-mono text-[11px]">
-                        Moderate Probability (RTI Active)
+                        Multi-Factor Screening & Biomarkers
                       </span>
                     </div>
 
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-slate-400 font-medium flex items-center gap-1.5">
-                        <TrendingDown className="w-3.5 h-3.5 text-rose-400" />
-                        Writing Fluency:
+                        <Activity className="w-3.5 h-3.5 text-[#38BDF8]" />
+                        Analysis Pipeline:
                       </span>
-                      <span className="font-bold text-rose-300 bg-rose-500/15 px-2 py-0.5 rounded-md border border-rose-500/30 font-mono text-[11px] flex items-center gap-1">
-                        9 WPM <span className="text-slate-400 font-normal">(Norm: 20–30)</span>
+                      <span className="font-bold text-sky-300 bg-sky-500/15 px-2 py-0.5 rounded-md border border-sky-500/30 font-mono text-[11px] flex items-center gap-1">
+                        Kinematic Pacing · Geometry · Spatial Norms
                       </span>
                     </div>
 
                     <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
                       <span className="flex items-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                        Calibrated for Grade 12 Norms
+                        DSM-5 & RTI Progress Framework
                       </span>
                       <span className="text-sky-300 font-mono font-semibold bg-sky-500/10 px-1.5 py-0.5 rounded">
-                        100% Deterministic
+                        100% Objective Scoring
                       </span>
                     </div>
                   </div>
