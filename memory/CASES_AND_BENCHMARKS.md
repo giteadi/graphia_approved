@@ -110,3 +110,24 @@ This document documents the verified clinical ground-truth benchmark cases used 
 - Occurrence 1: Valid word (kept).
 - Occurrence 2: Cancelled (filtered out).
 - **Result:** Occurrence-aware filtering accurately targets only the cancelled instance without corrupting valid word occurrences.
+
+---
+
+## 5. Multi-Page Handwriting Upload Support (Up to 4 Pages / Images)
+
+### Features:
+1. **Multi-Page PDF Extraction:**
+   - Client-side rendering using `pdfjs-dist` (viewport scale `2.2` for maximum handwriting clarity).
+   - Automatically extracts up to 4 pages into individual sequential images (`Page 1`, `Page 2`, `Page 3`, `Page 4`).
+2. **Multiple Image Upload (ChatGPT / Gemini style):**
+   - File input accepts `multiple` image selection (JPG, PNG, WebP, etc.).
+   - Users can drag & drop multiple files or click `+ Add Page` to append pages up to a ceiling of 4.
+3. **Interactive UI Thumbnail Strip:**
+   - 4-slot thumbnail gallery below main sample preview.
+   - Page badges (`Page 1`, `Page 2`...), active page highlight, individual delete `(X)` buttons, and `+ Add Page` button.
+   - Per-page crop and rotate (acts on currently selected active page).
+4. **Backend OCR Pipeline:**
+   - Maps up to 4 images as sequential `image_url` blocks in GPT-4o vision request.
+   - Injects `MULTI-PAGE SAMPLE NOTICE` into prompt instructing forensic OCR to transcribe continuously across all pages from start to finish without omitting lines.
+   - Result preserves multi-page array for interactive page browsing in the final clinical report.
+
