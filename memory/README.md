@@ -14,6 +14,7 @@ Welcome to the **GraphiaCheck Memory Directory**. This directory serves as the c
 | **[`ISSUES_AND_DEBUGGING_LOG.md`](file:///Users/adityasharma/Desktop/graphia_approved/memory/ISSUES_AND_DEBUGGING_LOG.md)** | Loop Audits, Bugs & Performance Fixes | Token matching O(N×M×K) loop memoization, Double-tab popup blocker bug, Camera hardware leak on unmount, Recharts dead import removal, Word count and fluency fallbacks |
 | **[`MAINTENANCE_GUIDE.md`](file:///Users/adityasharma/Desktop/graphia_approved/memory/MAINTENANCE_GUIDE.md)** | Developer Guide & Operations Runbook | Running tests, TypeScript validation, Production build checks, Adding new test cases, Common pitfalls to avoid |
 | **[`SERVER_AND_DEPLOYMENT.md`](file:///Users/adityasharma/Desktop/graphia_approved/memory/SERVER_AND_DEPLOYMENT.md)** | Production Infrastructure & Deployment Runbook | VPS IP (195.35.45.17), Hostinger VM ID 749165, User credentials (aditya / root), Fail2ban rules, Paths (/var/www/graphiacheck, /root/graphia), Nginx config, PM2 process management |
+| **[`MULTI_PAGE_UPLOAD.md`](file:///Users/adityasharma/Desktop/graphia_approved/memory/MULTI_PAGE_UPLOAD.md)** | Multi-Page PDF & Image Upload System | Max 4 pages (ChatGPT/Gemini style), PDF 2.2x scale canvas extraction, Thumbnail strip UI, Per-page crop/rotate/delete, Multi-image GPT-4o vision OCR, Report sample tabs |
 
 ---
 
