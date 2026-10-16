@@ -46,7 +46,8 @@ import {
   Clipboard,
   Pen,
   Volume2,
-  VolumeX
+  VolumeX,
+  Plus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -106,6 +107,7 @@ interface SavedReport {
   interventionHistory?: InterventionHistory;
   result: AnalysisResult;
   image?: string | null;
+  images?: string[];
   timeTaken?: string;
   observations: string[];
   dataSources: string[];
@@ -302,7 +304,42 @@ export default function App({ user, onLogout, reportTabMode = false }: AppProps)
     );
   };
 
-  const [image, setImage] = useState<string | null>(null);
+  const [images, setImages] = useState<string[]>([]);
+  const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
+  const image = images[activeImageIndex] || images[0] || null;
+
+  const setImage = useCallback((newImg: string | null) => {
+    if (!newImg) {
+      setImages([]);
+      setActiveImageIndex(0);
+    } else {
+      setImages(prev => {
+        if (prev.length === 0) return [newImg];
+        const next = [...prev];
+        const idx = activeImageIndex < next.length ? activeImageIndex : 0;
+        next[idx] = newImg;
+        return next;
+      });
+    }
+  }, [activeImageIndex]);
+
+  const removeImage = useCallback((indexToRemove: number) => {
+    setImages(prev => {
+      const next = prev.filter((_, idx) => idx !== indexToRemove);
+      setActiveImageIndex(current => {
+        if (current >= next.length) {
+          return Math.max(0, next.length - 1);
+        }
+        return current;
+      });
+      return next;
+    });
+  }, []);
+
+  const clearAllImages = useCallback(() => {
+    setImages([]);
+    setActiveImageIndex(0);
+  }, []);
   const [studentName, setStudentName] = useState<string>('');
   const [schoolName, setSchoolName] = useState<string>('');
   const [cityName, setCityName] = useState<string>('');
@@ -363,7 +400,13 @@ export default function App({ user, onLogout, reportTabMode = false }: AppProps)
         const savedResult = sessionStorage.getItem('graphia_report_result');
         const savedMeta = sessionStorage.getItem('graphia_report_meta');
         if (savedResult) {
-          setResult(JSON.parse(savedResult));
+          const parsed = JSON.parse(savedResult);
+          setResult(parsed);
+          if (parsed.images && parsed.images.length > 0) {
+            setImages(parsed.images);
+          } else if (parsed.image) {
+            setImages([parsed.image]);
+          }
           setActiveStep(4);
         }
         if (savedMeta) {
@@ -689,6 +732,7 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
       },
       result,
       image: image,
+      images: images.length > 0 ? images : (image ? [image] : []),
       timeTaken,
       observations: selectedObservations,
       dataSources: selectedDataSources,
@@ -722,9 +766,11 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
 
   const loadReport = (report: SavedReport) => {
     // Ensure the result object has the image attached for the new persistent rendering logic
+    const reportImages = (report as any).images || (report.result as any)?.images || (report.image ? [report.image] : []);
     const resultWithImage = { 
       ...report.result, 
-      image: report.result.image || report.image || null 
+      image: report.result.image || report.image || null,
+      images: reportImages
     } as AnalysisResult;
 
     setResult(resultWithImage);
@@ -740,7 +786,12 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
     setInterventionImproved(report.interventionHistory?.improved || 'no');
     setInterventionDetails(report.interventionHistory?.details || '');
     setDob(''); // We don't store DOB for privacy, just the calculated age
-    setImage(report.image || null);
+    if (reportImages.length > 0) {
+      setImages(reportImages);
+      setActiveImageIndex(0);
+    } else {
+      setImage(report.image || null);
+    }
     setTimeTaken(report.timeTaken || '');
     setSelectedObservations(report.observations);
     setSelectedDataSources(report.dataSources);
@@ -895,7 +946,15 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
       if (ctx) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-        setImage(dataUrl);
+        setImages(prev => {
+          if (prev.length >= 4) {
+            setError("Maximum 4 pages allowed.");
+            return prev;
+          }
+          const next = [...prev, dataUrl];
+          setActiveImageIndex(next.length - 1);
+          return next;
+        });
         // Always stop camera after capture — user gets clear feedback that photo was taken
         stopCamera();
       }
@@ -978,149 +1037,126 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
     return diff <= 2;
   };
 
-  const processFile = async (file: File) => {
-    console.log('[processFile] called — name:', file.name, '| type:', file.type, '| size:', file.size);
+  const processFiles = async (fileList: FileList | File[]) => {
+    const files = Array.from(fileList);
+    if (!files.length) return;
 
-    if (file.size > 50 * 1024 * 1024) {
-      setError('File size exceeds 50MB limit.');
-      return;
-    }
+    setError(null);
+    console.log(`[processFiles] processing ${files.length} file(s)...`);
 
-    const fileName = file.name ? file.name.toLowerCase() : '';
-    console.log('[processFile] fileName (lower):', fileName);
-
-    // --- PDF ---
-    if (fileName.endsWith('.pdf') || file.type === 'application/pdf') {
-      console.log('[processFile] → PDF branch entered');
-      try {
-        setError(null);
-        console.log('[processFile] importing pdfjs-dist...');
-        const pdfjsLib = await import('pdfjs-dist');
-        console.log('[processFile] pdfjs version:', pdfjsLib.version);
-        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-          'pdfjs-dist/build/pdf.worker.min.mjs',
-          import.meta.url
-        ).toString();
-        console.log('[processFile] workerSrc set to:', pdfjsLib.GlobalWorkerOptions.workerSrc);
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        console.log('[processFile] PDF loaded, pages:', pdf.numPages);
-        const page = await pdf.getPage(1);
-        const viewport = page.getViewport({ scale: 3.0 });
-        const canvas = document.createElement('canvas');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        const ctx = canvas.getContext('2d')!;
-        await page.render({ canvasContext: ctx as any, canvas, viewport }).promise;
-        console.log('[processFile] PDF rendered to canvas ✓');
-        setImage(canvas.toDataURL('image/png'));
-        setRotation(0);
-      } catch (e) {
-        console.error('[processFile] PDF render error:', e);
-        setError('Failed to render PDF. Please ensure the file is not password-protected.');
+    for (const file of files) {
+      if (file.size > 50 * 1024 * 1024) {
+        setError('One or more files exceed the 50MB limit.');
+        return;
       }
-      return;
-    }
 
-    // --- Word (DOC / DOCX) ---
-    if (
-      fileName.endsWith('.docx') ||
-      fileName.endsWith('.doc') ||
-      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-      file.type === 'application/msword'
-    ) {
-      console.log('[processFile] → DOCX branch entered');
-      try {
-        setError(null);
-        console.log('[processFile] importing mammoth...');
-        const mammoth = await import('mammoth');
-        const arrayBuffer = await file.arrayBuffer();
-        const result = await mammoth.convertToHtml({ arrayBuffer });
-        console.log('[processFile] mammoth HTML length:', result.value.length);
+      const fileName = file.name ? file.name.toLowerCase() : '';
 
-        const iframe = document.createElement('iframe');
-        iframe.style.cssText = 'position:fixed;left:-9999px;width:800px;height:1100px;';
-        document.body.appendChild(iframe);
-        const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (!iframeDoc) {
-          setError('Could not render Word document.');
-          document.body.removeChild(iframe);
-          return;
+      // --- PDF: Multi-page Extraction (up to 4 pages) ---
+      if (fileName.endsWith('.pdf') || file.type === 'application/pdf') {
+        try {
+          console.log('[processFiles] rendering PDF pages...');
+          const pdfjsLib = await import('pdfjs-dist');
+          pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+            'pdfjs-dist/build/pdf.worker.min.mjs',
+            import.meta.url
+          ).toString();
+
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          const numPagesToProcess = Math.min(pdf.numPages, 4);
+          const renderedPages: string[] = [];
+
+          for (let p = 1; p <= numPagesToProcess; p++) {
+            const page = await pdf.getPage(p);
+            const viewport = page.getViewport({ scale: 2.2 });
+            const canvas = document.createElement('canvas');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            const ctx = canvas.getContext('2d')!;
+            await page.render({ canvasContext: ctx as any, canvas, viewport }).promise;
+            renderedPages.push(canvas.toDataURL('image/jpeg', 0.9));
+          }
+
+          setImages(prev => {
+            const combined = [...prev, ...renderedPages].slice(0, 4);
+            return combined;
+          });
+          setActiveImageIndex(0);
+          setRotation(0);
+        } catch (e) {
+          console.error('[processFiles] PDF render error:', e);
+          setError('Failed to render PDF. Please ensure the file is not password-protected.');
         }
-        iframeDoc.open();
-        iframeDoc.write(`<html><body style="font-family:serif;padding:40px;font-size:14px;">${result.value}</body></html>`);
-        iframeDoc.close();
-
-        await new Promise(r => setTimeout(r, 400));
-        console.log('[processFile] importing html2canvas...');
-        const { default: html2canvas } = await import('html2canvas');
-        const canvas = await html2canvas(iframeDoc.body, { scale: 2, useCORS: true });
-        document.body.removeChild(iframe);
-        console.log('[processFile] DOCX rendered to canvas ✓');
-        setImage(canvas.toDataURL('image/jpeg', 0.92));
-        setRotation(0);
-      } catch (e) {
-        console.error('[processFile] DOCX render error:', e);
-        setError('Failed to render Word document. Please try saving as PDF or image first.');
+        continue;
       }
-      return;
+
+      // --- Word (DOC / DOCX) ---
+      if (
+        fileName.endsWith('.docx') ||
+        fileName.endsWith('.doc') ||
+        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        file.type === 'application/msword'
+      ) {
+        try {
+          const mammoth = await import('mammoth');
+          const arrayBuffer = await file.arrayBuffer();
+          const result = await mammoth.convertToHtml({ arrayBuffer });
+
+          const iframe = document.createElement('iframe');
+          iframe.style.cssText = 'position:fixed;left:-9999px;width:800px;height:1100px;';
+          document.body.appendChild(iframe);
+          const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+          if (iframeDoc) {
+            iframeDoc.open();
+            iframeDoc.write(`<html><body style="font-family:serif;padding:40px;font-size:14px;">${result.value}</body></html>`);
+            iframeDoc.close();
+
+            await new Promise(r => setTimeout(r, 400));
+            const { default: html2canvas } = await import('html2canvas');
+            const canvas = await html2canvas(iframeDoc.body, { scale: 2, useCORS: true });
+            document.body.removeChild(iframe);
+            const docImg = canvas.toDataURL('image/jpeg', 0.92);
+            setImages(prev => [...prev, docImg].slice(0, 4));
+            setRotation(0);
+          }
+        } catch (e) {
+          console.error('[processFiles] DOCX render error:', e);
+          setError('Failed to render Word document.');
+        }
+        continue;
+      }
+
+      // --- Standard Images (JPG, PNG, WebP) ---
+      const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.jfif', '.gif', '.bmp', '.tiff', '.tif', '.svg', '.avif'];
+      const isImageExtension = imageExtensions.some(ext => fileName.endsWith(ext));
+      const isValid = (file.type && file.type.startsWith('image/')) || isImageExtension || !file.type;
+
+      if (isValid) {
+        await new Promise<void>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const dataUrl = reader.result as string;
+            setImages(prev => {
+              if (prev.length >= 4) return prev;
+              const next = [...prev, dataUrl];
+              setActiveImageIndex(next.length - 1);
+              return next;
+            });
+            resolve();
+          };
+          reader.readAsDataURL(file);
+        });
+      }
     }
-
-    // --- HEIC/HEIF ---
-    if (fileName.endsWith('.heic') || fileName.endsWith('.heif')) {
-      setError('HEIC/HEIF images (commonly from iPhones) are not supported natively by web browsers. Please save or export the image as standard JPG or PNG before uploading.');
-      return;
-    }
-
-    // --- Standard images ---
-    console.log('[processFile] → image branch');
-    const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.jfif', '.gif', '.bmp', '.tiff', '.tif', '.svg', '.avif'];
-    const isImageExtension = imageExtensions.some(ext => fileName.endsWith(ext));
-
-    let isValid = false;
-    if (file.type && file.type.startsWith('image/')) {
-      isValid = true;
-    } else if (isImageExtension) {
-      isValid = true;
-    } else if (!file.type || file.type === 'application/octet-stream') {
-      isValid = true;
-    }
-
-    console.log('[processFile] isValid:', isValid);
-
-    if (!isValid) {
-      setError('Please upload a valid image file (JPG, PNG, WebP), PDF, or Word document (DOCX).');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = reader.result as string;
-      const img = new Image();
-      img.onload = () => {
-        console.log('[processFile] image loaded ✓');
-        setImage(dataUrl);
-        setRotation(0);
-        setError(null);
-      };
-      img.onerror = () => {
-        setError('The file uploaded does not appear to be a valid image or is corrupted. Please ensure it is a JPG, PNG or WebP image.');
-      };
-      img.src = dataUrl;
-    };
-    reader.onerror = () => {
-      setError('Failed to read file. Please try again.');
-    };
-    reader.readAsDataURL(file);
   };
 
+  const processFile = (file: File) => processFiles([file]);
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log('[handleImageUpload] triggered, files:', e.target.files);
-    const file = e.target.files?.[0];
-    if (file) {
-      processFile(file);
-    } else {
-      console.warn('[handleImageUpload] no file selected');
+    if (e.target.files && e.target.files.length > 0) {
+      processFiles(e.target.files);
+      e.target.value = '';
     }
   };
 
@@ -1141,7 +1177,12 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
       ctx.drawImage(img, -img.width / 2, -img.height / 2);
 
       const rotatedBase64 = canvas.toDataURL('image/jpeg', 0.9);
-      setImage(rotatedBase64);
+      setImages(prev => {
+        const next = [...prev];
+        const idx = activeImageIndex < next.length ? activeImageIndex : 0;
+        next[idx] = rotatedBase64;
+        return next;
+      });
     };
     img.src = image;
   };
@@ -1318,8 +1359,9 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
     setActiveStep(4);
     setError(null);
     try {
+      const pagesToAnalyze = images.length > 0 ? images : (image ? [image] : []);
       const analysis = await analyzeHandwriting(
-        image, 
+        pagesToAnalyze, 
         grade, 
         context, 
         selectedObservations, 
@@ -1341,7 +1383,7 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
         contactEmail,
         contactPhone
       );
-      const analysisResult = { ...analysis, image };
+      const analysisResult = { ...analysis, image, images: pagesToAnalyze };
       
       // Update report with probability and analysis results
       try {
@@ -2454,32 +2496,37 @@ ${result.report}
               <div className="space-y-1">
                 <h2 className="font-serif italic text-lg flex items-center gap-2">
                   <Upload className="w-4 h-4" /> 1. Sample Input
+                  {images.length > 0 && (
+                    <span className="font-mono text-[9px] not-italic bg-[#141414] text-[#E4E3E0] px-2 py-0.5 uppercase tracking-wider font-semibold">
+                      {images.length} / 4 Pages
+                    </span>
+                  )}
                 </h2>
                 <div className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest opacity-40">
                   <AlertCircle className="w-3 h-3" />
-                  <span>Min. 75 words recommended for clinical validity</span>
+                  <span>PDF multi-page auto extract or upload up to 4 images</span>
                 </div>
               </div>
               {image && (
-                <div className="flex gap-2">
+                <div className="flex items-center gap-1.5">
                   <button 
                     onClick={startCamera}
-                    className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest border border-[#141414] px-2 py-1 hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors bg-white/50"
-                    title="Retake photo"
+                    className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-widest border border-[#141414] px-2 py-1 hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors bg-white/50"
+                    title="Add / retake photo"
                   >
                     <Camera className="w-3 h-3" />
                   </button>
                   <button 
                     onClick={() => setIsCropping(true)}
-                    className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest border border-[#141414] px-2 py-1 hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors"
-                    title="Crop image"
+                    className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-widest border border-[#141414] px-2 py-1 hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors"
+                    title="Crop current page"
                   >
                     <CropIcon className="w-3 h-3" /> Crop
                   </button>
                   <button 
                     onClick={rotateImage}
-                    className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest border border-[#141414] px-2 py-1 hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors"
-                    title="Rotate image 90 degrees"
+                    className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-widest border border-[#141414] px-2 py-1 hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors"
+                    title="Rotate current page 90 degrees"
                   >
                     <RotateCw className="w-3 h-3" /> Rotate
                   </button>
@@ -2488,7 +2535,9 @@ ${result.report}
             </div>
             
             <div 
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => {
+                if (!image) fileInputRef.current?.click();
+              }}
               onDragOver={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -2506,9 +2555,8 @@ ${result.report}
                 e.stopPropagation();
                 e.currentTarget.classList.remove('bg-[#141414]/5');
                 e.currentTarget.classList.remove('border-[#141414]/40');
-                const file = e.dataTransfer.files?.[0];
-                if (file) {
-                  processFile(file);
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                  processFiles(e.dataTransfer.files);
                 }
               }}
               className={`
@@ -2519,20 +2567,49 @@ ${result.report}
               `}
             >
               {image ? (
-                <div className="relative w-full h-full">
-                  <img src={image} alt="Handwriting sample" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-                  <div className="absolute inset-0 bg-[#141414]/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <p className="text-[#E4E3E0] font-mono text-[10px] uppercase tracking-widest">Click to change image</p>
+                <div className="relative w-full h-full flex items-center justify-center bg-black/5">
+                  <img 
+                    src={image} 
+                    alt={`Handwriting sample page ${activeImageIndex + 1}`} 
+                    className="w-full h-full object-contain" 
+                    referrerPolicy="no-referrer" 
+                  />
+                  {/* Active Page Badge */}
+                  <div className="absolute top-2 left-2 bg-[#141414]/85 text-[#E4E3E0] font-mono text-[10px] px-2.5 py-1 flex items-center gap-1.5 backdrop-blur-sm shadow">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    <span className="font-bold">PAGE {activeImageIndex + 1} OF {images.length}</span>
+                  </div>
+
+                  {/* Delete Current Page Button in preview */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeImage(activeImageIndex);
+                    }}
+                    title="Remove this page"
+                    className="absolute top-2 right-2 bg-red-600/90 hover:bg-red-700 text-white p-1 rounded-sm shadow opacity-80 hover:opacity-100 transition-all flex items-center gap-1 text-[9px] font-mono uppercase"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+
+                  {/* Hover Overlay */}
+                  <div className="absolute inset-0 bg-[#141414]/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                    <span className="bg-white/95 text-[#141414] font-mono text-[10px] uppercase tracking-widest px-3 py-1.5 shadow pointer-events-auto">
+                      {images.length < 4 ? 'Click thumbnails below to switch / + to add' : 'Previewing page ' + (activeImageIndex + 1)}
+                    </span>
                   </div>
                 </div>
               ) : (
                 <div className="text-center p-8">
                   <Camera className="w-12 h-12 mx-auto mb-4 opacity-20 group-hover:opacity-40 transition-opacity" />
-                  <p className="font-mono text-xs uppercase tracking-wider">
+                  <p className="font-mono text-xs uppercase tracking-wider font-bold">
                     Upload or capture handwriting sample
                   </p>
-                  <p className="text-[10px] opacity-50 mt-2">
-                    JPG, PNG, WebP, PDF, Word (Max 50MB)
+                  <p className="text-[10px] opacity-75 mt-2 font-mono">
+                    PDF (multi-page auto extracted) or upload up to 4 images
+                  </p>
+                  <p className="text-[9px] opacity-40 mt-1">
+                    JPG, PNG, WebP, PDF (Max 4 pages, 50MB)
                   </p>
                 </div>
               )}
@@ -2541,9 +2618,107 @@ ${result.report}
                 ref={fileInputRef} 
                 onChange={handleImageUpload} 
                 className="hidden" 
+                multiple
                 accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,.tiff,.tif,.svg,.avif,.jfif,.pdf,.doc,.docx"
               />
             </div>
+
+            {/* Thumbnail Carousel / Page Strip (ChatGPT / Gemini style) */}
+            {images.length > 0 && (
+              <div className="mt-3 p-3 border border-[#141414] bg-[#141414]/[0.03]">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-mono text-[10px] uppercase tracking-wider font-bold opacity-80 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5" />
+                    Multi-Page Sample ({images.length}/4)
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {images.length < 4 && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          fileInputRef.current?.click();
+                        }}
+                        className="font-mono text-[9px] uppercase tracking-wider text-blue-700 hover:text-blue-900 font-semibold flex items-center gap-0.5"
+                      >
+                        <Plus className="w-3 h-3" /> Add Page
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        clearAllImages();
+                      }}
+                      className="font-mono text-[9px] uppercase tracking-wider text-red-600 hover:text-red-800 font-semibold"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2">
+                  {images.map((imgSrc, idx) => {
+                    const isActive = idx === activeImageIndex;
+                    return (
+                      <div
+                        key={idx}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveImageIndex(idx);
+                        }}
+                        className={`relative aspect-[3/4] border-2 rounded overflow-hidden cursor-pointer transition-all group/item ${
+                          isActive 
+                            ? 'border-[#141414] ring-2 ring-[#141414]/30 shadow-md scale-[1.02]' 
+                            : 'border-[#141414]/20 hover:border-[#141414]/60 bg-white opacity-85 hover:opacity-100'
+                        }`}
+                      >
+                        <img 
+                          src={imgSrc} 
+                          alt={`Page ${idx + 1}`} 
+                          className="w-full h-full object-cover" 
+                        />
+                        {/* Page Badge */}
+                        <div className={`absolute bottom-0 inset-x-0 text-center py-0.5 font-mono text-[9px] font-bold tracking-wider ${
+                          isActive ? 'bg-[#141414] text-white' : 'bg-[#141414]/75 text-[#E4E3E0]'
+                        }`}>
+                          Page {idx + 1}
+                        </div>
+                        {/* Quick Delete Page */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeImage(idx);
+                          }}
+                          title={`Delete page ${idx + 1}`}
+                          className="absolute top-1 right-1 w-4 h-4 bg-red-600 hover:bg-red-700 text-white rounded-full flex items-center justify-center opacity-80 hover:opacity-100 transition-opacity shadow"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                  {/* Add Page Card if < 4 */}
+                  {images.length < 4 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fileInputRef.current?.click();
+                      }}
+                      className="aspect-[3/4] border-2 border-dashed border-[#141414]/30 hover:border-[#141414] hover:bg-[#141414]/5 rounded flex flex-col items-center justify-center transition-all text-[#141414]/60 hover:text-[#141414] group"
+                      title="Upload next page (up to 4 pages total)"
+                    >
+                      <Plus className="w-5 h-5 mb-1 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      <span className="font-mono text-[9px] uppercase tracking-wider font-bold">
+                        + Page {images.length + 1}
+                      </span>
+                      <span className="text-[7.5pt] opacity-50 font-mono mt-0.5">
+                        {4 - images.length} left
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <button 
@@ -3242,14 +3417,33 @@ ${result.report}
                           <div className="grid grid-cols-12 gap-4 items-stretch">
                             {/* Left Pane: Original Handwriting Sample */}
                             <div className="col-span-7 flex flex-col">
-                              <h3 className="text-[#0C2340] font-sans font-bold text-[8.5pt] uppercase tracking-wider border-b border-[#0C2340]/20 pb-0.5 mb-1.5">
-                                ORIGINAL HANDWRITING SAMPLE
-                              </h3>
+                              <div className="flex items-center justify-between border-b border-[#0C2340]/20 pb-0.5 mb-1.5">
+                                <h3 className="text-[#0C2340] font-sans font-bold text-[8.5pt] uppercase tracking-wider">
+                                  ORIGINAL HANDWRITING SAMPLE {((result as any).images?.length > 1 || images.length > 1) ? `(${activeImageIndex + 1}/${(result as any).images?.length || images.length} PAGES)` : ''}
+                                </h3>
+                                {((result as any).images?.length > 1 || images.length > 1) && (
+                                  <div className="flex items-center gap-1 print:hidden">
+                                    {((result as any).images || images).map((_: any, pIdx: number) => (
+                                      <button
+                                        key={pIdx}
+                                        onClick={() => setActiveImageIndex(pIdx)}
+                                        className={`px-1.5 py-0.5 font-mono text-[7pt] rounded transition-all ${
+                                          activeImageIndex === pIdx 
+                                            ? 'bg-[#0C2340] text-white font-bold' 
+                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                        }`}
+                                      >
+                                        P.{pIdx + 1}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                               <div className="border border-gray-200 p-1 bg-white flex-1 flex items-center justify-center rounded-sm min-h-[175px]">
-                                {(result.image || image) ? (
+                                {((result as any).images?.[activeImageIndex] || result.image || image) ? (
                                   <img 
-                                    src={result.image || image || ''} 
-                                    alt="Evaluated handwriting" 
+                                    src={(result as any).images?.[activeImageIndex] || result.image || image || ''} 
+                                    alt={`Evaluated handwriting page ${activeImageIndex + 1}`} 
                                     className="max-h-[165px] max-w-full object-contain block" 
                                     referrerPolicy="no-referrer"
                                   />

@@ -166,8 +166,12 @@ function qualityGate(evidence: any): any {
 // ══════════════════════════════════════════════════════════════════════════════
 // STEP 1 — GPT-4o: Evidence extraction only. No scores. No diagnosis.
 // ══════════════════════════════════════════════════════════════════════════════
-function buildExtractionPrompt(grade: string): string {
-  return `You are a forensic OCR specialist analyzing a handwritten document for DYSGRAPHIA SCREENING.
+function buildExtractionPrompt(grade: string, pageCount: number = 1): string {
+  const multiPageNotice = pageCount > 1
+    ? `\n\n════ MULTI-PAGE SAMPLE NOTICE ════\nThe student's writing sample spans ${pageCount} consecutive pages (Page 1 through Page ${pageCount}). Transcribe the continuous handwriting across all ${pageCount} pages sequentially from beginning to end without skipping lines or pages. Transcribe the entire text as a single cohesive transcription.\n`
+    : '';
+
+  return `You are a forensic OCR specialist analyzing a handwritten document for DYSGRAPHIA SCREENING.${multiPageNotice}
 
 STRICT CLINICAL RULES:
 1. TRANSCRIPTION MUST BE VERBATIM - This is clinical data, not a document cleanup task.
@@ -1465,14 +1469,19 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
   }
 
   const userContent = messages[0]?.content;
-  const imageUrlObj = Array.isArray(userContent)
-    ? userContent.find((c: any) => c.type === 'image_url') : null;
-  const imageUrl: string | null = imageUrlObj?.image_url?.url || null;
+  const imageUrls: string[] = Array.isArray(userContent)
+    ? userContent
+        .filter((c: any) => (c.type === 'image_url' || c.image_url) && (c.image_url?.url || c.url))
+        .map((c: any) => c.image_url?.url || c.url)
+        .slice(0, 4)
+    : [];
+
+  const imageUrl: string | null = imageUrls[0] || null;
 
   const textPart: string = Array.isArray(userContent)
     ? userContent.find((c: any) => c.type === 'text')?.text || '' : '';
 
-  console.log('[REQ] prompt length:', textPart.length, '| image present:', !!imageUrl);
+  console.log('[REQ] prompt length:', textPart.length, '| images count:', imageUrls.length);
   console.log('═══════════════════════════════════════════════\n');
 
   function extract(key: string): string | undefined {
@@ -1499,16 +1508,22 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
   const improvedVal       = (improvedMatch?.[1] || (/Intervention\s*[-:]\s*yes/i.test(textPart) ? 'YES' : 'NO')).toUpperCase();
   const rtiImprovement    = (interventionTried && improvedVal !== 'NO') || /Intervention\s*[-:]\s*yes/i.test(textPart);
 
-  if (!imageUrl) {
+  if (imageUrls.length === 0) {
     res.status(400).json({ error: 'No image found in messages' });
     return;
   }
 
   try {
     // ── STEP 1: Evidence Extraction (+ parallel cancellation pass) ────────────
-    console.log('[Step 1] Extracting evidence (2 parallel passes)...');
+    console.log(`[Step 1] Extracting evidence across ${imageUrls.length} page(s) (2 parallel passes)...`);
 
     const preferredModel = model || 'gpt-4o';
+
+    const imageInputs = imageUrls.map(url => ({
+      type: 'input_image' as const,
+      image_url: url,
+      detail: 'high' as const,
+    }));
 
     const [step1, step1b] = await Promise.all([
       withFallback((client, m) => createResponse(client, {
@@ -1517,8 +1532,8 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
           {
             role: 'user',
             content: [
-              { type: 'input_text', text: buildExtractionPrompt(grade_p) },
-              { type: 'input_image', image_url: imageUrl, detail: 'high' },
+              { type: 'input_text', text: buildExtractionPrompt(grade_p, imageUrls.length) },
+              ...imageInputs,
             ],
           },
         ],
@@ -1533,7 +1548,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
             role: 'user',
             content: [
               { type: 'input_text', text: buildCancellationPrompt(grade_p, paper_p) },
-              { type: 'input_image', image_url: imageUrl, detail: 'high' },
+              ...imageInputs,
             ],
           },
         ],

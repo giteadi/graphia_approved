@@ -11,6 +11,7 @@ export interface SpellingError {
 export interface AnalysisResult {
   report: string;
   image?: string;
+  images?: string[];
   summary: {
     alignment: string;
     lineQuality: string;
@@ -74,7 +75,7 @@ export interface InterventionHistory {
 }
 
 export async function analyzeHandwriting(
-  imageBase64: string,
+  imageBase64: string | string[],
   grade: string,
   studentContext?: string,
   observations?: string[],
@@ -93,6 +94,9 @@ export async function analyzeHandwriting(
   contactPhone?: string
 ): Promise<AnalysisResult> {
   const model = "gpt-4o";
+  const imageArray = (Array.isArray(imageBase64) ? imageBase64 : [imageBase64])
+    .filter(Boolean)
+    .slice(0, 4);
   
     const prompt = [
       'GraphiaCheck handwriting analysis request.',
@@ -125,9 +129,16 @@ export async function analyzeHandwriting(
     console.log('[gemini.ts] token present:', !!token, '| length:', token.length);
     console.log('[gemini.ts] token preview:', token ? token.slice(0, 20) + '...' : 'EMPTY');
     console.log('[gemini.ts] grade:', grade, '| model:', model);
-    console.log('[gemini.ts] image size (chars):', imageBase64.length);
+    console.log('[gemini.ts] total pages/images:', imageArray.length);
     console.log('[gemini.ts] sending POST to', `${API_BASE}/analyze`);
     // ────────────────────────────────────────────────────────
+
+    const imageContentBlocks = imageArray.map(img => ({
+      type: 'image_url',
+      image_url: {
+        url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`,
+      },
+    }));
 
     const response = await fetch(`${API_BASE}/analyze`, {
       method: 'POST',
@@ -149,12 +160,7 @@ export async function analyzeHandwriting(
             role: 'user',
             content: [
               { type: 'text', text: prompt },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
-                },
-              },
+              ...imageContentBlocks,
             ],
           },
         ],
