@@ -213,10 +213,10 @@ export function initiateRazorpayPayment(
         }
         
         onSuccess(result);
-      } catch (error) {
+      } catch (error: any) {
         console.error("🔥🔥🔥 VERIFY FAILED 🔥🔥🔥");
         console.error("🔥 Error:", error);
-        onError('Payment verification failed. Please contact support.');
+        onError(error?.message || 'Payment verification failed. Please contact support.');
       }
     },
     prefill: {

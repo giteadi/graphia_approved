@@ -198,10 +198,10 @@ export async function verifyPayment(req: Request, res: Response): Promise<void> 
         report_data?.grade || 'Unknown',
         JSON.stringify(report_data),
         probability,
-        isHighProbability,
-        report_data?.studentName || report_data?.student_name || null,
-        report_data?.age || report_data?.student_age || null,
-        contactInfo
+        isHighProbability ? 1 : 0,
+        (report_data?.studentName || report_data?.student_name || '').slice(0, 100) || null,
+        (report_data?.age || report_data?.student_age || '').slice(0, 50) || null,
+        (contactInfo || '').slice(0, 200) || null
       ]
     );
 
@@ -220,7 +220,7 @@ export async function verifyPayment(req: Request, res: Response): Promise<void> 
     console.error('[Razorpay] Verify payment error:', err.message);
     res.status(500).json({ 
       success: false, 
-      message: 'Failed to verify payment' 
+      message: err?.message || 'Failed to verify payment' 
     });
   }
 }
