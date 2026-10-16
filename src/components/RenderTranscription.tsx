@@ -74,13 +74,20 @@ function processTokens(text: string, highlightMap?: HighlightMap): Token[] {
         .replace(/\]$/, '')
         .trim();
 
-      const words = content.split(/(\s+)/);
-      for (const word of words) {
-        if (!word) continue;
+      if (content.toLowerCase() === 'unreadable' || content.toLowerCase() === '[cancelled: unreadable]') {
         tokens.push({
-          text: word,
-          type: word.trim() ? 'cancelled' : 'normal'
+          text: '[CANCELLED: unreadable]',
+          type: 'cancelled'
         });
+      } else {
+        const words = content.split(/(\s+)/);
+        for (const word of words) {
+          if (!word) continue;
+          tokens.push({
+            text: word,
+            type: word.trim() ? 'cancelled' : 'normal'
+          });
+        }
       }
     } else if (SHOW_MAYBE && /^\[(?:MAYBE-CANCELLED):/i.test(part) && part.endsWith(']')) {
       const content = part
@@ -289,7 +296,7 @@ export const RenderTranscription = React.memo(function RenderTranscription({
         switch (token.type) {
           case 'cancelled':
             return (
-              <span key={`token-${index}`} className="text-gray-500 italic line-through">
+              <span key={`token-${index}`} className="text-gray-400 italic line-through">
                 {token.text}
               </span>
             );

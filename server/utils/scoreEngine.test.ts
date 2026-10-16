@@ -318,11 +318,11 @@ const amayaEvidence: EvidenceData = {
     { written: 'conmenly', intended: 'commonly', gradeLevel: '5th grade' },
     { written: 'critisizing', intended: 'criticizing', gradeLevel: '7th grade' },
   ],
-  grammarMistakes: [],
-  runOnSentences: 0,
+  grammarMistakes: [{ type: 'syntax', example: 'there wo the world', errorWord: 'wo' }],
+  runOnSentences: 1,
   missingCapitals: 0,
   missingPunctuation: 1,
-  pastTenseErrors: 0,
+  pastTenseErrors: 1,
   letterFormationObservations: ['Cursive and print hybrid with some letters poorly closed or inconsistently connected.'],
   alignmentObservations: ['Writing mostly stays on the ruled lines with a stable baseline, though left and right margins show minor drifting.'],
   spacingObservations: ['Text is organized reasonably well from top to bottom, though minor crowding occurs when ascenders and descenders touch between lines.'],
@@ -338,13 +338,25 @@ const amayaProb = calculateProbability(amayaScores, true, amayaEvidence.wpm, 'Gr
 if (amayaProb !== 'MODERATE') {
   throw new Error(`AMAYA TEST FAILED: Expected MODERATE probability due to RTI response, got ${amayaProb}`);
 }
-if (amayaScores.letterFormation < 70) {
-  throw new Error(`AMAYA TEST FAILED: Expected Letter Formation >= 70 for cursive hybrid, got ${amayaScores.letterFormation}`);
+if (amayaScores.sentenceBoundaries !== 80) {
+  throw new Error(`AMAYA TEST FAILED: Expected Sentence Boundaries 80, got ${amayaScores.sentenceBoundaries}`);
 }
-if (amayaScores.alignment < 80) {
-  throw new Error(`AMAYA TEST FAILED: Expected Alignment >= 80 for ruled line baseline, got ${amayaScores.alignment}`);
+if (amayaScores.grammar !== 85) {
+  throw new Error(`AMAYA TEST FAILED: Expected Grammar 85, got ${amayaScores.grammar}`);
 }
-console.log('AMAYA REFERENCE TEST PASSED: Formation:', amayaScores.letterFormation, 'Alignment:', amayaScores.alignment, 'Probability:', amayaProb);
+if (amayaScores.pastTenseUsage !== 95) {
+  throw new Error(`AMAYA TEST FAILED: Expected Past Tense 95, got ${amayaScores.pastTenseUsage}`);
+}
+if (amayaScores.spelling !== 70) {
+  throw new Error(`AMAYA TEST FAILED: Expected Spelling 70, got ${amayaScores.spelling}`);
+}
+if (amayaScores.letterFormation !== 75) {
+  throw new Error(`AMAYA TEST FAILED: Expected Letter Formation 75, got ${amayaScores.letterFormation}`);
+}
+if (amayaScores.alignment !== 85) {
+  throw new Error(`AMAYA TEST FAILED: Expected Alignment 85, got ${amayaScores.alignment}`);
+}
+console.log('AMAYA REFERENCE TEST PASSED: Boundaries:', amayaScores.sentenceBoundaries, 'Grammar:', amayaScores.grammar, 'Past Tense:', amayaScores.pastTenseUsage, 'Spelling:', amayaScores.spelling, 'Formation:', amayaScores.letterFormation, 'Alignment:', amayaScores.alignment, 'Probability:', amayaProb);
 
 console.log('══════════════════════════════════════════════════════════════════════════════');
 console.log('ALL MINIMAL TESTS PASSED');

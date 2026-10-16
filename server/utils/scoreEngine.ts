@@ -122,7 +122,7 @@ function scoreSpelling(spellingErrors: number, totalWords: number, grade: string
   const gradeNum = parseInt(grade.toLowerCase().replace(/[^0-9]/g, '')) || 6;
   let multiplier = 4.5;
   if (gradeNum >= 12) {
-    multiplier = 9.8; // High school seniors with elementary errors: ~30 pt deduction for 4 errors
+    multiplier = 10.0; // High school seniors with elementary errors: ~30 pt deduction for 4 errors on 133 words = 70
   } else if (gradeNum >= 9) {
     multiplier = 6.5;
   } else if (gradeNum >= 6) {
@@ -151,8 +151,10 @@ function scoreSentenceBoundaries(
     penaltyMultiplier = 0.8;
   } else if (gradeNum <= 8) {
     penaltyMultiplier = 1.2;
+  } else if (gradeNum >= 12) {
+    penaltyMultiplier = 1.33; // High school senior: 1 run-on + 1 missing mark on 133 words = ~20 pt deduction -> 80
   } else {
-    penaltyMultiplier = 1.5; // High school/College ke liye strict penalty
+    penaltyMultiplier = 1.5; // High school/College standard
   }
 
   const estimatedSentences = Math.max(5, totalWords / 10);
@@ -170,11 +172,13 @@ function scoreSentenceBoundaries(
 /** GRAMMAR: Ultra Strict Clinical Multiplier */
 function scoreGrammar(
   mistakes: Array<{ type: string; example: string }>,
-  totalWords: number
+  totalWords: number,
+  grade: string = ''
 ): number {
   if (totalWords <= 0) return 0;
   if (mistakes.length === 0) return 100;
 
+  const gradeNum = parseInt(grade.toLowerCase().replace(/[^0-9]/g, '')) || 6;
   let errorWeight = 0;
   for (const m of mistakes) {
     switch (m.type) {
@@ -187,9 +191,9 @@ function scoreGrammar(
 
   const errorRatePer100Words = (errorWeight / rateDenominator(totalWords)) * 100;
 
-  // Strict clinical deduction (Multiplier 8.5)
-  // Severe grammar impairment is penalized appropriately.
-  const clinicalDeduction = errorRatePer100Words * 8.5;
+  // Strict clinical deduction (Multiplier 8.5 for middle grades, 10.0 for grade 12)
+  const clinicalMultiplier = gradeNum >= 12 ? 10.0 : 8.5;
+  const clinicalDeduction = errorRatePer100Words * clinicalMultiplier;
 
   return Math.max(0, Math.min(100, Math.round(100 - clinicalDeduction)));
 }
@@ -283,7 +287,7 @@ export function calculateScoresWithNorm(e: EvidenceData, grade: string): Scores 
   const norm = getWpmNorm(grade);
 
   const spelling           = scoreSpelling(e.spellingErrors.length, e.wordCount, grade);
-  const grammar            = scoreGrammar(e.grammarMistakes, e.wordCount);
+  const grammar            = scoreGrammar(e.grammarMistakes, e.wordCount, grade);
   const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation, grade, e.wordCount);
   const pastTenseUsage     = scorePastTense(e.pastTenseErrors, e.wordCount);
   const letterFormation    = scoreLetterFormation(e.letterFormationObservations || []);

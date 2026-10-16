@@ -3276,16 +3276,6 @@ ${result.report}
                                   <div className="text-[15pt] font-black text-[#0c2340] leading-none mt-0.5">
                                     {reportValue(result.summary.wordCount, 133)} words
                                   </div>
-                                  {result.summary.confirmedCancellations && result.summary.confirmedCancellations.length > 0 && (
-                                    <div className="text-[6pt] text-gray-500 italic mt-0.5 font-mono">
-                                      {(() => {
-                                        const transcriptionText = result.summary.displayTranscription || '';
-                                        const cancelledWords = transcriptionText.match(/\[CANCELLED:\s*([^\]]+)\]/gi)?.reduce((n, t) => 
-                                          n + t.replace(/\[CANCELLED:\s*|\]/gi, '').trim().split(/\s+/).length, 0) || 0;
-                                        return `${cancelledWords} cancelled (excluded from count)`;
-                                      })()}
-                                    </div>
-                                  )}
                                 </div>
                                 <div className="border-t border-gray-200 pt-2">
                                   <div className="text-[7.5pt] text-gray-500 font-mono uppercase tracking-wider">Writing speed</div>
