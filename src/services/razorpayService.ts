@@ -63,7 +63,7 @@ export async function createPaymentOrder(amount: number = 899, description?: str
   try {
     console.log('[Razorpay] Creating order for amount:', amount);
     const API_URL = import.meta.env.VITE_API_URL || '/api';
-    const API_KEY = import.meta.env.VITE_API_KEY || 'candidjobs_iep_secure_key_2025';
+    const API_KEY = import.meta.env.VITE_API_KEY || '';
     
     const response = await fetch(`${API_URL}/payments/create-order`, {
       method: 'POST',
@@ -117,7 +117,7 @@ export async function verifyPayment(
     console.log("🔥 User ID:", user_id);
     
     const API_URL = import.meta.env.VITE_API_URL || '/api';
-    const API_KEY = import.meta.env.VITE_API_KEY || 'candidjobs_iep_secure_key_2025';
+    const API_KEY = import.meta.env.VITE_API_KEY || '';
     
     const response = await fetch(`${API_URL}/payments/verify`, {
       method: 'POST',

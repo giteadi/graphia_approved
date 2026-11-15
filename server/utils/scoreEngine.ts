@@ -19,7 +19,7 @@ export interface EvidenceData {
   wordChoiceMistakes?: Array<{ written: string; intended: string; confidence?: number; type?: string }>;
 
   // Grammar
-  grammarMistakes: Array<{ type: 'agreement' | 'plural' | 'syntax' | 'other'; example: string }>;
+  grammarMistakes: Array<{ type: 'agreement' | 'plural' | 'syntax' | 'other'; example: string; errorWord?: string }>;
   runOnSentences: number;
   missingCapitals: number;
   missingPunctuation: number;
@@ -68,19 +68,37 @@ export interface Scores {
 
 // ─── Deterministic word counter (handles headers and inline tags) ───────────
 export function countWordsDeterministic(transcription: string): number {
-  // 1. Header aur non-body text ko remove karein, sath hi cancellations ko exclude karein
-  const bodyText = transcription
-    .replace(/Date:\s*\d{1,2}\/\d{1,2}\/\d{4}/gi, '')
-    .replace(/\d{1,2}:\d{2}\s*to\s*\d{1,2}(?:am|pm)?/gi, '')
-    .replace(/\[CANCELLED:\s*[^\]]+\]/gi, '') // ONLY confirmed cancellations are removed from word count; maybe-cancelled (overwrites) should be counted
+  if (!transcription || typeof transcription !== 'string') return 0;
+
+  // 1. Process line-by-line: drop standalone header/metadata lines (<= 15 words)
+  const lines = transcription.split('\n');
+  const cleanedLines = lines.map(line => {
+    const trimmed = line.trim();
+    const words = trimmed.split(/\s+/).filter(Boolean);
+    // If the line is short (<= 15 words) and starts with an administrative label, drop it
+    if (words.length <= 15 && /^(?:Q|Question|Topic|Prompt|Title|Essay|Name|Student|Date)\b[:\s-]/i.test(trimmed)) {
+      return '';
+    }
+    // If inline question header (e.g. "Q: Can money buy happiness? Before delving..."), strip question prefix only
+    let s = trimmed.replace(/^(?:Q|Question|Prompt)\s*:[^?]*\?\s*/i, '');
+    // If leading label prefix like "Essay:" or "Essay - " or "Topic: "
+    s = s.replace(/^(?:Essay|Title|Topic|Prompt)\s*[-:]\s*/i, '');
+    return s;
+  });
+
+  const bodyText = cleanedLines.join(' ')
+    .replace(/\bDate:\s*\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}\b/gi, ' ')
+    .replace(/\b\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}\b/gi, ' ')
+    .replace(/\b\d{1,2}:\d{2}\s*(?:to\s*\d{1,2}(?::\d{2})?)?\s*(?:am|pm)?\b/gi, ' ')
+    .replace(/\[CANCELLED:\s*[^\]]+\]/gi, '') // ONLY confirmed cancellations are removed from word count
     .replace(/\n/g, ' ')
     .trim();
 
   // 2. Sirf readable (visible) words count karein
   return bodyText
-    .replace(/[\[\]]/g, '') // optionally strip remaining brackets if any
+    .replace(/[\[\]]/g, '')
     .split(/\s+/)
-    .filter(word => word.length > 0) // Empty strings filter out
+    .filter(word => word.length > 0)
     .length;
 }
 
@@ -211,52 +229,90 @@ function scorePastTense(pastTenseErrors: number, totalWords: number): number {
 
 /** VISUAL MECHANICS: Crashing scores on severe traits */
 
-function scoreLetterFormation(observations: string[]): number {
-  if (observations.length === 0) return 90;
+function scoreLetterFormation(observations: string[], features?: EvidenceData['features']): number {
+  if (features?.legibility || features?.letterShapeQuality || features?.letterSizeConsistency) {
+    if (features.legibility === 'low' || features.letterShapeQuality === 'poor' || features.letterSizeConsistency === 'poor') {
+      return 45;
+    }
+    if (features.legibility === 'moderate' || features.letterShapeQuality === 'fair' || features.letterSizeConsistency === 'fair') {
+      return 70;
+    }
+    if (features.legibility === 'high' && (features.letterShapeQuality === 'good' || !features.letterShapeQuality)) {
+      return 85;
+    }
+  }
+
+  if (observations.length === 0) return 85;
   const text = observations.join(' ').toLowerCase();
   
-  if (text.includes('severe') || text.includes('illegible') || text.includes('poor form') || observations.length >= 4) return 35;
-  if (text.includes('irregular') && text.includes('poor') || text.includes('heavily distorted')) return 45;
+  const hasSevere = /\bsevere\b/.test(text) && !/\b(?:no|not|without|minimal)\s+severe\b/.test(text);
+  const hasIllegible = /\billegible\b/.test(text) && !/\b(?:not|barely)\s+illegible\b/.test(text);
+  const hasIrregular = /\birregular\b/.test(text) && !/\b(?:no|not)\s+irregular\b/.test(text);
+
+  if (hasSevere || hasIllegible) return 35;
+  if (hasIrregular && text.includes('poor')) return 45;
   // Readable cursive/print hybrid or mostly legible handwriting represents average performance
   if (text.includes('cursive') || text.includes('hybrid') || text.includes('mostly legible') || text.includes('generally legible') || text.includes('generally smooth')) {
     return 75;
   }
-  if (text.includes('inconsistent') || text.includes('irregular') || text.includes('cross-out') || text.includes('overwriting') || observations.length >= 3) return 45;
-  if (text.includes('mild') || observations.length === 2) return 60;
+  if (hasIrregular || text.includes('inconsistent') || observations.length >= 3) return 55;
+  if (text.includes('mild') || observations.length === 2) return 65;
   return 80;
 }
 
-function scoreAlignment(observations: string[]): number {
+function scoreAlignment(observations: string[], features?: EvidenceData['features']): number {
+  if (features?.baselineDeviation) {
+    if (features.baselineDeviation === 'none') return 92;
+    if (features.baselineDeviation === 'mild') return 80;
+    if (features.baselineDeviation === 'moderate') return 55;
+    if (features.baselineDeviation === 'severe') return 35;
+  }
+
   if (observations.length === 0) return 90;
   const text = observations.join(' ').toLowerCase();
   
-  if (text.includes('severe') || text.includes('erratic') || observations.length >= 3) return 35;
+  const hasSevere = /\b(?:severe|erratic)\b/.test(text) && !/\b(?:no|not|without)\s+(?:severe|erratic)\b/.test(text);
+  if (hasSevere) return 35;
   // Handwriting on ruled lines with stable baseline or generally straight orientation represents good/average performance
   if (text.includes('stable baseline') || text.includes('ruled line') || text.includes('generally straight') || text.includes('mostly stays')) {
     return 85;
   }
-  if (text.includes('moderate') || text.includes('drift') || text.includes('inconsistent') || observations.length === 2)  return 45;
-  if (text.includes('minor') || text.includes('slight') || observations.length === 1) return 65;
+  if (text.includes('moderate') || text.includes('drift') || text.includes('inconsistent') || observations.length >= 2) return 55;
+  if (text.includes('minor') || text.includes('slight') || observations.length === 1) return 70;
   return 90;
 }
 
-function scoreSpatialOrganisation(observations: string[]): number {
+function scoreSpatialOrganisation(observations: string[], features?: EvidenceData['features']): number {
+  if (features?.spacingConsistency) {
+    if (features.spacingConsistency === 'good') return 90;
+    if (features.spacingConsistency === 'fair') return 70;
+    if (features.spacingConsistency === 'poor') return 45;
+  }
+
   if (observations.length === 0) return 88;
   const text = observations.join(' ').toLowerCase();
   
-  if (text.includes('severe') || text.includes('crowded') || observations.length >= 3) return 35;
-  if (text.includes('frequent') || text.includes('irregular') || observations.length === 2) return 45;
-  if (observations.length === 1) return 65;
+  const hasSevere = /\b(?:severe|crowded)\b/.test(text) && !/\b(?:no|not|without)\s+(?:severe|crowded)\b/.test(text);
+  if (hasSevere) return 35;
+  if (text.includes('frequent') || text.includes('irregular') || observations.length >= 2) return 55;
+  if (observations.length === 1) return 70;
   return 88;
 }
 
-function scoreLineQuality(observations: string[]): number {
+function scoreLineQuality(observations: string[], features?: EvidenceData['features']): number {
+  if (features?.lineSteadiness) {
+    if (features.lineSteadiness === 'steady') return 90;
+    if (features.lineSteadiness === 'slightly_wavy') return 70;
+    if (features.lineSteadiness === 'wavy') return 55;
+  }
+
   if (observations.length === 0) return 90;
   const text = observations.join(' ').toLowerCase();
   
-  if (text.includes('severe') || text.includes('heavy') || text.includes('poor') || observations.length >= 3) return 35;
-  if (text.includes('tremor') || text.includes('uneven') || text.includes('variable') || observations.length === 2) return 45;
-  return 65;
+  const hasSevere = /\b(?:severe|heavy|poor)\b/.test(text) && !/\b(?:no|not|without)\s+(?:severe|heavy|poor)\b/.test(text);
+  if (hasSevere) return 35;
+  if (text.includes('tremor') || text.includes('uneven') || text.includes('variable') || observations.length >= 2) return 55;
+  return 70;
 }
 
 /** WRITING SPEED relative to grade norm */
@@ -290,10 +346,10 @@ export function calculateScoresWithNorm(e: EvidenceData, grade: string): Scores 
   const grammar            = scoreGrammar(e.grammarMistakes, e.wordCount, grade);
   const sentenceBoundaries = scoreSentenceBoundaries(e.runOnSentences, e.missingCapitals, e.missingPunctuation, grade, e.wordCount);
   const pastTenseUsage     = scorePastTense(e.pastTenseErrors, e.wordCount);
-  const letterFormation    = scoreLetterFormation(e.letterFormationObservations || []);
-  const alignment          = scoreAlignment(e.alignmentObservations || []);
-  const spatialOrganisation = scoreSpatialOrganisation(e.spacingObservations || []);
-  const lineQuality        = scoreLineQuality(e.lineQualityObservations || []);
+  const letterFormation    = scoreLetterFormation(e.letterFormationObservations || [], e.features);
+  const alignment          = scoreAlignment(e.alignmentObservations || [], e.features);
+  const spatialOrganisation = scoreSpatialOrganisation(e.spacingObservations || [], e.features);
+  const lineQuality        = scoreLineQuality(e.lineQualityObservations || [], e.features);
   // A missing or zero "time taken" means writing speed was never MEASURED — it is
   // not evidence of slow writing. Scoring it as 0 would drag mechanics down and
   // manufacture a false HIGH dysgraphia probability from an empty form field.
@@ -415,36 +471,56 @@ export function calculateProbability(
 }
 
 // ─── Actionable strategies library ───────────────────────────────────────────
-export function getActionableStrategies(scores: Scores, rtiImprovement: boolean): string[] {
+export function getActionableStrategies(scores: Scores, rtiImprovement: boolean, grade: string = '6'): string[] {
   const strategies: string[] = [];
+  const gradeNum = parseInt(String(grade).replace(/[^0-9]/g, '')) || 6;
+  const isSecondary = gradeNum >= 7;
 
   if (rtiImprovement) {
+    const notedAreas: string[] = [];
+    if (scores.writingSpeedAssessed !== false && scores.writingSpeed < 60) notedAreas.push('reduced writing speed');
+    if (scores.spelling < 70) notedAreas.push('spelling discrepancies');
+    if (scores.letterFormation < 70) notedAreas.push('letter formation irregularities');
+    const areasStr = notedAreas.length > 0 ? notedAreas.join(', ') : 'specific handwriting mechanics';
+
     strategies.push(
-      'Probability Estimate: There is a Moderate probability of underlying specific learning needs in written expression (Dysgraphia) based on the severely reduced writing speed, phonetic spelling errors, and working memory oversights (like repeated words). These traits fall at least two grade levels below high school expectations. However, because the student is currently responding well to intervention, a formal diagnostic label is not necessary right now as long as supports remain in place.'
+      `Documented positive response to intervention is noted. While vulnerabilities in ${areasStr} warrant continued targeted support, formal diagnostic labeling is deferred while current progress continues.`
     );
   }
 
   if (scores.writingSpeedAssessed !== false && scores.writingSpeed < 60) {
-    strategies.push('Allow extended time on all written tasks and assessments to accommodate the slow writing speed without penalizing the student\'s excellent ideas.');
-    strategies.push('Encourage the use of typing or voice-to-text software for longer essay assignments. This will remove the physical barrier of handwriting and allow the student\'s thoughts to flow freely.');
+    strategies.push('Allow extended time on all written tasks and assessments to accommodate the slow writing speed without penalizing the student\'s ideas.');
+    strategies.push('Encourage the use of typing or voice-to-text accommodations for longer essay assignments to remove the physical handwriting barrier.');
   }
 
   if (scores.spelling < 60) {
-    strategies.push('Use a multi-sensory spelling approach: say, spell, write, and check each word.');
-    strategies.push('Provide a personalised spelling list of high-frequency words for regular practice.');
+    strategies.push(isSecondary 
+      ? 'Encourage targeted spelling self-editing checklists and assistive spell-checking tools during written work.'
+      : 'Use a multi-sensory spelling approach: say, spell, write, and check each word.');
+    strategies.push('Provide a personalised spelling and vocabulary reference list for regular practice.');
   }
 
   if (scores.letterFormation < 70) {
-    strategies.push('Provide lined paper with raised tactile lines to help the student maintain letter size and baseline.');
-    strategies.push('Practice letter formation using large motor movements (whiteboard, sand trays) before moving to paper.');
+    strategies.push('Provide lined paper with raised tactile lines or clear guide rules to help the student maintain letter size and baseline.');
+    strategies.push(isSecondary
+      ? 'Incorporate ergonomic pen grips and brief graphomotor warm-up routines before extended writing sessions.'
+      : 'Practice letter formation using large motor movements (whiteboard, motor trays) before moving to paper.');
+  }
+
+  if (scores.alignment < 70 && !strategies.some(s => s.includes('tactile lines'))) {
+    strategies.push('Use structured margins and highlighted baselines to support consistent line orientation.');
   }
 
   if (scores.grammar < 60) {
-    strategies.push('Use graphic organisers to plan sentence structure before writing.');
+    strategies.push('Use graphic organisers and sentence-combining frameworks to plan sentence structure before writing.');
   }
 
   if (strategies.length < 3) {
-    strategies.push('Continue current intervention strategies — progress is evident and should be monitored each term.');
+    if (rtiImprovement) {
+      strategies.push('Continue current intervention strategies — positive progress is evident and should be monitored periodically.');
+    } else {
+      strategies.push('Implement classroom accommodations including structured writing templates and regular check-ins during long writing tasks.');
+    }
   }
 
   return strategies.slice(0, 3);

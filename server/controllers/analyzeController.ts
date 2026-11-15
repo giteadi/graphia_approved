@@ -245,51 +245,31 @@ CRITICAL — NO AUTOCORRECTION WHATSOEVER:
    When in doubt, KEEP word in transcription + add to uncertainCancellations.
 
 PARTIAL WORD RULE:
-   - If a word appears cut off or truncated (e.g., "cheape" when "cheaper" is clearly written),
-     transcribe the FULL visible word. Do not truncate words mid-letter.
-   - Common truncation errors to avoid: "cheape"→"cheaper", "Costlye"→"Costlyer",
-     "bepe"→"before", "incresse"→"increase". Always read till the last visible stroke.
+   - If a word appears cut off or truncated, transcribe the FULL visible word up to the last stroke. Do not truncate words mid-letter.
+   - Always read till the last visible stroke of the handwritten word.
 
 HALLUCINATION PREVENTION:
    - Do NOT add words that are not written in the image.
-   - "people fee Indian" - if only "fee Indian" is written, transcribe ONLY "fee Indian"
-   - Never add context words to make grammar sense
-   - If you see a word that looks like "fee" before "Indian", transcribe exactly "fee Indian"
-   - Do NOT add "people" or any other word before "fee" if it's not clearly written
-   - Every word in transcription MUST have a corresponding visible mark in the handwriting
-   - If you cannot see a word in the image, DO NOT transcribe it
+   - Never add context or filler words to make grammatical sense.
+   - Every word in transcription MUST have a corresponding visible stroke in the handwriting.
+   - If you cannot see a word in the image, DO NOT transcribe it.
 
 AUTOCORRECTION IS STRICTLY FORBIDDEN:
-   - "incresse" MUST stay "incresse" — do NOT write "increase"
-   - "befoie" MUST stay "befoie" — do NOT write "before"
-   - "thouse" MUST stay "thouse" — do NOT write "those"
-   - "Tarrifs" MUST stay "Tarrifs" — do NOT write "Tariffs"
-   - "Costlyer" MUST stay "Costlyer" — do NOT write "Costlier"
-   - If you autocorrect, the entire report scoring will be WRONG
-   - Every misspelling MUST appear in both transcription AND spellingErrors array
-   - Do NOT fix student's grammar or spelling - preserve errors exactly as written
-   - The transcription is the SCORING SOURCE OF TRUTH, not a corrected version
+   - Misspelled words MUST stay misspelled — do NOT correct them to standard English.
+   - If you autocorrect, the entire clinical report scoring will be INVALID.
+   - Every misspelling MUST appear in both transcription AND spellingErrors array.
+   - Do NOT fix student's grammar or spelling - preserve errors exactly as written.
+   - The transcription is the SCORING SOURCE OF TRUTH, not a corrected version.
 
 COMMON AUTOCORRECTION ERRORS TO AVOID:
-- "tetlephones" → "telephones" (FORBIDDEN — preserve phonetic error "tetlephones")
-- "conmenly" → "commonly" (FORBIDDEN — preserve error "conmenly")
-- "critisizing" → "criticizing" (FORBIDDEN — preserve error "critisizing")
-- "eachother" → "each other" (FORBIDDEN — preserve student's written form)
-- "buttom button" → "button" (FORBIDDEN — preserve both words "buttom button")
-- "there wo the world" → "there the world" (FORBIDDEN — preserve false start "wo")
-- "out out" → "out" (FORBIDDEN — preserve repeated words)
-- "incresse" → "increase" (FORBIDDEN)
-- "befoie" → "before" (FORBIDDEN)
-- "thouse" → "those" (FORBIDDEN)
-- "Tarrifs" → "Tariffs" (FORBIDDEN)
-- "Costlyer" → "Costlier" (FORBIDDEN)
-- "case" → "cause" (FORBIDDEN - check carefully)
-- "be" → "the" (FORBIDDEN - common substitution error)
-- If you see extra letters, wrong letters, or phonetic spelling, PRESERVE IT
-- Struck scribbles or unreadable crossed words must be marked as [CANCELLED: unreadable]
-- Title / header on page (e.g. "Essay- ") MUST be transcribed at the start.
+- Phonetic misspellings (e.g. missing double letters, vowels substituted, silent letters omitted) MUST BE PRESERVED.
+- Compound words or spacing errors (e.g. two words written together or words split in half) must be preserved as written.
+- False starts, repeated words, and ungrammatical constructions must be preserved.
+- If you see extra letters, wrong letters, or phonetic spelling, PRESERVE IT AS-IS.
+- Struck scribbles or unreadable crossed words must be marked as [CANCELLED: unreadable].
 - Do NOT insert fabricated periods or change capitalization in mid-sentence.
-- The goal is to IDENTIFY learning difficulties, not to produce clean text
+- Transcribe ONLY the student's actual body composition/essay text. Do NOT transcribe administrative sheet headers, form labels, student name, test date, or the printed test question/prompt at the top of the page.
+- The goal is to IDENTIFY learning difficulties, not to produce clean text.
 
 STRIKE-THROUGH CONFIDENCE RULE:
    - A horizontal line clearly passing THROUGH a word = CONFIRMED cancellation (confidence >= 85)
@@ -318,26 +298,20 @@ STRIKE-THROUGH CONFIDENCE RULE:
    - Do NOT cancel entire sentences or phrases unless the strike line physically passes through them.
    - For short words (1-3 letters): if a horizontal line passes through it, mark as CONFIRMED regardless of word length. Short words are harder to see but equally valid cancellations.
 
-   CRITICAL — NON-ENGLISH FRAGMENTS:
-   - Words like "se", "fee", "h", "na", "ko", "ka", "ki" may appear in 
-     Indian-English handwriting as partial words or code-switching fragments.
-   - Do NOT skip these just because they are not valid English words.
-   - If a clear horizontal strike line passes through ANY visible text — 
-     English or not — mark it as CONFIRMED cancellation.
-   - "se citizens" where "se" is struck = CONFIRMED cancellation of "se"
-   - "buy them h" where "h" is struck = CONFIRMED cancellation of "h"
-   - "fee Indian" where "fee" is struck = CONFIRMED cancellation of "fee"
+   CRITICAL — SHORT WORDS & INCOMPLETE FRAGMENTS:
+   - Short words (1-3 letters), abbreviations, and incomplete fragments may appear.
+   - Do NOT skip these just because they are short or irregular.
+   - If a clear horizontal strike line passes through ANY visible text or fragment, mark it as CONFIRMED cancellation.
 
 MULTI-WORD STRIKE RULE:
    - Check EVERY word independently for strike-through
-   - Short words (be, to, se, fee, the, a) are commonly struck and commonly missed
+   - Short words (be, to, so, of, the, a) are commonly struck and commonly missed
    - If a 2-3 letter word has a horizontal line through it = CONFIRMED cancellation
-   - If you see a continuous line through "will be", "to the", "of the", etc., treat EACH word as cancelled
+   - If you see a continuous line through multiple words, treat EACH word as cancelled
    - Do NOT miss multi-word cancellations - this is a common OCR error
-   
+
 CANCELLATION EXAMPLES (critical for accuracy):
-   - "will be" struck together → cancel BOTH "will" AND "be"
-   - "to the" struck together → cancel BOTH "to" AND "the"  
+   - When multiple words are struck together with one continuous line, cancel EACH word individually.  
    - "of the" struck together → cancel BOTH "of" AND "the"
    - "can be" struck together → cancel BOTH "can" AND "be"
    - "my cousin" struck together → cancel BOTH "my" AND "cousin"
@@ -502,6 +476,9 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
     "baselineDeviation": "none|mild|moderate|severe",
     "spacingConsistency": "good|fair|poor",
     "letterSizeConsistency": "good|fair|poor",
+    "legibility": "high|moderate|low",
+    "letterShapeQuality": "good|fair|poor",
+    "lineSteadiness": "steady|slightly_wavy|wavy",
     "slant": "left|right|mixed|upright",
     "pressureIndicators": "light|normal|heavy"
   }
@@ -716,7 +693,6 @@ After the report, append:
   "spellingErrors": ${JSON.stringify(evidence.spellingErrors.map(e => `${e.written} (${e.intended}) - ${e.gradeLevel || spellingGradeLevelLabel(scores.spelling, grade)}`))},
   "dysgraphiaIndicators": ${JSON.stringify(evidence.dsm5Traits || [])},
   "assessmentRecommendation": "${rtiImprovement ? 'A formal evaluation is NOT recommended at this time because the student has shown positive improvement with current interventions. Continued monitoring and support is recommended.' : 'Based on the evidence, a formal psycho-educational assessment is recommended.'}",
-  "probabilityEstimate": "${probability} — cite domains impaired and evidence",
   "spellingScore": "${spellingLabel} — 2-sentence justification",
   "academicDiscrepancy": "Determined dynamically by backend based on impaired domains (spelling, grammar, fluency).",
   "horizontalAnalysis": "2-sentence horizontal spacing observation",
@@ -863,9 +839,27 @@ function buildDeterministicSummary(params: {
     assessmentRecommendation: rtiImprovement
       ? 'Continued monitoring and support are recommended. Because the student has shown positive improvement with current interventions, a formal psycho-educational evaluation is not recommended at this time.'
       : (existingSummary.assessmentRecommendation || 'Based on the evidence, a formal psycho-educational assessment is recommended.'),
-    probabilityEstimate: probability === 'MODERATE'
-      ? (existingSummary.probabilityEstimate || 'Moderate probability of underlying written expression difficulties based on severely delayed fluency and working memory errors, but formal diagnosis is deferred due to positive RTI response.')
-      : (existingSummary.probabilityEstimate || `${probability} probability of underlying specific learning needs in written expression (Dysgraphia).`),
+    probabilityEstimate: (() => {
+      const impairedList: string[] = [];
+      if (scores.letterFormation < 70) impairedList.push(`letter formation (${scores.letterFormation}/100)`);
+      if (scores.alignment < 70) impairedList.push(`alignment (${scores.alignment}/100)`);
+      if (scores.spelling < 75) impairedList.push(`spelling (${scores.spelling}/100)`);
+      if (scores.grammar < 70) impairedList.push(`grammar (${scores.grammar}/100)`);
+      if (evidence.wpm > 0 && evidence.wpm < norm.min) impairedList.push(`writing speed (${evidence.wpm} WPM vs norm ${norm.min}-${norm.max})`);
+
+      const domainDesc = impairedList.length > 0 ? `characterized by vulnerabilities in ${impairedList.join(', ')}` : 'with handwriting mechanics mostly within grade expectations';
+
+      if (rtiImprovement) {
+        return `MODERATE — Documented progress under RTI is noted; formal diagnosis is deferred while interventions continue to support ${domainDesc}.`;
+      }
+      if (probability === 'HIGH') {
+        return `HIGH — Multiple clinical indicators of dysgraphia present, ${domainDesc}.`;
+      }
+      if (probability === 'MODERATE') {
+        return `MODERATE — Specific handwriting vulnerabilities observed, ${domainDesc}.`;
+      }
+      return `LOW — Handwriting performance is generally age-appropriate, ${domainDesc}.`;
+    })(),
     spellingScore: `${spellingLabel} — ${spellingErrors.length} spelling error${spellingErrors.length === 1 ? '' : 's'} detected.`,
     actionableStrategies: actionableStrategies || existingSummary.actionableStrategies || [],
     academicDiscrepancy: (() => {
@@ -875,8 +869,10 @@ function buildDeterministicSummary(params: {
       if (scores.spelling < 75 || evidence.spellingErrors.length >= 3) impairedDomains.push("spelling");
       if (scores.grammar < 70) impairedDomains.push("grammar");
       if (evidence.wpm > 0 && evidence.wpm < norm.min) impairedDomains.push("fluency (writing speed)");
+      if (scores.letterFormation < 70) impairedDomains.push("letter formation");
+      if (scores.alignment < 70) impairedDomains.push("alignment");
 
-      // 2. If NO domains are in RED
+      // 2. If NO domains are impaired
       if (impairedDomains.length === 0) {
         return `Writing fluency and core mechanics remain at or near expected ${grade} expectations.`;
       }
@@ -893,24 +889,29 @@ function buildDeterministicSummary(params: {
       } else if (impairedDomains.length === 2) {
         domainsText = `${impairedDomains[0]} and ${impairedDomains[1]}`;
       } else {
-        domainsText = `${impairedDomains[0]}, ${impairedDomains[1]}, and ${impairedDomains[2]}`;
+        domainsText = `${impairedDomains.slice(0, -1).join(', ')}, and ${impairedDomains[impairedDomains.length - 1]}`;
       }
 
-      // 4. Determine terminology: Low, Moderate, or High based on count
-      let severity = "Low";
-      if (impairedDomains.length === 2) severity = "Moderate";
-      if (impairedDomains.length >= 3) severity = "High";
-
-      // 5. Construct the final clinical statement
-      return `Writing fluency is significantly below expected norms for ${grade}. Performance falls below grade-level expectations specifically in the domain(s) of ${domainsText}, which currently require clinical support.`;
+      // 4. Construct the final clinical statement
+      if (evidence.wpm <= 0) {
+        return `Writing speed was not assessed. Performance falls below grade-level expectations specifically in the domain(s) of ${domainsText}, which warrant targeted instructional support.`;
+      }
+      if (evidence.wpm < norm.min) {
+        return `Writing fluency is significantly below expected norms for ${grade}. Performance falls below grade-level expectations specifically in the domain(s) of ${domainsText}, which currently require clinical support.`;
+      }
+      return `While writing speed is within expected parameters, performance falls below grade-level expectations specifically in the domain(s) of ${domainsText}, which warrant targeted instructional support.`;
     })(),
     horizontalAnalysis: existingSummary.horizontalAnalysis || evidence.spacingObservations.join(' ') || 'Writing moves steadily across the page from left to right without significant crowding at the margins.',
     verticalAnalysis: existingSummary.verticalAnalysis || evidence.alignmentObservations.join(' ') || 'Text is organized reasonably well from top to bottom, though minor crowding occurs when ascenders and descenders touch between lines.',
     wordCount: evidence.wordCount,
     transcription: evidence.transcription,
-    fluencyAnalysis: evidence.wpm > 0
-      ? `${fluencyLabel} — ${evidence.wpm} WPM vs norm ${norm.min}-${norm.max} WPM. The physical act of writing is taking up so much mental energy that cognitive load is heavily disrupted.`
-      : `Not assessed — the time taken to produce this sample was not recorded, so words-per-minute could not be calculated. Writing speed is excluded from scoring.`,
+    fluencyAnalysis: evidence.wpm <= 0
+      ? `Not assessed — the time taken to produce this sample was not recorded, so words-per-minute could not be calculated. Writing speed is excluded from scoring.`
+      : evidence.wpm < norm.min
+      ? `Slow/Labored — ${evidence.wpm} WPM vs expected ${norm.min}–${norm.max} WPM norm for ${grade}. The physical act of writing is taking up substantial mental energy, impacting overall written expression output.`
+      : evidence.wpm <= norm.max
+      ? `Within Expected Range — ${evidence.wpm} WPM falls within the expected ${norm.min}–${norm.max} WPM norm for ${grade}. Writing pace is age-appropriate.`
+      : `Above Grade Norm — ${evidence.wpm} WPM exceeds the typical ${norm.min}–${norm.max} WPM norm for ${grade}, demonstrating fluent written production.`,
     wpm: evidence.wpm,
     basalLevel: existingSummary.basalLevel || 'Consistently demonstrates the ability to organize thoughts sequentially, structure a basic paragraph, and use high-level vocabulary.',
     ceilingLevel: existingSummary.ceilingLevel || 'Performance breaks down significantly in writing fluency (speed) and execution self-monitoring (repeated words, uncorrected fragments).',
@@ -1502,11 +1503,11 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
   const contactEmail = req.body.contactEmail || extract('Contact Email') || extract('Email') || extract('Parent Email') || null;
   const contactPhone = req.body.contactPhone || extract('Contact Phone') || extract('Phone') || extract('Mobile') || null;
 
-  const interventionTried = textPart.includes('Interventions Tried: Yes') || /Intervention\s*[-:]\s*yes/i.test(textPart) || req.body.interventionHistory?.tried === true;
-  const improvedMatch     = textPart.match(/Improvement Observed: (\w+)/);
-  const detailsMatch      = textPart.match(/Intervention Details: (.+)/);
-  const improvedVal       = (improvedMatch?.[1] || (/Intervention\s*[-:]\s*yes/i.test(textPart) ? 'YES' : 'NO')).toUpperCase();
-  const rtiImprovement    = (interventionTried && improvedVal !== 'NO') || /Intervention\s*[-:]\s*yes/i.test(textPart);
+  const interventionTried = textPart.includes('Interventions Tried: Yes') || /Interventions?\s*Tried\s*[-:]\s*yes/i.test(textPart) || req.body.interventionHistory?.tried === true;
+  const improvedMatch     = textPart.match(/Improvement Observed:\s*(\w+)/i);
+  const detailsMatch      = textPart.match(/Intervention Details:\s*(.+)/i);
+  const improvedVal       = (improvedMatch?.[1] || (req.body.interventionHistory?.improved ? req.body.interventionHistory.improved : (/Improvement Observed:\s*yes/i.test(textPart) ? 'YES' : 'NO'))).toUpperCase();
+  const rtiImprovement    = interventionTried && improvedVal === 'YES';
 
   if (imageUrls.length === 0) {
     res.status(400).json({ error: 'No image found in messages' });
@@ -1517,7 +1518,8 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     // ── STEP 1: Evidence Extraction (+ parallel cancellation pass) ────────────
     console.log(`[Step 1] Extracting evidence across ${imageUrls.length} page(s) (2 parallel passes)...`);
 
-    const preferredModel = model || 'gpt-4o';
+    const ALLOWED_MODELS = ['gpt-4o', 'chatgpt-4o-latest', 'gpt-4-turbo'];
+    const preferredModel = (model && ALLOWED_MODELS.includes(model)) ? model : 'gpt-4o';
 
     const imageInputs = imageUrls.map(url => ({
       type: 'input_image' as const,
@@ -1589,10 +1591,12 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     }
 
     const isAmayaBenchmark = 
-      (prompt_p && /world without smartphones/i.test(prompt_p)) ||
-      (studentName && /amaya/i.test(studentName)) ||
-      /world without smartphones/i.test(extracted.transcription || '') ||
-      /letters would still be the main form/i.test(extracted.transcription || '');
+      process.env.ENABLE_AMAYA_BENCHMARK_OVERRIDE === 'true' && (
+        (prompt_p && /world without smartphones/i.test(prompt_p)) ||
+        (studentName && /amaya/i.test(studentName)) ||
+        /world without smartphones/i.test(extracted.transcription || '') ||
+        /letters would still be the main form/i.test(extracted.transcription || '')
+      );
 
     if (isAmayaBenchmark) {
       console.log('[analyzeController] Primary Clinical Benchmark Applied: Amaya Taneja (Grade 12)');
@@ -2002,7 +2006,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
 
     const scores = calculateScoresWithNorm(evidenceData, grade_p);
     const probability = calculateProbability(scores, rtiImprovement, wpm, grade_p);
-    const actionableStrategies = getActionableStrategies(scores, rtiImprovement);
+    const actionableStrategies = getActionableStrategies(scores, rtiImprovement, grade_p);
 
     const spellingLabel = scores.spelling < 50 ? 'Significantly Below Grade Level'
       : scores.spelling < 70 ? 'Below Grade Level'
@@ -2142,32 +2146,36 @@ export async function recalculateHandler(req: AuthRequest, res: Response): Promi
   try {
     console.log('[Recalculate] Processing edited transcription...');
     
-    // Update evidence with new transcription
+    // Recalculate word count and updated WPM
+    const wordCount = countWordsDeterministic(editedTranscription);
+    const parsedTime = timeTaken && parseFloat(timeTaken) > 0 ? parseFloat(timeTaken) : undefined;
+    const computedWpm = parsedTime && wordCount > 0 ? Math.round(wordCount / parsedTime) : (wpm || 0);
+
+    // Update evidence with new transcription and metrics
     const updatedEvidence = {
       ...evidenceData,
-      transcription: editedTranscription
+      transcription: editedTranscription,
+      wordCount,
+      wpm: computedWpm
     };
 
-    // Re-calculate scores with updated transcription
+    // Re-calculate scores with updated transcription and metrics
     const norm = getWpmNorm(grade || '6');
     const scores = calculateScoresWithNorm(updatedEvidence, grade || '6');
-    const probability = calculateProbability(scores, rtiImprovement || false, wpm || 0, grade || '6');
-    const actionableStrategies = getActionableStrategies(scores, rtiImprovement || false);
-
-    // Recalculate word count
-    const wordCount = countWordsDeterministic(editedTranscription);
+    const probability = calculateProbability(scores, rtiImprovement || false, computedWpm, grade || '6');
+    const actionableStrategies = getActionableStrategies(scores, rtiImprovement || false, grade || '6');
 
     const spellingLabel = scores.spelling < 50 ? 'Significantly Below Grade Level'
       : scores.spelling < 70 ? 'Below Grade Level'
       : scores.spelling < 85 ? 'At Grade Level' : 'Above Grade Level';
 
-    const fluencyLabel = wpm <= 0 ? 'Not assessed'
-      : wpm < norm.min ? 'Slow/Labored'
-      : wpm <= norm.max ? 'Developing' : 'Fluent';
+    const fluencyLabel = computedWpm <= 0 ? 'Not assessed'
+      : computedWpm < norm.min ? 'Slow/Labored'
+      : computedWpm <= norm.max ? 'Developing' : 'Fluent';
 
     console.log('[Recalculate] Updated scores:', scores);
     console.log('[Recalculate] Updated probability:', probability);
-    console.log('[Recalculate] Updated word count:', wordCount);
+    console.log('[Recalculate] Updated word count:', wordCount, '| WPM:', computedWpm);
 
     res.json({
       success: true,
@@ -2175,9 +2183,11 @@ export async function recalculateHandler(req: AuthRequest, res: Response): Promi
         ...scores,
         probability,
         spellingLabel,
-        fluencyLabel
+        fluencyLabel,
+        wpm: computedWpm
       },
       wordCount,
+      wpm: computedWpm,
       norm
     });
 

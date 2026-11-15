@@ -6,5 +6,6 @@ coverage/
 *.log
 !.env.example
 .env
-.env
-.env
+.tmp_report_ocr*
+.codex_report_pages
+

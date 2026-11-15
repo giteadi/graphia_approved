@@ -1013,6 +1013,9 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
     () => result ? getReportWpm(result.summary.wpm, result.summary.wordCount, timeTaken) : 0,
     [result, timeTaken]
   );
+  const normSpeedRange = useMemo(() => getGradeSpeedNorm(grade), [grade]);
+  const normMinSpeed = useMemo(() => parseInt(normSpeedRange.split('-')[0]) || 20, [normSpeedRange]);
+  const isSpeedSlow = reportWpm > 0 && reportWpm < normMinSpeed;
 
   const isAgeGradeValid = () => {
     if (!grade || !dob) return true;
@@ -1057,13 +1060,17 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
         try {
           console.log('[processFiles] rendering PDF pages...');
           const pdfjsLib = await import('pdfjs-dist');
-          pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-            'pdfjs-dist/build/pdf.worker.min.mjs',
-            import.meta.url
-          ).toString();
+          pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 
           const arrayBuffer = await file.arrayBuffer();
-          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          const data = new Uint8Array(arrayBuffer);
+          const loadingTask = pdfjsLib.getDocument({
+            data,
+            cMapUrl: 'https://unpkg.com/pdfjs-dist@6.0.227/cmaps/',
+            cMapPacked: true,
+            standardFontDataUrl: 'https://unpkg.com/pdfjs-dist@6.0.227/standard_fonts/',
+          });
+          const pdf = await loadingTask.promise;
           const numPagesToProcess = Math.min(pdf.numPages, 4);
           const renderedPages: string[] = [];
 
@@ -1073,20 +1080,26 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
             const canvas = document.createElement('canvas');
             canvas.width = viewport.width;
             canvas.height = viewport.height;
-            const ctx = canvas.getContext('2d')!;
-            await page.render({ canvasContext: ctx as any, canvas, viewport }).promise;
-            renderedPages.push(canvas.toDataURL('image/jpeg', 0.9));
+            const ctx = canvas.getContext('2d');
+            if (!ctx) continue;
+            await page.render({ canvasContext: ctx, canvas, viewport }).promise;
+            renderedPages.push(canvas.toDataURL('image/jpeg', 0.92));
           }
 
-          setImages(prev => {
-            const combined = [...prev, ...renderedPages].slice(0, 4);
-            return combined;
-          });
-          setActiveImageIndex(0);
-          setRotation(0);
-        } catch (e) {
+          if (renderedPages.length > 0) {
+            setImages(prev => {
+              const combined = [...prev, ...renderedPages].slice(0, 4);
+              return combined;
+            });
+            setActiveImageIndex(0);
+            setRotation(0);
+            setError(null);
+          } else {
+            setError('Could not extract pages from this PDF.');
+          }
+        } catch (e: any) {
           console.error('[processFiles] PDF render error:', e);
-          setError('Failed to render PDF. Please ensure the file is not password-protected.');
+          setError(`Failed to render PDF: ${e?.message || 'Please ensure the file is not password-protected.'}`);
         }
         continue;
       }
@@ -1127,8 +1140,8 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
         continue;
       }
 
-      // --- Standard Images (JPG, PNG, WebP) ---
-      const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.jfif', '.gif', '.bmp', '.tiff', '.tif', '.svg', '.avif'];
+      // --- Standard Images (JPG, PNG, WebP, HEIC, etc.) ---
+      const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.jfif', '.gif', '.bmp', '.tiff', '.tif', '.svg', '.avif', '.heic', '.heif'];
       const isImageExtension = imageExtensions.some(ext => fileName.endsWith(ext));
       const isValid = (file.type && file.type.startsWith('image/')) || isImageExtension || !file.type;
 
@@ -1388,7 +1401,7 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
       // Update report with probability and analysis results
       try {
         const API_URL = import.meta.env.VITE_API_URL || '/api';
-        const API_KEY = import.meta.env.VITE_API_KEY || 'candidjobs_iep_secure_key_2025';
+        const API_KEY = import.meta.env.VITE_API_KEY || '';
         await fetch(`${API_URL}/payments/update-report`, {
           method: 'POST',
           headers: {
@@ -1452,6 +1465,7 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
           'x-user-id': userInfo.email || 'anonymous',
           'x-user-email': userInfo.email || 'anonymous'
         },
@@ -1480,7 +1494,7 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
           grade: grade,
           wpm: result.summary.wpm || 0,
           timeTaken: timeTaken ? parseFloat(timeTaken) : undefined,
-          rtiImprovement: interventionTried
+          rtiImprovement: interventionTried && interventionImproved === 'yes'
         })
       });
 
@@ -1498,7 +1512,10 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
           transcription: editedTranscription,
           displayTranscription: editedTranscription,
           scores: data.scores,
-          wordCount: data.wordCount
+          wordCount: data.wordCount,
+          wpm: data.wpm ?? result.summary.wpm,
+          probabilityEstimate: data.scores?.probability ? `${data.scores.probability} probability of dysgraphia based on clinical evidence` : result.summary.probabilityEstimate,
+          actionableStrategies: data.actionableStrategies || result.summary.actionableStrategies
         }
       });
 
@@ -2619,7 +2636,7 @@ ${result.report}
                 onChange={handleImageUpload} 
                 className="hidden" 
                 multiple
-                accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,.tiff,.tif,.svg,.avif,.jfif,.pdf,.doc,.docx"
+                accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,.tiff,.tif,.svg,.avif,.jfif,.heic,.heif,.pdf,.doc,.docx"
               />
             </div>
 
@@ -3468,7 +3485,7 @@ ${result.report}
                                 <div className="border-t border-gray-200 pt-2">
                                   <div className="text-[7.5pt] text-gray-500 font-mono uppercase tracking-wider">Total words</div>
                                   <div className="text-[15pt] font-black text-[#0c2340] leading-none mt-0.5">
-                                    {reportValue(result.summary.wordCount, 133)} words
+                                    {result.summary.wordCount ?? 0} words
                                   </div>
                                 </div>
                                 <div className="border-t border-gray-200 pt-2">
@@ -3489,7 +3506,7 @@ ${result.report}
                         <div className="border border-gray-200 p-2.5 bg-[#FCFDFE] rounded-sm text-left text-[8.5pt]">
                           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                             <div>
-                              <strong className="text-gray-700 font-sans">Prompt:</strong> {writingPrompt || "A world without smartphones"}
+                              <strong className="text-gray-700 font-sans">Prompt:</strong> {writingPrompt || "Free Writing Sample"}
                             </div>
                             <div>
                               <strong className="text-gray-700 font-sans">Paper Type:</strong> {paperType || "Lined / Ruled"}
@@ -3514,7 +3531,7 @@ ${result.report}
                             <h3 className="text-[#0C2340] font-sans font-bold text-[8.5pt] uppercase tracking-wider flex items-center gap-2">
                               <span>VERBATIM OCR TRANSCRIPTION</span>
                               <span className="text-[7pt] bg-[#0C2340]/10 text-[#0C2340] px-1.5 py-0.5 rounded font-mono font-bold uppercase">
-                                {reportValue(result.summary.wordCount, 133)} WORDS
+                                {result.summary.wordCount ?? 0} WORDS
                               </span>
                             </h3>
                             <button
@@ -3558,7 +3575,7 @@ ${result.report}
                               </div>
                             </div>
                           ) : (
-                            <div className="border border-gray-200 p-3 bg-[#FAFAFA] rounded-sm text-[9pt] leading-relaxed text-gray-800 italic block max-h-[165px] overflow-y-auto">
+                            <div className="report-ocr-box border border-gray-200 p-2.5 bg-[#FAFAFA] rounded-sm text-[8.5pt] leading-relaxed text-gray-800 italic block max-h-[220px] print:max-h-none print:overflow-visible overflow-y-auto">
                               <span>"</span>
                               <RenderTranscription text={result.summary.displayTranscription || result.summary.transcription} highlightMap={result.summary.highlightMap} />
                               <span>"</span>
@@ -3644,7 +3661,13 @@ ${result.report}
                               RECOMMENDATION
                             </h4>
                             <p className="text-[8pt] leading-relaxed text-gray-800 font-sans">
-                              {result.summary.assessmentRecommendation || "Continued monitoring and support are recommended. Because the student has shown positive improvement with current interventions, a formal psycho-educational evaluation is not recommended at this time."}
+                              {result.summary.assessmentRecommendation || (
+                                (interventionTried && interventionImproved === 'yes')
+                                  ? "Continued monitoring and support are recommended. Because the student has shown positive improvement with current interventions, a formal psycho-educational evaluation is not recommended at this time."
+                                  : (getProbabilityDisplayLabel(result.summary.probabilityEstimate) === 'LOW'
+                                      ? "Handwriting and written expression are generally within expected grade parameters. Continued classroom monitoring is recommended."
+                                      : "Based on the evidence, a formal psycho-educational assessment is recommended.")
+                              )}
                             </p>
                           </div>
                           <div className="border border-red-200 rounded-md p-3.5 bg-red-50/15 flex flex-col shadow-xs">
@@ -3841,10 +3864,10 @@ ${result.report}
                               { label: "Letter Formation", val: result.summary.lineFormation || result.summary.mechanics || "Cursive and print hybrid with some letters poorly closed or inconsistently connected." },
                               { label: "Alignment", val: result.summary.alignment || "Writing mostly stays on the ruled lines with a stable baseline, though left and right margins show minor drifting." },
                               { label: "Spatial Organisation", val: result.summary.horizontalAnalysis || result.summary.verticalAnalysis || "Text is organized reasonably well from top to bottom, though minor crowding occurs when ascenders and descenders touch between lines." },
-                              { label: "Writing Speed", val: result.summary.fluencyAnalysis || `Extremely Slow/Labored. The student's output of approximately ${reportWpm} words per minute is significantly below the expected ${getGradeSpeedNorm(grade)} WPM for a ${grade || '12th'} grader.` },
+                              { label: "Writing Speed", val: result.summary.fluencyAnalysis || (isSpeedSlow ? `Slow/Labored. The student's output of approximately ${reportWpm} words per minute is below the expected ${normSpeedRange} WPM for a ${grade || '12th'} grader.` : `Within Expected Range. The student's output of approximately ${reportWpm} words per minute meets the expected ${normSpeedRange} WPM norm for a ${grade || '12th'} grader.`) },
                               { label: "Horizontal Spatial", val: result.summary.horizontalAnalysis || "Writing moves steadily across the page from left to right without significant crowding at the margins." },
                               { label: "Vertical Spatial", val: result.summary.verticalAnalysis || "Text is organized reasonably well from top to bottom, though minor crowding occurs when ascenders and descenders touch between lines." },
-                              { label: "Line Quality", val: result.summary.lineQuality || "Firm pressure with fluid but significantly slowed execution." }
+                              { label: "Line Quality", val: result.summary.lineQuality || "Firm pressure with fluid execution." }
                             ].map((mechanic, i) => (
                               <li key={i} className="flex gap-2 items-start list-none pl-0">
                                 <span className="text-[#0C2340] font-bold text-[9pt] shrink-0 leading-none mt-0.5">•</span>
@@ -3864,7 +3887,7 @@ ${result.report}
                           <div className="grid grid-cols-4 gap-3 my-1.5">
                             {/* Card 1: TOTAL PRODUCED */}
                             <div className="border border-gray-200 rounded-md p-2 bg-gray-50/70 flex flex-col items-center justify-center text-center">
-                              <div className="text-[17pt] font-black text-[#0c2340] leading-none">{result.summary.wordCount || 133}</div>
+                              <div className="text-[17pt] font-black text-[#0c2340] leading-none">{result.summary.wordCount ?? 0}</div>
                               <div className="text-[6.5pt] font-bold text-[#0c2340] uppercase tracking-wider mt-1">WORDS</div>
                               <div className="text-[5.5pt] text-gray-400 uppercase tracking-tight">TOTAL PRODUCED</div>
                             </div>
@@ -3878,7 +3901,7 @@ ${result.report}
 
                             {/* Card 3: STUDENT SPEED */}
                             <div className="border border-gray-200 rounded-md p-2 bg-gray-50/70 flex flex-col items-center justify-center text-center">
-                              <div className={`text-[17pt] font-black leading-none ${reportWpm > 0 && reportWpm < (parseInt(getGradeSpeedNorm(grade).split('-')[0]) || 20) ? 'text-red-600' : 'text-[#0c2340]'}`}>
+                              <div className={`text-[17pt] font-black leading-none ${isSpeedSlow ? 'text-red-600' : 'text-[#0c2340]'}`}>
                                 {reportWpm}
                               </div>
                               <div className="text-[6.5pt] font-bold text-[#0c2340] uppercase tracking-wider mt-1">WPM</div>
@@ -3886,19 +3909,23 @@ ${result.report}
                             </div>
 
                             {/* Card 4: GRADE NORM */}
-                            <div className="border border-red-200 rounded-md p-2 bg-red-50/30 flex flex-col items-center justify-center text-center">
-                              <div className="text-[17pt] font-black text-red-600 leading-none">{getGradeSpeedNorm(grade)}</div>
-                              <div className="text-[6.5pt] font-bold text-red-600 uppercase tracking-wider mt-1">WPM</div>
-                              <div className="text-[5.5pt] text-red-400 uppercase tracking-tight">{grade ? grade.toUpperCase() : 'GRADE 12'} NORM</div>
+                            <div className={`border rounded-md p-2 flex flex-col items-center justify-center text-center ${isSpeedSlow ? 'border-red-200 bg-red-50/30' : 'border-gray-200 bg-gray-50/70'}`}>
+                              <div className={`text-[17pt] font-black leading-none ${isSpeedSlow ? 'text-red-600' : 'text-[#0c2340]'}`}>{normSpeedRange}</div>
+                              <div className={`text-[6.5pt] font-bold uppercase tracking-wider mt-1 ${isSpeedSlow ? 'text-red-600' : 'text-[#0c2340]'}`}>WPM</div>
+                              <div className={`text-[5.5pt] uppercase tracking-tight ${isSpeedSlow ? 'text-red-400' : 'text-gray-400'}`}>{grade ? grade.toUpperCase() : 'GRADE 12'} NORM</div>
                             </div>
                           </div>
 
                           <div className="mt-2 text-[8pt] text-gray-800 leading-relaxed space-y-1">
                             <p>
-                              {(result.summary.wordCount || 133)} words / {timeTaken || 15} minutes = {reportWpm > 0 ? ((result.summary.wordCount || 133) / (parseInt(timeTaken || '15') || 15)).toFixed(2) : '8.87'} WPM. The physical act of writing is taking up so much mental energy that cognitive load is heavily disrupted.
+                              {(result.summary.wordCount ?? 0)} words / {timeTaken || 15} minutes = {reportWpm > 0 ? reportWpm : 0} WPM. {isSpeedSlow ? 'The physical act of writing is taking up substantial mental energy, impacting overall automaticity.' : 'The student demonstrates consistent writing automaticity within grade expectations.'}
                             </p>
                             <p>
-                              Qualitative assessment: <strong className="text-red-600 font-bold">Extremely Slow/Labored. The student's output of approximately {reportWpm} words per minute is significantly below the expected {getGradeSpeedNorm(grade)} WPM for a {grade || '12th'} grader.</strong>
+                              Qualitative assessment: {isSpeedSlow ? (
+                                <strong className="text-red-600 font-bold">Slow/Labored. The student's output of approximately {reportWpm} words per minute is below the expected {normSpeedRange} WPM for a {grade || '12th'} grader.</strong>
+                              ) : (
+                                <strong className="text-green-700 font-bold">Within Expected Range. The student's output of approximately {reportWpm} words per minute is consistent with the expected {normSpeedRange} WPM norm for a {grade || '12th'} grader.</strong>
+                              )}
                             </p>
                           </div>
                         </div>
@@ -3914,7 +3941,13 @@ ${result.report}
                                 ASSESSMENT RECOMMENDATION
                               </div>
                               <div className="p-2.5 text-[8pt] text-gray-800 leading-relaxed">
-                                {result.summary.assessmentRecommendation || "Continued monitoring and support are recommended. Because the student has shown positive improvement with current interventions, a formal psycho-educational evaluation is not recommended at this time."}
+                                {result.summary.assessmentRecommendation || (
+                                  (interventionTried && interventionImproved === 'yes')
+                                    ? "Continued monitoring and support are recommended. Because the student has shown positive improvement with current interventions, a formal psycho-educational evaluation is not recommended at this time."
+                                    : (getProbabilityDisplayLabel(result.summary.probabilityEstimate) === 'LOW'
+                                        ? "Handwriting and written expression are generally within expected grade parameters. Continued classroom monitoring is recommended."
+                                        : "Based on the evidence, a formal psycho-educational assessment is recommended.")
+                                )}
                               </div>
                             </div>
 

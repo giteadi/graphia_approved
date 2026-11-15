@@ -39,17 +39,34 @@ export async function exportReportAsPdf(
   for (let i = 0; i < pages.length; i++) {
     const pageEl = pages[i] as HTMLElement;
 
-    const dataUrl = await domToPng(pageEl, {
-      scale: 2.2,
-      backgroundColor: '#ffffff',
-      width: pageEl.scrollWidth || pageEl.offsetWidth || 794,
-      height: pageEl.scrollHeight || pageEl.offsetHeight || 1123,
-      style: {
-        overflow: 'visible',
-        height: 'auto',
-        maxHeight: 'none',
-      }
+    // Temporarily unclamp any internal scroll containers for full PDF capture
+    const clampedEls = pageEl.querySelectorAll('.report-ocr-box, .overflow-y-auto') as NodeListOf<HTMLElement>;
+    const prevStyles: Array<{ el: HTMLElement; maxH: string; overflow: string }> = [];
+    clampedEls.forEach(el => {
+      prevStyles.push({ el, maxH: el.style.maxHeight, overflow: el.style.overflow });
+      el.style.maxHeight = 'none';
+      el.style.overflow = 'visible';
     });
+
+    let dataUrl: string;
+    try {
+      dataUrl = await domToPng(pageEl, {
+        scale: 2.2,
+        backgroundColor: '#ffffff',
+        width: pageEl.scrollWidth || pageEl.offsetWidth || 794,
+        height: pageEl.scrollHeight || pageEl.offsetHeight || 1123,
+        style: {
+          overflow: 'visible',
+          height: 'auto',
+          maxHeight: 'none',
+        }
+      });
+    } finally {
+      prevStyles.forEach(({ el, maxH, overflow }) => {
+        el.style.maxHeight = maxH;
+        el.style.overflow = overflow;
+      });
+    }
 
     if (i > 0) {
       pdf.addPage();

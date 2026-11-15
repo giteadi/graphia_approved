@@ -3,11 +3,11 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const primaryKey = process.env.VITE_OPENAI_API_KEY;
-const backupKey = process.env.VITE_OPENAI_API_KEY_BACKUP;
+const primaryKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
+const backupKey = process.env.OPENAI_API_KEY_BACKUP || process.env.VITE_OPENAI_API_KEY_BACKUP;
 
 if (!primaryKey && !backupKey) {
-  console.error('[Config] ERROR: No OpenAI API key found. Set VITE_OPENAI_API_KEY or VITE_OPENAI_API_KEY_BACKUP in .env');
+  console.error('[Config] ERROR: No OpenAI API key found. Set OPENAI_API_KEY or OPENAI_API_KEY_BACKUP in .env');
   process.exit(1);
 }
 

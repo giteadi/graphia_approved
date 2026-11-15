@@ -1,20 +1,31 @@
 import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import { JWT_SECRET } from '../controllers/authController.js';
 
 export interface AuthRequest extends Request {
   userId?: number;
   userEmail?: string;
 }
 
-// Auth middleware — no token validation, just pass through
-// User identity is trusted from request body/headers if provided
 export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction): void {
-  // Extract user info from custom header (set by frontend after login)
-  const userId = req.headers['x-user-id'];
-  const userEmail = req.headers['x-user-email'];
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
 
-  if (userId) req.userId = parseInt(userId as string, 10);
-  if (userEmail) req.userEmail = userEmail as string;
+  if (!token) {
+    res.status(401).json({ error: 'Unauthorized: Missing or invalid authentication token' });
+    return;
+  }
 
-  // Always pass through — no token required
-  next();
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId?: number; email?: string };
+    if (!decoded || !decoded.userId) {
+      res.status(401).json({ error: 'Unauthorized: Invalid token payload' });
+      return;
+    }
+    req.userId = decoded.userId;
+    req.userEmail = decoded.email;
+    next();
+  } catch (err: any) {
+    res.status(401).json({ error: 'Unauthorized: Token expired or invalid' });
+  }
 }

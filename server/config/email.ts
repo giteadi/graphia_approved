@@ -114,6 +114,8 @@ export async function sendWelcomeEmail(email: string, name: string): Promise<voi
   await transporter.sendMail(mailOptions);
 }
 
+import crypto from 'crypto';
+
 export function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return crypto.randomInt(100000, 1000000).toString();
 }

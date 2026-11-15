@@ -1,7 +1,24 @@
-import { Router } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import { getAllPayments, getPaymentStats, createPayment, updatePaymentStatus, getHighProbabilityUsers } from '../controllers/adminController.js';
+import { authMiddleware, AuthRequest } from '../middleware/authMiddleware.js';
 
 const router = Router();
+
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'admin@graphiacheck.in,aditya@graphiacheck.in')
+  .split(',')
+  .map(e => e.trim().toLowerCase());
+
+function requireAdmin(req: AuthRequest, res: Response, next: NextFunction): void {
+  const userEmail = (req.userEmail || '').toLowerCase();
+  if (!userEmail || !ADMIN_EMAILS.includes(userEmail)) {
+    res.status(403).json({ error: 'Forbidden: Admin access required' });
+    return;
+  }
+  next();
+}
+
+router.use(authMiddleware);
+router.use(requireAdmin);
 
 // Get all payments with filters
 router.get('/payments', getAllPayments);

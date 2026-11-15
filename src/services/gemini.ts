@@ -144,6 +144,7 @@ export async function analyzeHandwriting(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
         'x-user-id': user?.id ? String(user.id) : '',
         'x-user-email': user?.email || '',
       },

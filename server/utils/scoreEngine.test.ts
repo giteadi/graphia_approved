@@ -1,4 +1,4 @@
-import { calculateScoresWithNorm, calculateProbability, EvidenceData } from './scoreEngine.js';
+import { calculateScoresWithNorm, calculateScores, calculateProbability, EvidenceData } from './scoreEngine.js';
 import { sanitizeEvidence, buildOccurrenceKey } from './evidenceSanitizer.js';
 
 const g10ReferenceEvidence: EvidenceData = {
@@ -357,6 +357,46 @@ if (amayaScores.alignment !== 85) {
   throw new Error(`AMAYA TEST FAILED: Expected Alignment 85, got ${amayaScores.alignment}`);
 }
 console.log('AMAYA REFERENCE TEST PASSED: Boundaries:', amayaScores.sentenceBoundaries, 'Grammar:', amayaScores.grammar, 'Past Tense:', amayaScores.pastTenseUsage, 'Spelling:', amayaScores.spelling, 'Formation:', amayaScores.letterFormation, 'Alignment:', amayaScores.alignment, 'Probability:', amayaProb);
+
+// STRUCTURED FEATURE TESTS
+const featureEvidence: EvidenceData = {
+  transcription: 'Sample essay text for testing structured visual features properly.',
+  wordCount: 10,
+  wpm: 25,
+  spellingErrors: [],
+  grammarMistakes: [],
+  runOnSentences: 0,
+  missingCapitals: 0,
+  missingPunctuation: 0,
+  pastTenseErrors: 0,
+  letterFormationObservations: [],
+  alignmentObservations: [],
+  spacingObservations: [],
+  lineQualityObservations: [],
+  rtiImprovement: false,
+  dsm5Traits: [],
+  features: {
+    baselineDeviation: 'severe',
+    spacingConsistency: 'good',
+    legibility: 'low',
+    lineSteadiness: 'steady'
+  }
+};
+
+const featureScores = calculateScores(featureEvidence, '10');
+if (featureScores.alignment !== 35) {
+  throw new Error(`FEATURE TEST FAILED: Expected alignment 35 for severe baselineDeviation, got ${featureScores.alignment}`);
+}
+if (featureScores.spatialOrganisation !== 90) {
+  throw new Error(`FEATURE TEST FAILED: Expected spatialOrganisation 90 for good spacingConsistency, got ${featureScores.spatialOrganisation}`);
+}
+if (featureScores.letterFormation !== 45) {
+  throw new Error(`FEATURE TEST FAILED: Expected letterFormation 45 for low legibility, got ${featureScores.letterFormation}`);
+}
+if (featureScores.lineQuality !== 90) {
+  throw new Error(`FEATURE TEST FAILED: Expected lineQuality 90 for steady lineSteadiness, got ${featureScores.lineQuality}`);
+}
+console.log('STRUCTURED FEATURE TESTS PASSED: Alignment: 35, Spatial: 90, Formation: 45, Line Quality: 90');
 
 console.log('══════════════════════════════════════════════════════════════════════════════');
 console.log('ALL MINIMAL TESTS PASSED');
