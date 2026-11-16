@@ -4,13 +4,17 @@ import { authMiddleware, AuthRequest } from '../middleware/authMiddleware.js';
 
 const router = Router();
 
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'admin@graphiacheck.in,aditya@graphiacheck.in')
-  .split(',')
-  .map(e => e.trim().toLowerCase());
+export function getAdminEmails(): string[] {
+  return (process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean);
+}
 
-function requireAdmin(req: AuthRequest, res: Response, next: NextFunction): void {
+export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction): void {
+  const adminEmails = getAdminEmails();
   const userEmail = (req.userEmail || '').toLowerCase();
-  if (!userEmail || !ADMIN_EMAILS.includes(userEmail)) {
+  if (adminEmails.length === 0 || !userEmail || !adminEmails.includes(userEmail)) {
     res.status(403).json({ error: 'Forbidden: Admin access required' });
     return;
   }

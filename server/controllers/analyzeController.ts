@@ -1937,7 +1937,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     extracted.highlightMap = highlightMap;
 
     // 5) Word count must use countingTranscription - includes cancelled words
-    const wordCount = isAmayaBenchmark ? 133 : countWordsDeterministic(countingTranscription);
+    const wordCount = isAmayaBenchmark ? 133 : countWordsDeterministic(countingTranscription, studentName || undefined, prompt_p || undefined);
 
     console.log('[INTERNAL DEBUG] Word Count Calculation:');
     console.log(`Transcription: ${countingTranscription.slice(0, 100)}...`);
@@ -2147,7 +2147,9 @@ export async function recalculateHandler(req: AuthRequest, res: Response): Promi
     console.log('[Recalculate] Processing edited transcription...');
     
     // Recalculate word count and updated WPM
-    const wordCount = countWordsDeterministic(editedTranscription);
+    const studentName = req.body.studentName || evidenceData?.studentName || undefined;
+    const prompt = req.body.prompt || req.body.writingPrompt || evidenceData?.prompt || undefined;
+    const wordCount = countWordsDeterministic(editedTranscription, studentName, prompt);
     const parsedTime = timeTaken && parseFloat(timeTaken) > 0 ? parseFloat(timeTaken) : undefined;
     const computedWpm = parsedTime && wordCount > 0 ? Math.round(wordCount / parsedTime) : (wpm || 0);
 

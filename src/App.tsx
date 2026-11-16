@@ -1406,6 +1406,7 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
             'X-API-Key': API_KEY,
           },
           body: JSON.stringify({
@@ -1492,6 +1493,8 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
           },
           editedTranscription: editedTranscription,
           grade: grade,
+          studentName: studentName || undefined,
+          prompt: writingPrompt || undefined,
           wpm: result.summary.wpm || 0,
           timeTaken: timeTaken ? parseFloat(timeTaken) : undefined,
           rtiImprovement: interventionTried && interventionImproved === 'yes'

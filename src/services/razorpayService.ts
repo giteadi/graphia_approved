@@ -65,10 +65,12 @@ export async function createPaymentOrder(amount: number = 899, description?: str
     const API_URL = import.meta.env.VITE_API_URL || '/api';
     const API_KEY = import.meta.env.VITE_API_KEY || '';
     
+    const token = localStorage.getItem('token') || '';
     const response = await fetch(`${API_URL}/payments/create-order`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
         'X-API-Key': API_KEY,
         'x-user-email': currentUserEmail()
       },
@@ -119,10 +121,12 @@ export async function verifyPayment(
     const API_URL = import.meta.env.VITE_API_URL || '/api';
     const API_KEY = import.meta.env.VITE_API_KEY || '';
     
+    const token = localStorage.getItem('token') || '';
     const response = await fetch(`${API_URL}/payments/verify`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
         'X-API-Key': API_KEY,
         'x-user-email': currentUserEmail()
       },

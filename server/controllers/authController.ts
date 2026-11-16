@@ -4,8 +4,13 @@ import jwt from 'jsonwebtoken';
 import { query } from '../config/db.js';
 import { sendWelcomeEmail } from '../config/email.js';
 
-export const JWT_SECRET = process.env.JWT_SECRET || 'graphia_jwt_super_secret_2024';
-const JWT_EXPIRES = '36500d'; // 100 years — effectively permanent
+if (!process.env.JWT_SECRET && process.env.NODE_ENV !== 'test') {
+  console.error('[Auth] FATAL: JWT_SECRET environment variable is missing. Set JWT_SECRET in .env');
+  process.exit(1);
+}
+
+export const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_for_local_testing_only';
+const JWT_EXPIRES = '30d'; // 30 days token expiry
 
 export async function register(req: Request, res: Response): Promise<void> {
   const { name, email, password, mobile } = req.body;

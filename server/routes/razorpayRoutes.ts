@@ -5,20 +5,21 @@ import {
   getHighProbabilityReports,
   updateReportData
 } from '../controllers/razorpayController.js';
-import { apiAuth } from '../middleware/apiAuth.js';
+import { authMiddleware } from '../middleware/authMiddleware.js';
+import { requireAdmin } from './adminRoutes.js';
 
 const router = express.Router();
 
-// Create Razorpay order (with API authentication)
-router.post('/create-order', apiAuth, createOrder);
+// Payment endpoints protected with user JWT authentication
+router.post('/create-order', authMiddleware, createOrder);
 
-// Verify payment after completion (with API authentication)
-router.post('/verify', apiAuth, verifyPayment);
+// Verify payment after completion
+router.post('/verify', authMiddleware, verifyPayment);
 
-// Update report data after analysis (with API authentication)
-router.post('/update-report', apiAuth, updateReportData);
+// Update report data after analysis
+router.post('/update-report', authMiddleware, updateReportData);
 
-// Get high probability reports for admin (with API authentication)
-router.get('/high-probability-reports', apiAuth, getHighProbabilityReports);
+// Get high probability reports for admin (sensitive PII — restricted to admins only)
+router.get('/high-probability-reports', authMiddleware, requireAdmin, getHighProbabilityReports);
 
 export default router;

@@ -1,4 +1,4 @@
-import { calculateScoresWithNorm, calculateScores, calculateProbability, EvidenceData } from './scoreEngine.js';
+import { calculateScoresWithNorm, calculateScores, calculateProbability, countWordsDeterministic, EvidenceData } from './scoreEngine.js';
 import { sanitizeEvidence, buildOccurrenceKey } from './evidenceSanitizer.js';
 
 const g10ReferenceEvidence: EvidenceData = {
@@ -397,6 +397,23 @@ if (featureScores.lineQuality !== 90) {
   throw new Error(`FEATURE TEST FAILED: Expected lineQuality 90 for steady lineSteadiness, got ${featureScores.lineQuality}`);
 }
 console.log('STRUCTURED FEATURE TESTS PASSED: Alignment: 35, Spatial: 90, Formation: 45, Line Quality: 90');
+
+// WORD COUNT HEADER STRIPPING REGRESSION TESTS
+const aprameyaSampleBody = `Before delving into this well-debated topic, it would be beneficial to define some key terms, money and happiness. Money refers to currency which can be used to procure goods and/or services. Happiness is more subjective and it changes from person to person. Essentially, happiness depends on one's goals, for some their goal is money and they try to save it whenever possible. An example of this is one of the richest men in the world, Warren Buffet. He owns billions in assets and is able to buy whatever he wants, however, he chooses to live frugally. Now, is this healthy? Absolutely not, however, one must assume him to be happy. In more normal cases, happiness can be defined as good health and happiness for others in one's own family. Now, there are people who are happy and do not have money. However, these two things are also not mutually exclusive. It can be seen that if one wants a peace of mind, money may be necessary. If you think about it, that is what insurance is. You pay money for long term security in the case of an unforeseen disaster. Furthermore, for those who want good health for their families, it would obviously be better if they can get good doctors, which costs money. Money can buy happiness to some extent. It cannot force someone to like you or have others enjoy your company, but it can boost one's happiness once all other things are done with.`;
+
+const baseCount = countWordsDeterministic(aprameyaSampleBody);
+const sepHeader = `Q: Can money buy happiness\nAprameya 14/11/26\n` + aprameyaSampleBody;
+const sepCount = countWordsDeterministic(sepHeader, 'Aprameya', 'Can money buy happiness');
+if (sepCount !== baseCount) {
+  throw new Error(`WORD COUNT TEST FAILED: Separate header count ${sepCount} does not match base count ${baseCount}`);
+}
+
+const inlineHeader = `Q: Can money buy happiness Aprameya 14/11/26 ` + aprameyaSampleBody;
+const inlineCount = countWordsDeterministic(inlineHeader, 'Aprameya', 'Can money buy happiness');
+if (inlineCount !== baseCount) {
+  throw new Error(`WORD COUNT TEST FAILED: Inline header count ${inlineCount} does not match base count ${baseCount}`);
+}
+console.log(`WORD COUNT REGRESSION TESTS PASSED: Body=${baseCount}, SepHeader=${sepCount}, InlineHeader=${inlineCount}`);
 
 console.log('══════════════════════════════════════════════════════════════════════════════');
 console.log('ALL MINIMAL TESTS PASSED');

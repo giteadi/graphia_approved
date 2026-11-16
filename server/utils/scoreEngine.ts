@@ -67,26 +67,58 @@ export interface Scores {
 }
 
 // ─── Deterministic word counter (handles headers and inline tags) ───────────
-export function countWordsDeterministic(transcription: string): number {
+export function countWordsDeterministic(transcription: string, studentName?: string, prompt?: string): number {
   if (!transcription || typeof transcription !== 'string') return 0;
 
+  const rawWords = transcription
+    .replace(/\[CANCELLED:\s*[^\]]+\]/gi, '')
+    .replace(/[\[\]]/g, '')
+    .split(/\s+/)
+    .filter(Boolean);
+
+  let text = transcription;
+
   // 1. Process line-by-line: drop standalone header/metadata lines (<= 15 words)
-  const lines = transcription.split('\n');
+  const lines = text.split('\n');
   const cleanedLines = lines.map(line => {
     const trimmed = line.trim();
+    if (!trimmed) return '';
     const words = trimmed.split(/\s+/).filter(Boolean);
-    // If the line is short (<= 15 words) and starts with an administrative label, drop it
-    if (words.length <= 15 && /^(?:Q|Question|Topic|Prompt|Title|Essay|Name|Student|Date)\b[:\s-]/i.test(trimmed)) {
-      return '';
+
+    // If the line is short (<= 15 words) and matches an administrative label, student name, or date, drop it
+    if (words.length <= 15) {
+      if (/^(?:Q|Question|Topic|Prompt|Title|Essay|Name|Student|Date)\b[:\s-]/i.test(trimmed)) return '';
+      if (studentName && trimmed.toLowerCase() === studentName.trim().toLowerCase()) return '';
+      if (/^\s*\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}\s*$/.test(trimmed)) return '';
+      if (studentName && new RegExp('^' + studentName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s+\\d{1,2}[\\/\\.-]\\d{1,2}[\\/\\.-]\\d{2,4}$', 'i').test(trimmed)) return '';
     }
-    // If inline question header (e.g. "Q: Can money buy happiness? Before delving..."), strip question prefix only
-    let s = trimmed.replace(/^(?:Q|Question|Prompt)\s*:[^?]*\?\s*/i, '');
-    // If leading label prefix like "Essay:" or "Essay - " or "Topic: "
-    s = s.replace(/^(?:Essay|Title|Topic|Prompt)\s*[-:]\s*/i, '');
-    return s;
+    return trimmed;
   });
 
-  const bodyText = cleanedLines.join(' ')
+  text = cleanedLines.filter(Boolean).join('\n');
+
+  // 2. Strip prompt if passed
+  if (prompt && prompt.trim()) {
+    const escapedPrompt = prompt.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    text = text.replace(new RegExp('^(?:\\s*(?:Q|Question|Topic|Prompt|Title|Essay)\\s*[:\\s-]*)?' + escapedPrompt + '\\s*\\??\\s*', 'i'), ' ');
+  }
+
+  // 3. Strip studentName if passed at start of text or after a label
+  if (studentName && studentName.trim()) {
+    const escapedName = studentName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    text = text.replace(new RegExp('(?:^|\\s)(?:Name|Student)?\\s*[:\\s-]*' + escapedName + '\\b', 'gi'), ' ');
+  }
+
+  // 4. Safe inline question prefix strip: only strip if question is short (<= 12 words) and within first 80 chars
+  text = text.replace(/^\s*(?:Q|Question|Prompt)\s*:\s*([^?\n]{1,80}\?)/i, (match, q) => {
+    return q.split(/\s+/).filter(Boolean).length <= 12 ? ' ' : match;
+  });
+
+  // 5. Safe label prefix strip
+  text = text.replace(/^\s*(?:Essay|Title|Topic|Prompt)\s*[-:]\s*/i, ' ');
+
+  // 6. Strip date patterns and cancellations
+  const bodyText = text
     .replace(/\bDate:\s*\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}\b/gi, ' ')
     .replace(/\b\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}\b/gi, ' ')
     .replace(/\b\d{1,2}:\d{2}\s*(?:to\s*\d{1,2}(?::\d{2})?)?\s*(?:am|pm)?\b/gi, ' ')
@@ -94,12 +126,18 @@ export function countWordsDeterministic(transcription: string): number {
     .replace(/\n/g, ' ')
     .trim();
 
-  // 2. Sirf readable (visible) words count karein
-  return bodyText
+  // 7. Sirf readable (visible) words count karein
+  const words = bodyText
     .replace(/[\[\]]/g, '')
     .split(/\s+/)
-    .filter(word => word.length > 0)
-    .length;
+    .filter(word => word.length > 0);
+
+  // Safety net: Agar strip ke baad count 0 aaye aur original mein 20+ words hon, to original count use karo
+  if (words.length === 0 && rawWords.length >= 20) {
+    return rawWords.length;
+  }
+
+  return words.length;
 }
 
 // ─── WPM grade norms ──────────────────────────────────────────────────────────

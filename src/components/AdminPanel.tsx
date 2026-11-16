@@ -103,7 +103,12 @@ export default function AdminPanel() {
       if (selectedDate.month) params.append('month', selectedDate.month);
       if (selectedDate.year) params.append('year', selectedDate.year);
 
-      const response = await fetch(`/api/admin/payments?${params.toString()}`);
+      const token = localStorage.getItem('token') || '';
+      const response = await fetch(`/api/admin/payments?${params.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       
       if (!response.ok) {
         throw new Error('Failed to fetch payments');
@@ -124,7 +129,12 @@ export default function AdminPanel() {
     setError(null);
 
     try {
-      const response = await fetch('/api/admin/high-probability-users');
+      const token = localStorage.getItem('token') || '';
+      const response = await fetch('/api/admin/high-probability-users', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
 
       if (!response.ok) {
         throw new Error('Failed to fetch high probability users');
@@ -202,9 +212,13 @@ export default function AdminPanel() {
     }
 
     try {
+      const token = localStorage.getItem('token') || '';
       const response = await fetch('/api/admin/payments/bulk-delete', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ ids: Array.from(selectedPayments) })
       });
 
@@ -229,9 +243,13 @@ export default function AdminPanel() {
     }
 
     try {
+      const token = localStorage.getItem('token') || '';
       const response = await fetch('/api/admin/high-probability-users/bulk-delete', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ ids: Array.from(selectedUsers) })
       });
 
