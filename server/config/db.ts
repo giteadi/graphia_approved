@@ -1,13 +1,14 @@
+import 'dotenv/config';
 import mysql, { PoolConnection } from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 
-// Hardcoded production DB config — env override not used on server
+// Database configuration loaded from environment variables
 const DB_CONFIG = {
-  host: '127.0.0.1',
-  port: 3306,
-  user: 'root',
-  password: 'Tiger@123',
-  database: 'graphia',
+  host: process.env.DB_HOST || '127.0.0.1',
+  port: parseInt(process.env.DB_PORT || '3306', 10),
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || 'Tiger@123',
+  database: process.env.DB_NAME || 'graphia',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,

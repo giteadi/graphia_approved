@@ -107,6 +107,11 @@ export function countWordsDeterministic(transcription: string, studentName?: str
   if (studentName && studentName.trim()) {
     const escapedName = studentName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     text = text.replace(new RegExp('(?:^|\\s)(?:Name|Student)?\\s*[:\\s-]*' + escapedName + '\\b', 'gi'), ' ');
+    const nameParts = studentName.trim().split(/\s+/).filter(p => p.length >= 3);
+    for (const part of nameParts) {
+      const escPart = part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      text = text.replace(new RegExp('(?:^|\\s)(?:Name|Student)\\s*[:\\s-]*' + escPart + '\\b', 'gi'), ' ');
+    }
   }
 
   // 4. Safe inline question prefix strip: only strip if question is short (<= 12 words) and within first 80 chars

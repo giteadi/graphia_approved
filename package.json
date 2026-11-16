@@ -25,6 +25,7 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "file-saver": "^2.0.5",
+    "heic2any": "^0.0.4",
     "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.14.0",
     "jsonwebtoken": "^9.0.3",

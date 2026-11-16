@@ -306,6 +306,8 @@ export default function App({ user, onLogout, reportTabMode = false }: AppProps)
 
   const [images, setImages] = useState<string[]>([]);
   const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
+  const [isProcessingFile, setIsProcessingFile] = useState<boolean>(false);
+  const [fileUploadError, setFileUploadError] = useState<string | null>(null);
   const image = images[activeImageIndex] || images[0] || null;
 
   const setImage = useCallback((newImg: string | null) => {
@@ -1045,122 +1047,187 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
     if (!files.length) return;
 
     setError(null);
+    setFileUploadError(null);
+    setIsProcessingFile(true);
     console.log(`[processFiles] processing ${files.length} file(s)...`);
 
-    for (const file of files) {
-      if (file.size > 50 * 1024 * 1024) {
-        setError('One or more files exceed the 50MB limit.');
-        return;
-      }
+    try {
+      for (const file of files) {
+        if (file.size > 50 * 1024 * 1024) {
+          const msg = 'One or more files exceed the 50MB limit.';
+          setError(msg);
+          setFileUploadError(msg);
+          return;
+        }
 
-      const fileName = file.name ? file.name.toLowerCase() : '';
+        const fileName = file.name ? file.name.toLowerCase() : '';
 
-      // --- PDF: Multi-page Extraction (up to 4 pages) ---
-      if (fileName.endsWith('.pdf') || file.type === 'application/pdf') {
-        try {
-          console.log('[processFiles] rendering PDF pages...');
-          const pdfjsLib = await import('pdfjs-dist');
-          pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
+        // --- PDF: Multi-page Extraction (up to 4 pages) ---
+        if (fileName.endsWith('.pdf') || file.type === 'application/pdf') {
+          try {
+            console.log('[processFiles] rendering PDF pages...');
+            const pdfjsLib = await import('pdfjs-dist');
+            pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
-          const arrayBuffer = await file.arrayBuffer();
-          const data = new Uint8Array(arrayBuffer);
-          const loadingTask = pdfjsLib.getDocument({
-            data,
-            cMapUrl: 'https://unpkg.com/pdfjs-dist@6.0.227/cmaps/',
-            cMapPacked: true,
-            standardFontDataUrl: 'https://unpkg.com/pdfjs-dist@6.0.227/standard_fonts/',
-          });
-          const pdf = await loadingTask.promise;
-          const numPagesToProcess = Math.min(pdf.numPages, 4);
-          const renderedPages: string[] = [];
-
-          for (let p = 1; p <= numPagesToProcess; p++) {
-            const page = await pdf.getPage(p);
-            const viewport = page.getViewport({ scale: 2.2 });
-            const canvas = document.createElement('canvas');
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) continue;
-            await page.render({ canvasContext: ctx, canvas, viewport }).promise;
-            renderedPages.push(canvas.toDataURL('image/jpeg', 0.92));
-          }
-
-          if (renderedPages.length > 0) {
-            setImages(prev => {
-              const combined = [...prev, ...renderedPages].slice(0, 4);
-              return combined;
+            const arrayBuffer = await file.arrayBuffer();
+            const data = new Uint8Array(arrayBuffer);
+            const loadingTask = pdfjsLib.getDocument({
+              data,
+              cMapUrl: '/cmaps/',
+              cMapPacked: true,
+              standardFontDataUrl: '/standard_fonts/',
             });
-            setActiveImageIndex(0);
-            setRotation(0);
-            setError(null);
-          } else {
-            setError('Could not extract pages from this PDF.');
+            const pdf = await loadingTask.promise;
+            const numPagesToProcess = Math.min(pdf.numPages, 4);
+            const renderedPages: string[] = [];
+
+            for (let p = 1; p <= numPagesToProcess; p++) {
+              const page = await pdf.getPage(p);
+              const viewport = page.getViewport({ scale: 2.0 });
+              const canvas = document.createElement('canvas');
+              canvas.width = Math.floor(viewport.width);
+              canvas.height = Math.floor(viewport.height);
+              const ctx = canvas.getContext('2d', { alpha: false });
+              if (!ctx) continue;
+              await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+              renderedPages.push(canvas.toDataURL('image/jpeg', 0.92));
+            }
+
+            if (renderedPages.length > 0) {
+              setImages(prev => {
+                const combined = [...prev, ...renderedPages].slice(0, 4);
+                return combined;
+              });
+              setActiveImageIndex(0);
+              setRotation(0);
+              setError(null);
+              setFileUploadError(null);
+            } else {
+              const msg = 'Could not extract pages from this PDF.';
+              setError(msg);
+              setFileUploadError(msg);
+            }
+          } catch (e: any) {
+            console.error('[processFiles] PDF render error:', e);
+            const msg = `Failed to render PDF: ${e?.message || 'Please ensure the file is not password-protected.'}`;
+            setError(msg);
+            setFileUploadError(msg);
           }
-        } catch (e: any) {
-          console.error('[processFiles] PDF render error:', e);
-          setError(`Failed to render PDF: ${e?.message || 'Please ensure the file is not password-protected.'}`);
+          continue;
         }
-        continue;
-      }
 
-      // --- Word (DOC / DOCX) ---
-      if (
-        fileName.endsWith('.docx') ||
-        fileName.endsWith('.doc') ||
-        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-        file.type === 'application/msword'
-      ) {
-        try {
-          const mammoth = await import('mammoth');
-          const arrayBuffer = await file.arrayBuffer();
-          const result = await mammoth.convertToHtml({ arrayBuffer });
-
-          const iframe = document.createElement('iframe');
-          iframe.style.cssText = 'position:fixed;left:-9999px;width:800px;height:1100px;';
-          document.body.appendChild(iframe);
-          const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-          if (iframeDoc) {
-            iframeDoc.open();
-            iframeDoc.write(`<html><body style="font-family:serif;padding:40px;font-size:14px;">${result.value}</body></html>`);
-            iframeDoc.close();
-
-            await new Promise(r => setTimeout(r, 400));
-            const { default: html2canvas } = await import('html2canvas');
-            const canvas = await html2canvas(iframeDoc.body, { scale: 2, useCORS: true });
-            document.body.removeChild(iframe);
-            const docImg = canvas.toDataURL('image/jpeg', 0.92);
-            setImages(prev => [...prev, docImg].slice(0, 4));
-            setRotation(0);
-          }
-        } catch (e) {
-          console.error('[processFiles] DOCX render error:', e);
-          setError('Failed to render Word document.');
-        }
-        continue;
-      }
-
-      // --- Standard Images (JPG, PNG, WebP, HEIC, etc.) ---
-      const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.jfif', '.gif', '.bmp', '.tiff', '.tif', '.svg', '.avif', '.heic', '.heif'];
-      const isImageExtension = imageExtensions.some(ext => fileName.endsWith(ext));
-      const isValid = (file.type && file.type.startsWith('image/')) || isImageExtension || !file.type;
-
-      if (isValid) {
-        await new Promise<void>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const dataUrl = reader.result as string;
+        // --- iPhone HEIC / HEIF Images ---
+        if (
+          fileName.endsWith('.heic') ||
+          fileName.endsWith('.heif') ||
+          file.type === 'image/heic' ||
+          file.type === 'image/heif'
+        ) {
+          try {
+            console.log('[processFiles] converting HEIC image...');
+            const heic2anyModule = await import('heic2any');
+            const heic2any = (heic2anyModule as any).default || heic2anyModule;
+            const conversionResult = await heic2any({
+              blob: file,
+              toType: 'image/jpeg',
+              quality: 0.92,
+            });
+            const blobToUse = Array.isArray(conversionResult) ? conversionResult[0] : conversionResult;
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(blobToUse);
+            });
             setImages(prev => {
               if (prev.length >= 4) return prev;
               const next = [...prev, dataUrl];
               setActiveImageIndex(next.length - 1);
               return next;
             });
-            resolve();
-          };
-          reader.readAsDataURL(file);
-        });
+            setRotation(0);
+            setError(null);
+            setFileUploadError(null);
+          } catch (e: any) {
+            console.error('[processFiles] HEIC error:', e);
+            const msg = 'Failed to convert HEIC/iPhone image. Please upload JPG or PNG.';
+            setError(msg);
+            setFileUploadError(msg);
+          }
+          continue;
+        }
+
+        // --- Word (DOC / DOCX) ---
+        if (
+          fileName.endsWith('.docx') ||
+          fileName.endsWith('.doc') ||
+          file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+          file.type === 'application/msword'
+        ) {
+          try {
+            const mammoth = await import('mammoth');
+            const arrayBuffer = await file.arrayBuffer();
+            const result = await mammoth.convertToHtml({ arrayBuffer });
+
+            const iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;left:-9999px;width:800px;height:1100px;';
+            document.body.appendChild(iframe);
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+            if (iframeDoc) {
+              iframeDoc.open();
+              iframeDoc.write(`<html><body style="font-family:serif;padding:40px;font-size:14px;">${result.value}</body></html>`);
+              iframeDoc.close();
+
+              await new Promise(r => setTimeout(r, 400));
+              const { default: html2canvas } = await import('html2canvas');
+              const canvas = await html2canvas(iframeDoc.body, { scale: 2, useCORS: true });
+              document.body.removeChild(iframe);
+              const docImg = canvas.toDataURL('image/jpeg', 0.92);
+              setImages(prev => [...prev, docImg].slice(0, 4));
+              setRotation(0);
+              setError(null);
+              setFileUploadError(null);
+            }
+          } catch (e) {
+            console.error('[processFiles] DOCX render error:', e);
+            const msg = 'Failed to render Word document.';
+            setError(msg);
+            setFileUploadError(msg);
+          }
+          continue;
+        }
+
+        // --- Standard Images (JPG, PNG, WebP, etc.) ---
+        const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.jfif', '.gif', '.bmp', '.tiff', '.tif', '.svg', '.avif'];
+        const isImageExtension = imageExtensions.some(ext => fileName.endsWith(ext));
+        const isValid = (file.type && file.type.startsWith('image/')) || isImageExtension || !file.type;
+
+        if (isValid) {
+          await new Promise<void>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const dataUrl = reader.result as string;
+              setImages(prev => {
+                if (prev.length >= 4) return prev;
+                const next = [...prev, dataUrl];
+                setActiveImageIndex(next.length - 1);
+                return next;
+              });
+              setError(null);
+              setFileUploadError(null);
+              resolve();
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+        } else {
+          const msg = `Unsupported file format (${fileName || file.type}). Please upload PDF, Word document, or image files.`;
+          setError(msg);
+          setFileUploadError(msg);
+        }
       }
+    } finally {
+      setIsProcessingFile(false);
     }
   };
 
@@ -2554,9 +2621,25 @@ ${result.report}
               )}
             </div>
             
+            {fileUploadError && (
+              <div className="mb-3 p-3 bg-red-50 border border-red-400 text-red-700 text-xs font-mono flex items-center justify-between shadow-sm">
+                <span className="flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                  {fileUploadError}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFileUploadError(null)}
+                  className="text-red-500 hover:text-red-900 font-bold ml-2 text-sm leading-none"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
             <div 
               onClick={() => {
-                if (!image) fileInputRef.current?.click();
+                if (!image && !isProcessingFile) fileInputRef.current?.click();
               }}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -2618,6 +2701,16 @@ ${result.report}
                       {images.length < 4 ? 'Click thumbnails below to switch / + to add' : 'Previewing page ' + (activeImageIndex + 1)}
                     </span>
                   </div>
+                </div>
+              ) : isProcessingFile ? (
+                <div className="text-center p-8 flex flex-col items-center justify-center">
+                  <Loader2 className="w-10 h-10 animate-spin text-[#141414] mb-3 opacity-80" />
+                  <p className="font-mono text-xs uppercase tracking-wider font-bold">
+                    Processing document pages...
+                  </p>
+                  <p className="text-[10px] opacity-75 mt-1 font-mono">
+                    Converting & rendering high-resolution sample pages
+                  </p>
                 </div>
               ) : (
                 <div className="text-center p-8">

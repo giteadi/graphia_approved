@@ -1514,6 +1514,33 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     return;
   }
 
+  // ── Payment / Credit Enforcement ─────────────────────────────────────────
+  const userEmail = (req.userEmail || '').toLowerCase();
+  const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+  const testEmails = (process.env.TEST_PAYMENT_EMAILS || 'admin@graphiacheck.in,test@graphiacheck.in').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+  const isExempt = adminEmails.includes(userEmail) || testEmails.includes(userEmail);
+
+  if (!isExempt) {
+    const [paymentsCount] = await query<{ count: number }>(
+      "SELECT COUNT(*) as count FROM payments WHERE user_id = ? AND status = 'completed'",
+      [req.userId]
+    );
+    const [reportsCount] = await query<{ count: number }>(
+      "SELECT COUNT(*) as count FROM reports WHERE user_id = ?",
+      [req.userId]
+    );
+    const paidCredits = paymentsCount?.count || 0;
+    const usedReports = reportsCount?.count || 0;
+    if (paidCredits <= usedReports) {
+      res.status(402).json({
+        error: 'Payment required to generate analysis report. Please complete payment before running analysis.',
+        code: 'PAYMENT_REQUIRED',
+        creditsRemaining: 0
+      });
+      return;
+    }
+  }
+
   try {
     // ── STEP 1: Evidence Extraction (+ parallel cancellation pass) ────────────
     console.log(`[Step 1] Extracting evidence across ${imageUrls.length} page(s) (2 parallel passes)...`);
@@ -2101,6 +2128,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         runOnSentences: boundary.runOnSentences ?? 0,
         missingCapitals: boundary.missingCapitals ?? 0,
         missingPunctuation: boundary.missingPunctuation ?? 0,
+        modelUsed: preferredModel,
       }
     };
 

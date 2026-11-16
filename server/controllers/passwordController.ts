@@ -33,10 +33,10 @@ export async function sendOTP(req: Request, res: Response): Promise<void> {
 
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Check if user exists
+    // Check if user exists (generic response prevents email enumeration)
     const users = await query<any>('SELECT * FROM users WHERE email = ?', [normalizedEmail]);
     if (users.length === 0) {
-      res.status(404).json({ error: 'User not found' });
+      res.json({ message: 'If this email is registered, a verification code has been sent.' });
       return;
     }
 

@@ -25,8 +25,19 @@ export async function register(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  const normalizedEmail = email.toLowerCase().trim();
+  const adminEmails = (process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (adminEmails.includes(normalizedEmail)) {
+    res.status(403).json({ error: 'Direct registration is restricted for administrative accounts.' });
+    return;
+  }
+
   try {
-    const existing = await query('SELECT id FROM users WHERE email = ?', [email]);
+    const existing = await query('SELECT id FROM users WHERE email = ?', [normalizedEmail]);
     if (existing.length > 0) {
       res.status(409).json({ error: 'Email already registered' });
       return;
@@ -35,7 +46,7 @@ export async function register(req: Request, res: Response): Promise<void> {
     const hashed = await bcrypt.hash(password, 10);
     const result = await query(
       'INSERT INTO users (name, email, password, mobile) VALUES (?, ?, ?, ?)',
-      [name, email, hashed, mobile || null]
+      [name, normalizedEmail, hashed, mobile || null]
     );
 
     const userId = (result as any).insertId;

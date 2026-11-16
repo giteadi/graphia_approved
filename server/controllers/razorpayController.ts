@@ -27,6 +27,10 @@ const TEST_PAYMENT_EMAILS = (process.env.TEST_PAYMENT_EMAILS || 'admin@graphiach
   .filter(Boolean);
 
 function requesterEmail(req: Request): string {
+  const authReq = req as any;
+  if (authReq.userEmail) {
+    return String(authReq.userEmail).toLowerCase().trim();
+  }
   return String(req.headers['x-user-email'] || req.body?.user_email || '')
     .toLowerCase()
     .trim();
@@ -157,9 +161,12 @@ export async function verifyPayment(req: Request, res: Response): Promise<void> 
       return;
     }
 
+    const authReq = req as any;
+    const effectiveUserId = authReq.userId || user_id;
+
     const isTestPayment = signatureMode === 'test';
     if (isTestPayment) {
-      console.log(`[Razorpay] TEST-mode payment verified for user ${user_id} — excluded from revenue`);
+      console.log(`[Razorpay] TEST-mode payment verified for user ${effectiveUserId} — excluded from revenue`);
     }
 
     // Store payment in database with phone number
@@ -176,11 +183,11 @@ export async function verifyPayment(req: Request, res: Response): Promise<void> 
     const paymentResult = await query(
       `INSERT INTO payments (user_id, amount, currency, status, payment_method, description, is_test, payment_date)
        VALUES (?, ?, 'INR', 'completed', 'razorpay', ?, ?, NOW())`,
-      [user_id, paymentAmount, paymentDescription, isTestPayment ? 1 : 0]
+      [effectiveUserId, paymentAmount, paymentDescription, isTestPayment ? 1 : 0]
     );
 
     const paymentId = (paymentResult as any).insertId;
-    console.log(`[Razorpay] Payment stored: ID ${paymentId}, User ID ${user_id}, Mode ${signatureMode}`);
+    console.log(`[Razorpay] Payment stored: ID ${paymentId}, User ID ${effectiveUserId}, Mode ${signatureMode}`);
 
     // Check if report data contains high probability
     const probability = report_data?.probability || 'Unknown';
@@ -194,7 +201,7 @@ export async function verifyPayment(req: Request, res: Response): Promise<void> 
       `INSERT INTO reports (user_id, grade, report_text, probability, is_high_probability, student_name, student_age, contact_info, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
-        user_id,
+        effectiveUserId,
         report_data?.grade || 'Unknown',
         JSON.stringify(report_data),
         probability,
@@ -205,7 +212,7 @@ export async function verifyPayment(req: Request, res: Response): Promise<void> 
       ]
     );
 
-    console.log(`[Razorpay] Payment verified and stored: Payment ID ${paymentId}, User ID ${user_id}, High Probability: ${isHighProbability}`);
+    console.log(`[Razorpay] Payment verified and stored: Payment ID ${paymentId}, User ID ${effectiveUserId}, High Probability: ${isHighProbability}`);
 
     res.json({
       success: true,
@@ -227,9 +234,11 @@ export async function verifyPayment(req: Request, res: Response): Promise<void> 
 
 export async function updateReportData(req: Request, res: Response): Promise<void> {
   try {
-    const { user_id, probability, summary, scores } = req.body;
+    const authReq = req as any;
+    const effectiveUserId = authReq.userId || req.body?.user_id;
+    const { probability, summary, scores } = req.body;
 
-    if (!user_id) {
+    if (!effectiveUserId) {
       res.status(400).json({ 
         success: false, 
         message: 'User ID required' 
@@ -243,7 +252,7 @@ export async function updateReportData(req: Request, res: Response): Promise<voi
     // JSON_SET would have corrupted.
     const rows = await query<any>(
       'SELECT id, report_text FROM reports WHERE user_id = ? ORDER BY id DESC LIMIT 1',
-      [user_id]
+      [effectiveUserId]
     );
 
     if (rows.length === 0) {
@@ -280,7 +289,7 @@ export async function updateReportData(req: Request, res: Response): Promise<voi
       ]
     );
 
-    console.log(`[Razorpay] Report ${latest.id} updated for User ID ${user_id}, Probability: ${probability}`);
+    console.log(`[Razorpay] Report ${latest.id} updated for User ID ${effectiveUserId}, Probability: ${probability}`);
     res.json({ 
       success: true, 
       data: { message: 'Report updated successfully' } 
