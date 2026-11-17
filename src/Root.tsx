@@ -25,22 +25,21 @@ function PageFallback() {
 }
 
 function RootContent() {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [checked, setChecked] = useState(false);
+  // Synchronously hydrate user from localStorage on first render to prevent bounce to /auth
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    try {
+      const token = getToken();
+      const savedUser = getUser();
+      return (token && savedUser) ? savedUser : null;
+    } catch {
+      return null;
+    }
+  });
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   // Check if this is a report-only tab
   const isReportTab = searchParams.get('report') === '1';
-
-  useEffect(() => {
-    const token = getToken();
-    const savedUser = getUser();
-    if (token && savedUser) {
-      setUser(savedUser);
-    }
-    setChecked(true);
-  }, []);
 
   function handleAuth(authUser: AuthUser, _token: string) {
     setUser(authUser);
@@ -53,8 +52,6 @@ function RootContent() {
     setUser(null);
     navigate('/');
   }
-
-  if (!checked) return null;
 
   // Report tab — skip auth check, load App directly in report-only mode
   if (isReportTab) {
@@ -69,14 +66,29 @@ function RootContent() {
   return (
     <Suspense fallback={<PageFallback />}>
       <Routes>
-        <Route path="/" element={<HomePage onGetStarted={() => navigate('/auth')} onHome={() => navigate('/')} onAbout={() => navigate('/about')} onTerms={() => navigate('/terms')} onPrivacy={() => navigate('/privacy')} onRefund={() => navigate('/refund')} />} />
+        <Route
+          path="/"
+          element={
+            <HomePage
+              onGetStarted={() => navigate(user ? '/app' : '/auth')}
+              onHome={() => navigate('/')}
+              onAbout={() => navigate('/about')}
+              onTerms={() => navigate('/terms')}
+              onPrivacy={() => navigate('/privacy')}
+              onRefund={() => navigate('/refund')}
+            />
+          }
+        />
         <Route path="/about" element={<AboutPage onBack={() => navigate('/')} onTerms={() => navigate('/terms')} onPrivacy={() => navigate('/privacy')} onRefund={() => navigate('/refund')} />} />
         <Route path="/terms" element={<TermsPage onBack={() => navigate('/')} onTerms={() => navigate('/terms')} onPrivacy={() => navigate('/privacy')} onRefund={() => navigate('/refund')} />} />
         <Route path="/privacy" element={<PrivacyPage onBack={() => navigate('/')} onTerms={() => navigate('/terms')} onPrivacy={() => navigate('/privacy')} onRefund={() => navigate('/refund')} />} />
         <Route path="/refund" element={<RefundPage onBack={() => navigate('/')} onTerms={() => navigate('/terms')} onPrivacy={() => navigate('/privacy')} onRefund={() => navigate('/refund')} />} />
-        <Route path="/auth" element={<AuthPage onAuth={handleAuth} onBack={() => navigate('/')} />} />
+        <Route
+          path="/auth"
+          element={user ? <Navigate to="/app" replace /> : <AuthPage onAuth={handleAuth} onBack={() => navigate('/')} />}
+        />
         <Route path="/forget-password" element={<PasswordResetFlow />} />
-        <Route path="/app" element={user ? <App user={user} onLogout={handleLogout} /> : <Navigate to="/auth" />} />
+        <Route path="/app" element={user ? <App user={user} onLogout={handleLogout} /> : <Navigate to="/auth" replace />} />
         <Route path="/admin" element={<AdminPanel />} />
       </Routes>
     </Suspense>

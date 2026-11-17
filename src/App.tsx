@@ -343,30 +343,62 @@ export default function App({ user, onLogout, reportTabMode = false }: AppProps)
     setImages([]);
     setActiveImageIndex(0);
   }, []);
-  const [studentName, setStudentName] = useState<string>('');
-  const [schoolName, setSchoolName] = useState<string>('');
-  const [cityName, setCityName] = useState<string>('');
-  const [countryName, setCountryName] = useState<string>('');
-  const [uploadedBy, setUploadedBy] = useState<string>('');
-  const [contactEmail, setContactEmail] = useState<string>('');
-  const [contactPhone, setContactPhone] = useState<string>('');
-  const [interventionTried, setInterventionTried] = useState<boolean>(false);
-  const [interventionImproved, setInterventionImproved] = useState<'yes' | 'no' | 'partial'>('no');
-  const [interventionDetails, setInterventionDetails] = useState<string>('');
-  const [grade, setGrade] = useState<string>('');
-  const [timeTaken, setTimeTaken] = useState<string>('');
-  const [dob, setDob] = useState<string>('');
+  const [studentName, setStudentName] = useState<string>(() => localStorage.getItem('graphia_draft_studentName') || '');
+  const [schoolName, setSchoolName] = useState<string>(() => localStorage.getItem('graphia_draft_schoolName') || '');
+  const [cityName, setCityName] = useState<string>(() => localStorage.getItem('graphia_draft_cityName') || '');
+  const [countryName, setCountryName] = useState<string>(() => localStorage.getItem('graphia_draft_countryName') || '');
+  const [uploadedBy, setUploadedBy] = useState<string>(() => localStorage.getItem('graphia_draft_uploadedBy') || '');
+  const [contactEmail, setContactEmail] = useState<string>(() => localStorage.getItem('graphia_draft_contactEmail') || '');
+  const [contactPhone, setContactPhone] = useState<string>(() => localStorage.getItem('graphia_draft_contactPhone') || '');
+  const [interventionTried, setInterventionTried] = useState<boolean>(() => localStorage.getItem('graphia_draft_interventionTried') === 'true');
+  const [interventionImproved, setInterventionImproved] = useState<'yes' | 'no' | 'partial'>(() => (localStorage.getItem('graphia_draft_interventionImproved') as any) || 'no');
+  const [interventionDetails, setInterventionDetails] = useState<string>(() => localStorage.getItem('graphia_draft_interventionDetails') || '');
+  const [grade, setGrade] = useState<string>(() => localStorage.getItem('graphia_draft_grade') || '');
+  const [timeTaken, setTimeTaken] = useState<string>(() => localStorage.getItem('graphia_draft_timeTaken') || '');
+  const [dob, setDob] = useState<string>(() => localStorage.getItem('graphia_draft_dob') || '');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [result, setResult] = useState<AnalysisResult | null>(() => {
+    try {
+      const saved = localStorage.getItem('graphia_active_report');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [error, setError] = useState<string | null>(null);
   
   // Editable OCR transcription state
   const [isEditingTranscription, setIsEditingTranscription] = useState(false);
   const [editedTranscription, setEditedTranscription] = useState('');
   const [isRecalculating, setIsRecalculating] = useState(false);
-  const [context, setContext] = useState('');
+  const [context, setContext] = useState(() => localStorage.getItem('graphia_draft_context') || '');
+
+  // Persistent form draft auto-save
+  useEffect(() => {
+    localStorage.setItem('graphia_draft_studentName', studentName);
+    localStorage.setItem('graphia_draft_schoolName', schoolName);
+    localStorage.setItem('graphia_draft_cityName', cityName);
+    localStorage.setItem('graphia_draft_countryName', countryName);
+    localStorage.setItem('graphia_draft_uploadedBy', uploadedBy);
+    localStorage.setItem('graphia_draft_contactEmail', contactEmail);
+    localStorage.setItem('graphia_draft_contactPhone', contactPhone);
+    localStorage.setItem('graphia_draft_interventionTried', String(interventionTried));
+    localStorage.setItem('graphia_draft_interventionImproved', interventionImproved);
+    localStorage.setItem('graphia_draft_interventionDetails', interventionDetails);
+    localStorage.setItem('graphia_draft_grade', grade);
+    localStorage.setItem('graphia_draft_timeTaken', timeTaken);
+    localStorage.setItem('graphia_draft_dob', dob);
+    localStorage.setItem('graphia_draft_context', context);
+  }, [studentName, schoolName, cityName, countryName, uploadedBy, contactEmail, contactPhone, interventionTried, interventionImproved, interventionDetails, grade, timeTaken, dob, context]);
+
+  // Persistent active report auto-save
+  useEffect(() => {
+    if (result) {
+      localStorage.setItem('graphia_active_report', JSON.stringify(result));
+    }
+  }, [result]);
   const [selectedObservations, setSelectedObservations] = useState<string[]>([]);
   const [selectedDataSources, setSelectedDataSources] = useState<string[]>([]);
   const [customObservation, setCustomObservation] = useState('');
@@ -703,6 +735,23 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
     setIsUrlInput(false);
     setExternalUrl('');
     setSaveStatus('idle');
+
+    // Clear persisted draft & active report
+    localStorage.removeItem('graphia_active_report');
+    localStorage.removeItem('graphia_draft_studentName');
+    localStorage.removeItem('graphia_draft_schoolName');
+    localStorage.removeItem('graphia_draft_cityName');
+    localStorage.removeItem('graphia_draft_countryName');
+    localStorage.removeItem('graphia_draft_uploadedBy');
+    localStorage.removeItem('graphia_draft_contactEmail');
+    localStorage.removeItem('graphia_draft_contactPhone');
+    localStorage.removeItem('graphia_draft_interventionTried');
+    localStorage.removeItem('graphia_draft_interventionImproved');
+    localStorage.removeItem('graphia_draft_interventionDetails');
+    localStorage.removeItem('graphia_draft_grade');
+    localStorage.removeItem('graphia_draft_timeTaken');
+    localStorage.removeItem('graphia_draft_dob');
+    localStorage.removeItem('graphia_draft_context');
   };
 
   const handleClear = () => {

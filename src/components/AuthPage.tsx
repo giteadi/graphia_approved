@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { registerUser, loginUser, saveSession, AuthUser } from '../services/authService';
+import React, { useState, useEffect } from 'react';
+import { registerUser, loginUser, saveSession, getToken, getUser, AuthUser } from '../services/authService';
 import Navbar from "./Navbar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from 'react-router-dom';
@@ -18,6 +18,15 @@ export default function AuthPage({ onAuth, onBack }: AuthPageProps) {
   const [mobile, setMobile] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // If already logged in, automatically proceed to app
+  useEffect(() => {
+    const token = getToken();
+    const user = getUser();
+    if (token && user) {
+      onAuth(user, token);
+    }
+  }, [onAuth]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
