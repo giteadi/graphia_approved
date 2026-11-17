@@ -10,13 +10,26 @@ import razorpayRoutes from './routes/razorpayRoutes.js';
 
 const app = express();
 
+const customOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
 const allowedOrigins = [
   'http://localhost:3000',
+  'http://localhost:3001',
   'http://localhost:3002',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'http://127.0.0.1:3002',
+  'http://127.0.0.1:5173',
   'http://graphiacheck.in',
   'https://graphiacheck.in',
   'http://www.graphiacheck.in',
   'https://www.graphiacheck.in',
+  ...customOrigins,
+  ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : []),
 ];
 
 app.use(cors({
@@ -25,7 +38,7 @@ app.use(cors({
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error(`CORS blocked: ${origin}`));
+      callback(null, false);
     }
   },
   credentials: true,

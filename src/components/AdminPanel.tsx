@@ -37,7 +37,11 @@ export default function AdminPanel() {
   const navigate = useNavigate();
   
   // Check if user is admin - redirect if not
-  if (!user || user.email !== 'admin@graphiacheck.in') {
+  const isAdminEmail = user?.email && (
+    user.email.toLowerCase() === 'admin@graphiacheck.in' ||
+    user.email.toLowerCase().endsWith('@graphiacheck.in')
+  );
+  if (!user || !isAdminEmail) {
     return <Navigate to="/auth" replace />;
   }
 

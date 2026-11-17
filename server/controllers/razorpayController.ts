@@ -6,17 +6,16 @@ import { query } from '../config/db.js';
 // ── Razorpay clients ──────────────────────────────────────────────────────────
 // Live keys charge real money. Test keys let admins walk the full payment flow
 // without a real charge — those payments are flagged and excluded from revenue.
-const LIVE_KEY_ID     = process.env.RAZORPAY_KEY_ID;
-const LIVE_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
-const TEST_KEY_ID     = process.env.RAZORPAY_TEST_KEY_ID;
-const TEST_KEY_SECRET = process.env.RAZORPAY_TEST_KEY_SECRET;
+const LIVE_KEY_ID     = process.env.RAZORPAY_KEY_ID || '';
+const LIVE_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
+const TEST_KEY_ID     = process.env.RAZORPAY_TEST_KEY_ID || '';
+const TEST_KEY_SECRET = process.env.RAZORPAY_TEST_KEY_SECRET || '';
 
-const razorpay = new Razorpay({
-  key_id: LIVE_KEY_ID,
-  key_secret: LIVE_KEY_SECRET,
-});
+const razorpay = (LIVE_KEY_ID && LIVE_KEY_SECRET)
+  ? new Razorpay({ key_id: LIVE_KEY_ID, key_secret: LIVE_KEY_SECRET })
+  : new Razorpay({ key_id: 'rzp_placeholder', key_secret: 'placeholder' });
 
-const razorpayTest = TEST_KEY_ID && TEST_KEY_SECRET
+const razorpayTest = (TEST_KEY_ID && TEST_KEY_SECRET)
   ? new Razorpay({ key_id: TEST_KEY_ID, key_secret: TEST_KEY_SECRET })
   : null;
 
@@ -319,10 +318,15 @@ export async function getHighProbabilityReports(req: Request, res: Response): Pr
         r.student_age,
         r.contact_info,
         r.created_at as report_date,
-        p.status as payment_status
+        COALESCE(p.status, 'pending') as payment_status
        FROM reports r
        JOIN users u ON r.user_id = u.id
-       LEFT JOIN payments p ON r.user_id = p.user_id AND p.status = 'completed'
+       LEFT JOIN (
+         SELECT user_id, 'completed' as status
+         FROM payments
+         WHERE status = 'completed'
+         GROUP BY user_id
+       ) p ON r.user_id = p.user_id
        WHERE r.is_high_probability = TRUE
        ORDER BY r.created_at DESC`
     );

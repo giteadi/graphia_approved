@@ -66,14 +66,18 @@ export async function createPaymentOrder(amount: number = 899, description?: str
     const API_KEY = import.meta.env.VITE_API_KEY || '';
     
     const token = localStorage.getItem('token') || '';
-    const response = await fetch(`${API_URL}/payments/create-order`, {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-API-Key': API_KEY,
+      'x-user-email': currentUserEmail()
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    let response = await fetch(`${API_URL}/payments/create-order`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'X-API-Key': API_KEY,
-        'x-user-email': currentUserEmail()
-      },
+      headers,
       body: JSON.stringify({ 
         amount, 
         currency: 'INR',
@@ -82,6 +86,22 @@ export async function createPaymentOrder(amount: number = 899, description?: str
     });
 
     console.log('[Razorpay] Create order response status:', response.status);
+    
+    // Auto-retry once without stale token if 401 returned
+    if (response.status === 401 && headers['Authorization']) {
+      console.warn('[Razorpay] 401 received with token, retrying order creation without stale token...');
+      delete headers['Authorization'];
+      response = await fetch(`${API_URL}/payments/create-order`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ 
+          amount, 
+          currency: 'INR',
+          description: description || 'GraphiaCheck Report Generation Fee'
+        }),
+      });
+      console.log('[Razorpay] Retry response status:', response.status);
+    }
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -122,26 +142,43 @@ export async function verifyPayment(
     const API_KEY = import.meta.env.VITE_API_KEY || '';
     
     const token = localStorage.getItem('token') || '';
-    const response = await fetch(`${API_URL}/payments/verify`, {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-API-Key': API_KEY,
+      'x-user-email': currentUserEmail()
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const payload = JSON.stringify({
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      user_id,
+      report_data,
+      amount,
+      description
+    });
+
+    let response = await fetch(`${API_URL}/payments/verify`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'X-API-Key': API_KEY,
-        'x-user-email': currentUserEmail()
-      },
-      body: JSON.stringify({
-        razorpay_order_id,
-        razorpay_payment_id,
-        razorpay_signature,
-        user_id,
-        report_data,
-        amount,
-        description
-      }),
+      headers,
+      body: payload,
     });
 
     console.log("🔥 Verify API response status:", response.status);
+
+    if (response.status === 401 && headers['Authorization']) {
+      console.warn("🔥 401 on verify with token, retrying verification without stale token...");
+      delete headers['Authorization'];
+      response = await fetch(`${API_URL}/payments/verify`, {
+        method: 'POST',
+        headers,
+        body: payload,
+      });
+      console.log("🔥 Verify retry response status:", response.status);
+    }
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));

@@ -50,7 +50,7 @@ export async function register(req: Request, res: Response): Promise<void> {
     );
 
     const userId = (result as any).insertId;
-    const token = jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+    const token = jwt.sign({ userId, email: normalizedEmail }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
 
     // Send welcome email
     try {
@@ -81,8 +81,10 @@ export async function login(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  const normalizedEmail = email.toLowerCase().trim();
+
   try {
-    const users = await query<any>('SELECT * FROM users WHERE email = ?', [email]);
+    const users = await query<any>('SELECT * FROM users WHERE email = ?', [normalizedEmail]);
 
     if (users.length === 0) {
       res.status(401).json({ error: 'Invalid email or password' });

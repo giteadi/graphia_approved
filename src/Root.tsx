@@ -45,7 +45,11 @@ function RootContent() {
   function handleAuth(authUser: AuthUser, _token: string) {
     setUser(authUser);
     // Redirect admin to admin panel, others to app
-    if (authUser.email === 'admin@graphiacheck.in') {
+    const isAdmin = authUser?.email && (
+      authUser.email.toLowerCase() === 'admin@graphiacheck.in' ||
+      authUser.email.toLowerCase().endsWith('@graphiacheck.in')
+    );
+    if (isAdmin) {
       navigate('/admin');
     } else {
       navigate('/app');

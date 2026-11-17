@@ -217,10 +217,15 @@ export async function getHighProbabilityUsers(req: Request, res: Response): Prom
         r.contact_info as contactInfo,
         r.created_at as reportDate,
         r.is_high_probability as isHighProbability,
-        p.status as paymentStatus
+        COALESCE(p.status, 'pending') as paymentStatus
        FROM users u
        JOIN reports r ON u.id = r.user_id
-       LEFT JOIN payments p ON u.id = p.user_id AND p.status = 'completed'
+       LEFT JOIN (
+         SELECT user_id, 'completed' as status
+         FROM payments
+         WHERE status = 'completed'
+         GROUP BY user_id
+       ) p ON u.id = p.user_id
        WHERE r.is_high_probability = TRUE
        ORDER BY r.created_at DESC`
     );
@@ -230,7 +235,7 @@ export async function getHighProbabilityUsers(req: Request, res: Response): Prom
       let extractedPhone = user.userMobile;
       if (user.contactInfo && user.contactInfo.includes('|')) {
         const parts = user.contactInfo.split('|').map((p: string) => p.trim());
-        // Format: "email | phone" or "email | phone"
+        // Format: "email | phone"
         if (parts.length > 1) {
           extractedPhone = parts[1]; // Second part is phone
         }
@@ -245,5 +250,64 @@ export async function getHighProbabilityUsers(req: Request, res: Response): Prom
   } catch (err: any) {
     console.error('[Admin] Get high probability users error:', err.message);
     res.status(500).json({ error: 'Server error while fetching high probability users' });
+  }
+}
+
+export async function bulkDeletePayments(req: Request, res: Response): Promise<void> {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: 'Array of payment IDs is required' });
+      return;
+    }
+
+    const numericIds = ids
+      .map((id: any) => {
+        const clean = String(id).replace(/^PAY/i, '');
+        return parseInt(clean, 10);
+      })
+      .filter((n: number) => !isNaN(n) && n > 0);
+
+    if (numericIds.length === 0) {
+      res.status(400).json({ error: 'No valid payment IDs provided' });
+      return;
+    }
+
+    const placeholders = numericIds.map(() => '?').join(',');
+    await query(`DELETE FROM payments WHERE id IN (${placeholders})`, numericIds);
+    console.log(`[Admin] Deleted ${numericIds.length} payments:`, numericIds);
+
+    res.json({ message: `Successfully deleted ${numericIds.length} payment(s)` });
+  } catch (err: any) {
+    console.error('[Admin] Bulk delete payments error:', err.message);
+    res.status(500).json({ error: 'Server error while deleting payments' });
+  }
+}
+
+export async function bulkDeleteHighProbabilityUsers(req: Request, res: Response): Promise<void> {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: 'Array of report IDs is required' });
+      return;
+    }
+
+    const numericIds = ids
+      .map((id: any) => parseInt(String(id), 10))
+      .filter((n: number) => !isNaN(n) && n > 0);
+
+    if (numericIds.length === 0) {
+      res.status(400).json({ error: 'No valid report IDs provided' });
+      return;
+    }
+
+    const placeholders = numericIds.map(() => '?').join(',');
+    await query(`DELETE FROM reports WHERE id IN (${placeholders})`, numericIds);
+    console.log(`[Admin] Deleted ${numericIds.length} reports:`, numericIds);
+
+    res.json({ message: `Successfully deleted ${numericIds.length} report(s)` });
+  } catch (err: any) {
+    console.error('[Admin] Bulk delete reports error:', err.message);
+    res.status(500).json({ error: 'Server error while deleting reports' });
   }
 }

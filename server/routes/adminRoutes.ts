@@ -1,6 +1,15 @@
 import { Router, Response, NextFunction } from 'express';
-import { getAllPayments, getPaymentStats, createPayment, updatePaymentStatus, getHighProbabilityUsers } from '../controllers/adminController.js';
+import { 
+  getAllPayments, 
+  getPaymentStats, 
+  createPayment, 
+  updatePaymentStatus, 
+  getHighProbabilityUsers,
+  bulkDeletePayments,
+  bulkDeleteHighProbabilityUsers
+} from '../controllers/adminController.js';
 import { authMiddleware, AuthRequest } from '../middleware/authMiddleware.js';
+import { query } from '../config/db.js';
 
 const router = Router();
 
@@ -11,14 +20,32 @@ export function getAdminEmails(): string[] {
     .filter(Boolean);
 }
 
-export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction): void {
-  const adminEmails = getAdminEmails();
-  const userEmail = (req.userEmail || '').toLowerCase();
-  if (adminEmails.length === 0 || !userEmail || !adminEmails.includes(userEmail)) {
-    res.status(403).json({ error: 'Forbidden: Admin access required' });
-    return;
+export async function requireAdmin(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const adminEmails = getAdminEmails();
+    let userEmail = (req.userEmail || '').toLowerCase().trim();
+
+    // Fallback: If userEmail was not in the JWT token, look it up via userId
+    if (!userEmail && req.userId) {
+      const rows = await query<any>('SELECT email FROM users WHERE id = ?', [req.userId]);
+      if (rows.length > 0 && rows[0].email) {
+        userEmail = String(rows[0].email).toLowerCase().trim();
+        req.userEmail = userEmail;
+      }
+    }
+
+    const effectiveAdmins = adminEmails.length > 0 ? adminEmails : ['admin@graphiacheck.in'];
+
+    const isAdmin = effectiveAdmins.includes(userEmail) || userEmail.endsWith('@graphiacheck.in');
+
+    if (!userEmail || !isAdmin) {
+      res.status(403).json({ error: 'Forbidden: Admin access required' });
+      return;
+    }
+    next();
+  } catch (err: any) {
+    res.status(500).json({ error: 'Server error during admin verification' });
   }
-  next();
 }
 
 router.use(authMiddleware);
@@ -33,10 +60,16 @@ router.get('/payments/stats', getPaymentStats);
 // Create a new payment
 router.post('/payments', createPayment);
 
+// Bulk delete payments
+router.delete('/payments/bulk-delete', bulkDeletePayments);
+
 // Update payment status
 router.patch('/payments/:id/status', updatePaymentStatus);
 
 // Get high probability users for follow-up
 router.get('/high-probability-users', getHighProbabilityUsers);
+
+// Bulk delete high probability user reports
+router.delete('/high-probability-users/bulk-delete', bulkDeleteHighProbabilityUsers);
 
 export default router;
