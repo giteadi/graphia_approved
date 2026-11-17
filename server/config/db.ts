@@ -1,4 +1,5 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+dotenv.config({ override: true });
 import mysql, { PoolConnection } from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 
