@@ -44,16 +44,8 @@ function RootContent() {
 
   function handleAuth(authUser: AuthUser, _token: string) {
     setUser(authUser);
-    // Redirect admin to admin panel, others to app
-    const isAdmin = authUser?.email && (
-      authUser.email.toLowerCase() === 'admin@graphiacheck.in' ||
-      authUser.email.toLowerCase().endsWith('@graphiacheck.in')
-    );
-    if (isAdmin) {
-      navigate('/admin');
-    } else {
-      navigate('/app');
-    }
+    // Always navigate to the clinical report generator after login
+    navigate('/app');
   }
 
   function handleLogout() {

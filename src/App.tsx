@@ -21,6 +21,7 @@ import {
   Crop as CropIcon,
   Check,
   X,
+  Shield,
   BarChart3,
   Type,
   FolderOpen,
@@ -2549,6 +2550,16 @@ ${result.report}
             <Settings className="w-4 h-4" />
             Settings
           </button>
+          {Boolean(user?.email && (user.email.toLowerCase() === 'admin@graphiacheck.in' || user.email.toLowerCase().endsWith('@graphiacheck.in'))) && (
+            <button
+              onClick={() => window.location.href = '/admin'}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono uppercase tracking-widest bg-emerald-800 text-white hover:bg-emerald-900 transition-all border border-[#141414] shadow-xs cursor-pointer"
+              title="Open Admin Dashboard"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              <span>Admin</span>
+            </button>
+          )}
           <div className="hidden sm:block text-[11px] opacity-50 uppercase tracking-widest font-mono">
             Clinical Diagnostic Engine v1.0
           </div>

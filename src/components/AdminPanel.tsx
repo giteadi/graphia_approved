@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Search, Calendar, Filter, ChevronDown, User, Mail, DollarSign, Clock, X, Loader2, LogOut, Shield, Phone, Check, Trash2, CheckSquare, Square } from 'lucide-react';
+import { Search, Calendar, Filter, ChevronDown, User, Mail, DollarSign, Clock, X, Loader2, LogOut, Shield, Phone, Check, Trash2, CheckSquare, Square, FileText } from 'lucide-react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { getUser, clearSession } from '../services/authService';
 
@@ -373,6 +373,14 @@ export default function AdminPanel() {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => navigate('/app')}
+                className="flex items-center gap-2 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg transition-colors font-medium text-xs shadow-sm cursor-pointer"
+              >
+                <FileText className="w-4 h-4" />
+                <span>Go to Report Generator (App)</span>
+              </button>
               <div className="text-right">
                 <p className="text-sm font-medium text-gray-900">{user.name}</p>
                 <p className="text-xs text-gray-500">{user.email}</p>
