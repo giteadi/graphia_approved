@@ -418,14 +418,14 @@ FINAL VALIDATION CHECKLIST (run before returning JSON):
 □ Did I check EVERY word for strike-through independently?
 □ Did I check for MULTI-WORD cancellations (will be, to the, of the, my cousin, etc.)?
 □ Did I read words till the last visible stroke (no truncation)?
-□ Are short struck words (be, to, se, fee, h, a, na) in confirmedCancellations?
-□ Did I check non-English fragments (se, fee, h) for strike-through?
+□ Are short struck words (be, to, so, of, the) in confirmedCancellations?
 □ A word does NOT need to be valid English to be a valid cancellation.
 □ Is confidence >= 80 for longer words with clear strike-through?
 □ Are all overwritten/rewritten words in uncertainCancellations only?
 □ If I see "will be" cancelled, did I cancel BOTH words?
 □ If I'm unsure about a cancellation, did I leave it uncancelled rather than making a false positive?
 □ Did I avoid completing partial words or guessing missing letters?
+□ NEVER repeat cancellation tags or single characters in a loop. Transcribe each line sequentially once.
 
 RETURN ONLY THIS JSON (no markdown fences, no extra text):
 {
@@ -552,15 +552,105 @@ Return ONLY this JSON (no markdown fences, no commentary):
 }`;
 }
 
-/** Parses model JSON that may be wrapped in a markdown code fence. */
+/** Parses model JSON that may be wrapped in a markdown code fence, with truncated JSON repair fallback. */
 function parseJsonLoose(raw: string): any | null {
   if (!raw) return null;
   const fenced = raw.match(/```json\n?([\s\S]*?)\n?```/) || raw.match(/```\n?([\s\S]*?)\n?```/);
   try {
     return JSON.parse((fenced ? fenced[1] : raw).trim());
   } catch {
-    return null;
+    return repairTruncatedJson(raw);
   }
+}
+
+/**
+ * Repairs truncated JSON responses caused by LLM output token limits or runaway repetition loops.
+ */
+function repairTruncatedJson(raw: string): any | null {
+  if (!raw) return null;
+
+  const fenced = raw.match(/```json\n?([\s\S]*?)(?:\n?```|$)/) || raw.match(/```\n?([\s\S]*?)(?:\n?```|$)/);
+  let s = (fenced ? fenced[1] : raw).trim();
+
+  // Deduplicate runaway repeating tags like [CANCELLED: a] [CANCELLED: a] ...
+  s = s.replace(/(\[[A-Za-z_-]+:\s*[^\]]+\]\s*){3,}/gi, '$1');
+
+  // Strip dangling unclosed tag at end of stream (e.g. "[CANCELLED: a" or "[CANCEL")
+  s = s.replace(/\[[A-Za-z_-]*:[^\]]*$/, '');
+
+  try {
+    return JSON.parse(s);
+  } catch {}
+
+  // Check if string literal is unclosed
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '\\') {
+      escaped = !escaped;
+    } else if (ch === '"' && !escaped) {
+      inString = !inString;
+    } else {
+      escaped = false;
+    }
+  }
+  if (inString) {
+    s += '"';
+  }
+
+  // Balance unclosed braces/brackets
+  const stack: string[] = [];
+  inString = false;
+  escaped = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '\\') {
+      escaped = !escaped;
+    } else if (ch === '"' && !escaped) {
+      inString = !inString;
+    } else if (!inString) {
+      if (ch === '{' || ch === '[') {
+        stack.push(ch);
+      } else if (ch === '}' && stack[stack.length - 1] === '{') {
+        stack.pop();
+      } else if (ch === ']' && stack[stack.length - 1] === '[') {
+        stack.pop();
+      }
+    } else {
+      escaped = false;
+    }
+  }
+
+  while (stack.length > 0) {
+    const last = stack.pop();
+    if (last === '{') s += '}';
+    if (last === '[') s += ']';
+  }
+
+  try {
+    return JSON.parse(s.trim());
+  } catch {}
+
+  // Fallback: extract transcription if full JSON cannot be repaired
+  const txMatch = raw.match(/"transcription"\s*:\s*"([\s\S]*?)(?:",|"\s*\}|"$|$)/);
+  if (txMatch) {
+    const tx = txMatch[1]
+      .replace(/(\[[A-Za-z_-]+:\s*[^\]]+\]\s*){3,}/gi, '$1')
+      .replace(/\[[A-Za-z_-]*:[^\]]*$/, '')
+      .replace(/\\n/g, '\n');
+    return {
+      transcription: tx,
+      normalizedTranscription: tx,
+      confirmedCancellations: [],
+      uncertainCancellations: [],
+      spellingErrors: [],
+      wordChoiceMistakes: [],
+      grammarMistakes: []
+    };
+  }
+
+  return null;
 }
 
 /** Reads the text payload out of a Responses API result. */
@@ -1566,7 +1656,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
             ],
           },
         ],
-      }, 0), preferredModel),
+      }, 0.1), preferredModel),
 
       // Focused strike-through pass. Never fatal — if it fails we simply fall
       // back to whatever the main extraction found on its own.
@@ -1581,33 +1671,34 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
             ],
           },
         ],
-      }, 0), preferredModel).catch((err: any) => {
+      }, 0.1), preferredModel).catch((err: any) => {
         console.warn('[Step 1B] Cancellation pass failed, continuing without it:', err?.message);
         return null;
       }),
     ]);
 
     const raw1 = responseText(step1);
-    // Try to extract JSON from markdown code blocks if the response is not pure JSON
-    const jsonMatch = raw1.match(/```json\n?([\s\S]*?)\n?```/) || raw1.match(/```\n?([\s\S]*?)\n?```/);
-    const cleanedRaw1 = jsonMatch ? jsonMatch[1] : raw1;
     console.log('\n[Step 1] RAW OUTPUT:\n─────────────────────────────');
-    console.log(raw1);
+    console.log(raw1.length > 2000 ? raw1.slice(0, 1000) + '\n...[TRUNCATED IN LOGS]...\n' + raw1.slice(-500) : raw1);
     console.log('─────────────────────────────\n');
 
-    let extracted: any;
-    try {
-      extracted = JSON.parse(cleanedRaw1.trim());
-    } catch {
-      console.error('[Step 1] JSON parse failed');
+    let extracted: any = parseJsonLoose(raw1);
+    if (!extracted) {
+      console.warn('[Step 1] Initial JSON parse failed — attempting truncated JSON recovery...');
+      extracted = repairTruncatedJson(raw1);
+    }
+
+    if (!extracted || !extracted.transcription) {
+      console.error('[Step 1] JSON parse & repair failed');
       res.status(500).json({ error: 'Evidence extraction failed — invalid JSON. Please retry.' });
       return;
     }
 
-    if (!extracted.transcription) {
-      res.status(500).json({ error: 'Evidence extraction incomplete — missing transcription. Please retry.' });
-      return;
-    }
+    // Clean any runaway [CANCELLED: ...] loops from transcription
+    extracted.transcription = extracted.transcription
+      .replace(/(\[[A-Za-z_-]+:\s*[^\]]+\]\s*){3,}/gi, '$1')
+      .replace(/\[[A-Za-z_-]*:[^\]]*$/, '')
+      .trim();
 
     // Deduplicate repeated trailing sentences
     const lines = extracted.transcription.split('\n').map(l => l.trim()).filter(Boolean);
