@@ -2,12 +2,17 @@ import 'dotenv/config';
 import mysql, { PoolConnection } from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 
+if (!process.env.DB_PASSWORD && process.env.NODE_ENV === 'production') {
+  console.error('[DB] FATAL: DB_PASSWORD environment variable is missing.');
+  process.exit(1);
+}
+
 // Database configuration loaded from environment variables
 const DB_CONFIG = {
   host: process.env.DB_HOST || '127.0.0.1',
   port: parseInt(process.env.DB_PORT || '3306', 10),
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'Tiger@123',
+  password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'graphia',
   waitForConnections: true,
   connectionLimit: 10,

@@ -1682,10 +1682,14 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     console.log(raw1.length > 2000 ? raw1.slice(0, 1000) + '\n...[TRUNCATED IN LOGS]...\n' + raw1.slice(-500) : raw1);
     console.log('─────────────────────────────\n');
 
+    let isTruncatedOcr = false;
     let extracted: any = parseJsonLoose(raw1);
     if (!extracted) {
       console.warn('[Step 1] Initial JSON parse failed — attempting truncated JSON recovery...');
       extracted = repairTruncatedJson(raw1);
+      if (extracted) {
+        isTruncatedOcr = true;
+      }
     }
 
     if (!extracted || !extracted.transcription) {
@@ -1961,10 +1965,11 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     spellingErrors = dedupeSpellingErrors(spellingErrors || []);
 
     // As-is OCR approach with uncertain cancellations for scribbles/overwrites
+    // Preserves primary verbatim strike-through tags from modelTranscription so struck words never leak into word count
     const displayTranscription = isAmayaBenchmark 
       ? extracted.transcription 
       : injectCancellationTags(
-          plainTranscription,
+          modelTranscription,
           extracted.confirmedCancellations || [],
           extracted.uncertainCancellations || [] // FIX: Scribbles and overwrites now show in UI
         );
@@ -2220,6 +2225,7 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         missingCapitals: boundary.missingCapitals ?? 0,
         missingPunctuation: boundary.missingPunctuation ?? 0,
         modelUsed: preferredModel,
+        transcriptionIncomplete: isTruncatedOcr,
       }
     };
 

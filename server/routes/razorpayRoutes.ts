@@ -5,19 +5,19 @@ import {
   getHighProbabilityReports,
   updateReportData
 } from '../controllers/razorpayController.js';
-import { authMiddleware, optionalAuthMiddleware } from '../middleware/authMiddleware.js';
+import { authMiddleware } from '../middleware/authMiddleware.js';
 import { requireAdmin } from './adminRoutes.js';
 
 const router = express.Router();
 
-// Order creation uses optional auth so customers are never blocked with 401 when initiating payment
-router.post('/create-order', optionalAuthMiddleware, createOrder);
+// Order creation requires authentication
+router.post('/create-order', authMiddleware, createOrder);
 
-// Verify payment after completion (uses optional auth so verified Razorpay transactions are never dropped)
-router.post('/verify', optionalAuthMiddleware, verifyPayment);
+// Verify payment after completion
+router.post('/verify', authMiddleware, verifyPayment);
 
 // Update report data after analysis
-router.post('/update-report', optionalAuthMiddleware, updateReportData);
+router.post('/update-report', authMiddleware, updateReportData);
 
 // Get high probability reports for admin (sensitive PII — restricted to admins only)
 router.get('/high-probability-reports', authMiddleware, requireAdmin, getHighProbabilityReports);

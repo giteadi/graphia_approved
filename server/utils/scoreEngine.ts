@@ -237,7 +237,8 @@ function scoreGrammar(
   grade: string = ''
 ): number {
   if (totalWords <= 0) return 0;
-  if (mistakes.length === 0) return 100;
+  // Without extensive writing sample or explicit grammar proof, cap default baseline at 95
+  if (mistakes.length === 0) return totalWords < 30 ? 90 : 95;
 
   const gradeNum = parseInt(grade.toLowerCase().replace(/[^0-9]/g, '')) || 6;
   let errorWeight = 0;
@@ -504,7 +505,7 @@ export function calculateProbability(
     scores.sentenceBoundaries < 60,
     scores.pastTenseUsage < 60,
     visualImpairedCount >= 1,
-    speedAssessed && scores.writingSpeed < 60,
+    speedAssessed && scores.writingSpeed <= 60,
     scores.mechanics < 65 // Visual mechanics poor fallback
   ].filter(Boolean).length;
 
@@ -521,17 +522,17 @@ export function getActionableStrategies(scores: Scores, rtiImprovement: boolean,
 
   if (rtiImprovement) {
     const notedAreas: string[] = [];
-    if (scores.writingSpeedAssessed !== false && scores.writingSpeed < 60) notedAreas.push('reduced writing speed');
+    if (scores.writingSpeedAssessed !== false && scores.writingSpeed <= 60) notedAreas.push('reduced writing speed');
     if (scores.spelling < 70) notedAreas.push('spelling discrepancies');
     if (scores.letterFormation < 70) notedAreas.push('letter formation irregularities');
-    const areasStr = notedAreas.length > 0 ? notedAreas.join(', ') : 'specific handwriting mechanics';
+    const areasStr = notedAreas.length > 0 ? notedAreas.join(', ') : 'handwriting mechanics';
 
     strategies.push(
-      `Documented positive response to intervention is noted. While vulnerabilities in ${areasStr} warrant continued targeted support, formal diagnostic labeling is deferred while current progress continues.`
+      `Documented positive response to intervention is noted. While challenges in ${areasStr} warrant continued targeted support, formal diagnostic labeling is deferred while current progress continues.`
     );
   }
 
-  if (scores.writingSpeedAssessed !== false && scores.writingSpeed < 60) {
+  if (scores.writingSpeedAssessed !== false && scores.writingSpeed <= 60) {
     strategies.push('Allow extended time on all written tasks and assessments to accommodate the slow writing speed without penalizing the student\'s ideas.');
     strategies.push('Encourage the use of typing or voice-to-text accommodations for longer essay assignments to remove the physical handwriting barrier.');
   }

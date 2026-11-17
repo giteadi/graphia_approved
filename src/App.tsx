@@ -3731,11 +3731,19 @@ ${result.report}
                               </div>
                             </div>
                           ) : (
-                            <div className="report-ocr-box border border-gray-200 p-2.5 bg-[#FAFAFA] rounded-sm text-[8.5pt] leading-relaxed text-gray-800 italic block max-h-[220px] print:max-h-none print:overflow-visible overflow-y-auto">
-                              <span>"</span>
-                              <RenderTranscription text={result.summary.displayTranscription || result.summary.transcription} highlightMap={result.summary.highlightMap} />
-                              <span>"</span>
-                            </div>
+                            <>
+                              {result.summary?.transcriptionIncomplete && (
+                                <div className="mb-2 p-2 bg-amber-50 border border-amber-300 text-amber-800 rounded text-[8pt] flex items-center gap-1.5 font-sans">
+                                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                  <span>Clinical Notice: Handwriting OCR reached output limit and was auto-stabilized. Please verify transcription completeness below.</span>
+                                </div>
+                              )}
+                              <div className="report-ocr-box border border-gray-200 p-2.5 bg-[#FAFAFA] rounded-sm text-[8.5pt] leading-relaxed text-gray-800 italic block max-h-[220px] print:max-h-none print:overflow-visible overflow-y-auto">
+                                <span>"</span>
+                                <RenderTranscription text={result.summary.displayTranscription || result.summary.transcription} highlightMap={result.summary.highlightMap} />
+                                <span>"</span>
+                              </div>
+                            </>
                           )}
                         </div>
 

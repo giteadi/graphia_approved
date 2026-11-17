@@ -34,9 +34,7 @@ export async function requireAdmin(req: AuthRequest, res: Response, next: NextFu
       }
     }
 
-    const effectiveAdmins = adminEmails.length > 0 ? adminEmails : ['admin@graphiacheck.in'];
-
-    const isAdmin = effectiveAdmins.includes(userEmail) || userEmail.endsWith('@graphiacheck.in');
+    const isAdmin = adminEmails.length > 0 && adminEmails.includes(userEmail);
 
     if (!userEmail || !isAdmin) {
       res.status(403).json({ error: 'Forbidden: Admin access required' });

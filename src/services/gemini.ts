@@ -65,6 +65,7 @@ export interface AnalysisResult {
     missingCapitals?: number;
     missingPunctuation?: number;
     actionableStrategies?: string[];
+    transcriptionIncomplete?: boolean;
   };
 }
 

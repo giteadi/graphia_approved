@@ -4,8 +4,8 @@ import jwt from 'jsonwebtoken';
 import { query } from '../config/db.js';
 import { sendWelcomeEmail } from '../config/email.js';
 
-if (!process.env.JWT_SECRET && process.env.NODE_ENV !== 'test') {
-  console.error('[Auth] FATAL: JWT_SECRET environment variable is missing. Set JWT_SECRET in .env');
+if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET.includes('YOUR_') || process.env.JWT_SECRET === 'dev_secret_for_local_testing_only')) {
+  console.error('[Auth] FATAL: Strong JWT_SECRET required in production.');
   process.exit(1);
 }
 

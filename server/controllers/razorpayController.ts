@@ -30,9 +30,7 @@ function requesterEmail(req: Request): string {
   if (authReq.userEmail) {
     return String(authReq.userEmail).toLowerCase().trim();
   }
-  return String(req.headers['x-user-email'] || req.body?.user_email || '')
-    .toLowerCase()
-    .trim();
+  return '';
 }
 
 /** True when this request should go through Razorpay test mode. */
@@ -161,7 +159,11 @@ export async function verifyPayment(req: Request, res: Response): Promise<void> 
     }
 
     const authReq = req as any;
-    const effectiveUserId = authReq.userId || user_id;
+    const effectiveUserId = authReq.userId;
+    if (!effectiveUserId) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
 
     const isTestPayment = signatureMode === 'test';
     if (isTestPayment) {
@@ -234,13 +236,13 @@ export async function verifyPayment(req: Request, res: Response): Promise<void> 
 export async function updateReportData(req: Request, res: Response): Promise<void> {
   try {
     const authReq = req as any;
-    const effectiveUserId = authReq.userId || req.body?.user_id;
+    const effectiveUserId = authReq.userId;
     const { probability, summary, scores } = req.body;
 
     if (!effectiveUserId) {
-      res.status(400).json({ 
+      res.status(401).json({ 
         success: false, 
-        message: 'User ID required' 
+        message: 'Authentication required' 
       });
       return;
     }

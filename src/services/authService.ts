@@ -52,4 +52,19 @@ export function getUser(): AuthUser | null {
 export function clearSession() {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
+  localStorage.removeItem('graphia_active_report');
+  localStorage.removeItem('graphia_draft_studentName');
+  localStorage.removeItem('graphia_draft_schoolName');
+  localStorage.removeItem('graphia_draft_cityName');
+  localStorage.removeItem('graphia_draft_countryName');
+  localStorage.removeItem('graphia_draft_uploadedBy');
+  localStorage.removeItem('graphia_draft_contactEmail');
+  localStorage.removeItem('graphia_draft_contactPhone');
+  localStorage.removeItem('graphia_draft_interventionTried');
+  localStorage.removeItem('graphia_draft_interventionImproved');
+  localStorage.removeItem('graphia_draft_interventionDetails');
+  localStorage.removeItem('graphia_draft_grade');
+  localStorage.removeItem('graphia_draft_timeTaken');
+  localStorage.removeItem('graphia_draft_dob');
+  localStorage.removeItem('graphia_draft_context');
 }

@@ -7,23 +7,14 @@ export interface AuthRequest extends Request {
   userEmail?: string;
 }
 
-// Fallback secrets to ensure existing user sessions generated with previous defaults do not break
-const KNOWN_SECRETS = [
-  JWT_SECRET,
-  'graphia_jwt_super_secret_2024',
-  'dev_secret_for_local_testing_only'
-].filter(Boolean);
-
 export function verifyUserToken(token: string): { userId?: number; email?: string } | null {
-  for (const secret of KNOWN_SECRETS) {
-    try {
-      const decoded = jwt.verify(token, secret) as { userId?: number; email?: string };
-      if (decoded && decoded.userId) {
-        return decoded;
-      }
-    } catch {
-      // try next secret
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId?: number; email?: string };
+    if (decoded && decoded.userId) {
+      return decoded;
     }
+  } catch {
+    // invalid or expired token
   }
   return null;
 }
