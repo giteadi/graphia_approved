@@ -93,7 +93,7 @@ export async function initDB() {
           user_id     INT NOT NULL,
           grade       VARCHAR(50),
           report_text LONGTEXT,
-          probability VARCHAR(50),
+          probability VARCHAR(255),
           is_high_probability BOOLEAN DEFAULT FALSE,
           student_name VARCHAR(100),
           student_age VARCHAR(10),

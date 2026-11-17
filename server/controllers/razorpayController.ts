@@ -276,19 +276,21 @@ export async function updateReportData(req: Request, res: Response): Promise<voi
       // Narrative report text — leave it untouched, only the columns update.
     }
 
+    const safeProbability = String(probability || 'Unknown').slice(0, 250);
+
     await query(
       `UPDATE reports
        SET probability = ?, is_high_probability = ?, report_text = ?
        WHERE id = ?`,
       [
-        probability || 'Unknown',
-        (probability || '').toLowerCase().includes('high') ? 1 : 0,
+        safeProbability,
+        safeProbability.toLowerCase().includes('high') ? 1 : 0,
         reportText,
         latest.id
       ]
     );
 
-    console.log(`[Razorpay] Report ${latest.id} updated for User ID ${effectiveUserId}, Probability: ${probability}`);
+    console.log(`[Razorpay] Report ${latest.id} updated for User ID ${effectiveUserId}, Probability: ${safeProbability}`);
     res.json({ 
       success: true, 
       data: { message: 'Report updated successfully' } 
