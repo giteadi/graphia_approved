@@ -1,5 +1,6 @@
 import React, { useState, memo } from "react";
-import { ArrowLeft, Menu, X, Phone, Mail, ArrowRight } from "lucide-react";
+import { ArrowLeft, Menu, X, Phone, Mail, ArrowRight, Shield, LogOut, User } from "lucide-react";
+import { getUser, clearSession } from "../services/authService";
 
 interface NavbarProps {
   showBack?: boolean;
@@ -19,6 +20,16 @@ function Navbar({
   activePage = 'home',
 }: NavbarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const user = getUser();
+  const isAdmin = Boolean(
+    user?.email && (
+      user.email.toLowerCase() === 'admin@graphiacheck.in' ||
+      user.email.toLowerCase() === 'adityasharma10102000@gmail.com' ||
+      user.email.toLowerCase() === 'aditya@graphiacheck.in' ||
+      user.email.toLowerCase() === 'test@graphiacheck.in' ||
+      user.email.toLowerCase().endsWith('@graphiacheck.in')
+    )
+  );
 
   return (
     <div className="sticky top-0 z-50">
@@ -100,15 +111,54 @@ function Navbar({
 
             <div className="h-4 w-px bg-slate-200 mx-2" />
 
-            {/* MindSaid Warm Terracotta Pill CTA */}
-            {onLogin && (
-              <button
-                onClick={onLogin}
-                className="inline-flex items-center gap-2 bg-[#BD7A5C] hover:bg-[#A8694D] text-white px-5 py-2.5 rounded-full text-xs font-bold tracking-wide transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
-              >
-                <span>Launch Assessment</span>
-                <ArrowRight className="w-3.5 h-3.5 text-white/90" />
-              </button>
+            {/* MindSaid Warm Terracotta Pill CTA / Super Admin button */}
+            {user ? (
+              <div className="flex items-center gap-2">
+                {isAdmin && (
+                  <button
+                    onClick={() => window.location.href = '/admin'}
+                    className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3.5 py-2 rounded-full text-xs font-bold tracking-wide transition-all shadow-xs cursor-pointer"
+                    title="Super Admin Dashboard"
+                  >
+                    <Shield className="w-3.5 h-3.5 text-emerald-200" />
+                    <span>Super Admin</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => window.location.href = '/app'}
+                  className="inline-flex items-center gap-2 bg-[#BD7A5C] hover:bg-[#A8694D] text-white px-4 py-2 rounded-full text-xs font-bold tracking-wide transition-all shadow-sm hover:shadow-md cursor-pointer"
+                >
+                  <span>Open Assessment</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-white/90" />
+                </button>
+
+                <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
+                  <span className="text-[11px] font-mono text-slate-600 max-w-[120px] truncate" title={user.email}>
+                    {user.name || user.email}
+                  </span>
+                  <button
+                    onClick={() => {
+                      clearSession();
+                      window.location.href = '/';
+                    }}
+                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-md transition-colors cursor-pointer"
+                    title="Logout"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              onLogin && (
+                <button
+                  onClick={onLogin}
+                  className="inline-flex items-center gap-2 bg-[#BD7A5C] hover:bg-[#A8694D] text-white px-5 py-2.5 rounded-full text-xs font-bold tracking-wide transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+                >
+                  <span>Launch Assessment</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-white/90" />
+                </button>
+              )
             )}
 
             {showBack && (
@@ -160,17 +210,57 @@ function Navbar({
               Clinical Methodology
             </button>
 
-            {onLogin && (
-              <button
-                onClick={() => {
-                  onLogin();
-                  setIsMobileMenuOpen(false);
-                }}
-                className="w-full mt-2 inline-flex items-center justify-center gap-2 bg-[#BD7A5C] text-white px-5 py-3 rounded-full text-sm font-bold shadow-sm"
-              >
-                <span>Launch Assessment</span>
-                <ArrowRight className="w-4 h-4 text-white" />
-              </button>
+            {user ? (
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                {isAdmin && (
+                  <button
+                    onClick={() => {
+                      window.location.href = '/admin';
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full inline-flex items-center justify-center gap-2 bg-emerald-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold shadow-sm"
+                  >
+                    <Shield className="w-4 h-4 text-emerald-200" />
+                    <span>Super Admin Panel</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    window.location.href = '/app';
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-2 bg-[#BD7A5C] text-white px-4 py-2.5 rounded-lg text-sm font-bold shadow-sm"
+                >
+                  <span>Open Assessment</span>
+                  <ArrowRight className="w-4 h-4 text-white" />
+                </button>
+                <div className="flex items-center justify-between px-2 pt-2 text-xs text-slate-500">
+                  <span>{user.email}</span>
+                  <button
+                    onClick={() => {
+                      clearSession();
+                      window.location.href = '/';
+                    }}
+                    className="text-rose-600 font-semibold flex items-center gap-1"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    Logout
+                  </button>
+                </div>
+              </div>
+            ) : (
+              onLogin && (
+                <button
+                  onClick={() => {
+                    onLogin();
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full mt-2 inline-flex items-center justify-center gap-2 bg-[#BD7A5C] text-white px-5 py-3 rounded-full text-sm font-bold shadow-sm"
+                >
+                  <span>Launch Assessment</span>
+                  <ArrowRight className="w-4 h-4 text-white" />
+                </button>
+              )
             )}
 
             {showBack && (

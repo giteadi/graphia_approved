@@ -172,6 +172,34 @@ export default function AuthPage({ onAuth, onBack }: AuthPageProps) {
             >
               {loading ? 'Please wait...' : mode === 'login' ? 'Sign In' : 'Create Account'}
             </button>
+
+            {/* Quick Demo/Admin Sign In Shortcut */}
+            {mode === 'login' && (
+              <div className="pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={async () => {
+                    setEmail('test@graphiacheck.in');
+                    setPassword('Test@1234');
+                    setError(null);
+                    setLoading(true);
+                    try {
+                      const res = await loginUser('test@graphiacheck.in', 'Test@1234');
+                      saveSession(res.token, res.user);
+                      onAuth(res.user, res.token);
+                    } catch (err: any) {
+                      setError(err.message);
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="w-full border-2 border-emerald-700 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 py-2.5 px-3 font-mono text-[11px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                >
+                  <span>⚡ Quick Sign In as Super Admin / Tester</span>
+                </button>
+              </div>
+            )}
           </form>
 
           {/* Toggle */}
