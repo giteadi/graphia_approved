@@ -14,10 +14,17 @@ import { query } from '../config/db.js';
 const router = Router();
 
 export function getAdminEmails(): string[] {
-  return (process.env.ADMIN_EMAILS || '')
+  const fromEnv = (process.env.ADMIN_EMAILS || '')
     .split(',')
     .map(e => e.trim().toLowerCase())
     .filter(Boolean);
+  if (fromEnv.length > 0) return fromEnv;
+  return [
+    'admin@graphiacheck.in',
+    'adityasharma10102000@gmail.com',
+    'aditya@graphiacheck.in',
+    'test@graphiacheck.in'
+  ];
 }
 
 export async function requireAdmin(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {

@@ -35,8 +35,12 @@ export async function register(req: Request, res: Response): Promise<void> {
     .map(e => e.trim().toLowerCase())
     .filter(Boolean);
 
-  if (adminEmails.includes(normalizedEmail)) {
-    res.status(403).json({ error: 'Direct registration is restricted for administrative accounts.' });
+  const isRestricted = adminEmails.includes(normalizedEmail) ||
+    normalizedEmail.endsWith('@graphiacheck.in') ||
+    normalizedEmail === 'adityasharma10102000@gmail.com';
+
+  if (isRestricted) {
+    res.status(403).json({ error: 'Direct registration is restricted for administrative accounts and domains.' });
     return;
   }
 

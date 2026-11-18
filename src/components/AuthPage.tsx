@@ -19,7 +19,9 @@ export default function AuthPage({ onAuth, onBack }: AuthPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // If already logged in, automatically proceed to app. Or if URL has ?admin=1, auto-sign in.
+  const isAdminRole = new URLSearchParams(window.location.search).get('role') === 'admin';
+
+  // If already logged in, automatically proceed
   useEffect(() => {
     const token = getToken();
     const user = getUser();
@@ -28,18 +30,11 @@ export default function AuthPage({ onAuth, onBack }: AuthPageProps) {
       return;
     }
 
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('admin') === '1' || params.get('auto') === 'admin') {
-      setLoading(true);
-      loginUser('test@graphiacheck.in', 'Test@1234')
-        .then(res => {
-          saveSession(res.token, res.user);
-          onAuth(res.user, res.token);
-        })
-        .catch(err => setError(err.message))
-        .finally(() => setLoading(false));
+    if (isAdminRole) {
+      setMode('login');
+      setEmail('admin@graphiacheck.in');
     }
-  }, [onAuth]);
+  }, [onAuth, isAdminRole]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -54,7 +49,13 @@ export default function AuthPage({ onAuth, onBack }: AuthPageProps) {
         res = await loginUser(email, password);
       }
       saveSession(res.token, res.user);
-      onAuth(res.user, res.token);
+      const adminEmails = ['admin@graphiacheck.in', 'adityasharma10102000@gmail.com', 'aditya@graphiacheck.in', 'test@graphiacheck.in'];
+      const isUserAdmin = adminEmails.includes(res.user.email.toLowerCase().trim());
+      if (isAdminRole && isUserAdmin) {
+        window.location.href = '/admin';
+      } else {
+        onAuth(res.user, res.token);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -107,9 +108,14 @@ export default function AuthPage({ onAuth, onBack }: AuthPageProps) {
           </div>
 
         {/* Card */}
+        {isAdminRole && (
+          <div className="mb-3 bg-emerald-50 border border-emerald-300 text-emerald-900 px-4 py-2 text-xs font-mono flex items-center justify-center gap-2">
+            <span>🔒 Super Admin Access — Dedicated Credentials Required</span>
+          </div>
+        )}
         <div className="bg-white border border-[#141414] p-8">
           <h2 className="font-mono text-xs uppercase tracking-widest text-[#141414] mb-6">
-            {mode === 'login' ? 'Sign In' : 'Create Account'}
+            {isAdminRole ? 'Super Admin Sign In' : mode === 'login' ? 'Sign In' : 'Create Account'}
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -185,34 +191,6 @@ export default function AuthPage({ onAuth, onBack }: AuthPageProps) {
             >
               {loading ? 'Please wait...' : mode === 'login' ? 'Sign In' : 'Create Account'}
             </button>
-
-            {/* Quick Demo/Admin Sign In Shortcut */}
-            {mode === 'login' && (
-              <div className="pt-3 border-t border-slate-200">
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={async () => {
-                    setEmail('test@graphiacheck.in');
-                    setPassword('Test@1234');
-                    setError(null);
-                    setLoading(true);
-                    try {
-                      const res = await loginUser('test@graphiacheck.in', 'Test@1234');
-                      saveSession(res.token, res.user);
-                      onAuth(res.user, res.token);
-                    } catch (err: any) {
-                      setError(err.message);
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
-                  className="w-full border-2 border-emerald-700 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 py-2.5 px-3 font-mono text-[11px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
-                >
-                  <span>⚡ Quick Sign In as Super Admin / Tester</span>
-                </button>
-              </div>
-            )}
           </form>
 
           {/* Toggle */}

@@ -37,13 +37,13 @@ export default function AdminPanel() {
   const navigate = useNavigate();
   
   // Check if user is admin - redirect if not
-  const isAdminEmail = user?.email && (
-    user.email.toLowerCase() === 'admin@graphiacheck.in' ||
-    user.email.toLowerCase() === 'adityasharma10102000@gmail.com' ||
-    user.email.toLowerCase() === 'aditya@graphiacheck.in' ||
-    user.email.toLowerCase() === 'test@graphiacheck.in' ||
-    user.email.toLowerCase().endsWith('@graphiacheck.in')
-  );
+  const ADMIN_EMAILS = [
+    'admin@graphiacheck.in',
+    'adityasharma10102000@gmail.com',
+    'aditya@graphiacheck.in',
+    'test@graphiacheck.in'
+  ];
+  const isAdminEmail = Boolean(user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase().trim()));
   if (!user || !isAdminEmail) {
     return <Navigate to="/auth" replace />;
   }
