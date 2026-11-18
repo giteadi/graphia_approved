@@ -4,12 +4,16 @@ import jwt from 'jsonwebtoken';
 import { query } from '../config/db.js';
 import { sendWelcomeEmail } from '../config/email.js';
 
-if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET.includes('YOUR_') || process.env.JWT_SECRET === 'dev_secret_for_local_testing_only')) {
-  console.error('[Auth] FATAL: Strong JWT_SECRET required in production.');
+const env = process.env.NODE_ENV;
+const isDevLike = env === 'development' || env === 'test';
+const secret = process.env.JWT_SECRET;
+const weak = !secret || secret.length < 32 || /YOUR_|dev_secret|changeme/i.test(secret);
+
+if (weak && !isDevLike) {
+  console.error('[Auth] FATAL: Strong JWT_SECRET (32+ chars) required.');
   process.exit(1);
 }
-
-export const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_for_local_testing_only';
+export const JWT_SECRET = secret || 'dev_secret_for_local_testing_only';
 const JWT_EXPIRES = '30d'; // 30 days token expiry
 
 export async function register(req: Request, res: Response): Promise<void> {

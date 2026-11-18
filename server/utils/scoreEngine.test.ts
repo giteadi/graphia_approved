@@ -415,6 +415,13 @@ if (inlineCount !== baseCount) {
 }
 console.log(`WORD COUNT REGRESSION TESTS PASSED: Body=${baseCount}, SepHeader=${sepCount}, InlineHeader=${inlineCount}`);
 
+const maybeTest = 'one two [MAYBE-CANCELLED: bad] three four five';
+const maybeCount = countWordsDeterministic(maybeTest);
+if (maybeCount !== 6) {
+  throw new Error(`MAYBE-CANCELLED WORD COUNT FAILED: Expected 6 words, got ${maybeCount}`);
+}
+console.log('REGRESSION TEST PASSED: MAYBE-CANCELLED counted as 6 words');
+
 console.log('══════════════════════════════════════════════════════════════════════════════');
 console.log('ALL MINIMAL TESTS PASSED');
 console.log('══════════════════════════════════════════════════════════════════════════════');

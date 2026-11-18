@@ -71,6 +71,7 @@ export function countWordsDeterministic(transcription: string, studentName?: str
   if (!transcription || typeof transcription !== 'string') return 0;
 
   const rawWords = transcription
+    .replace(/\[MAYBE-CANCELLED:\s*([^\]]+)\]/gi, '$1')
     .replace(/\[CANCELLED:\s*[^\]]+\]/gi, '')
     .replace(/[\[\]]/g, '')
     .split(/\s+/)
@@ -127,6 +128,7 @@ export function countWordsDeterministic(transcription: string, studentName?: str
     .replace(/\bDate:\s*\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}\b/gi, ' ')
     .replace(/\b\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}\b/gi, ' ')
     .replace(/\b\d{1,2}:\d{2}\s*(?:to\s*\d{1,2}(?::\d{2})?)?\s*(?:am|pm)?\b/gi, ' ')
+    .replace(/\[MAYBE-CANCELLED:\s*([^\]]+)\]/gi, '$1')
     .replace(/\[CANCELLED:\s*[^\]]+\]/gi, '') // ONLY confirmed cancellations are removed from word count
     .replace(/\n/g, ' ')
     .trim();

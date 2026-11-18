@@ -559,7 +559,11 @@ function parseJsonLoose(raw: string): any | null {
   try {
     return JSON.parse((fenced ? fenced[1] : raw).trim());
   } catch {
-    return repairTruncatedJson(raw);
+    const repaired = repairTruncatedJson(raw);
+    if (repaired && typeof repaired === 'object') {
+      Object.defineProperty(repaired, '__repaired', { value: true, enumerable: false, writable: true });
+    }
+    return repaired;
   }
 }
 
@@ -1691,6 +1695,12 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
         isTruncatedOcr = true;
       }
     }
+
+    isTruncatedOcr = Boolean(
+      isTruncatedOcr ||
+      (extracted as any)?.__repaired === true ||
+      /\[(?:MAYBE-)?CANCELLED:[^\]]*$/i.test(extracted?.transcription || '')
+    );
 
     if (!extracted || !extracted.transcription) {
       console.error('[Step 1] JSON parse & repair failed');

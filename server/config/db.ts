@@ -1,10 +1,10 @@
-import dotenv from 'dotenv';
-dotenv.config({ override: true });
+import 'dotenv/config';
 import mysql, { PoolConnection } from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 
-if (!process.env.DB_PASSWORD && process.env.NODE_ENV === 'production') {
-  console.error('[DB] FATAL: DB_PASSWORD environment variable is missing.');
+const isDevLike = ['development', 'test'].includes(process.env.NODE_ENV || '');
+if (!process.env.DB_PASSWORD && !isDevLike) {
+  console.error('[DB] FATAL: DB_PASSWORD is required.');
   process.exit(1);
 }
 
