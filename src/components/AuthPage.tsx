@@ -49,13 +49,8 @@ export default function AuthPage({ onAuth, onBack }: AuthPageProps) {
         res = await loginUser(email, password);
       }
       saveSession(res.token, res.user);
-      const adminEmails = ['admin@graphiacheck.in', 'adityasharma10102000@gmail.com', 'aditya@graphiacheck.in', 'test@graphiacheck.in'];
-      const isUserAdmin = adminEmails.includes(res.user.email.toLowerCase().trim());
-      if (isAdminRole && isUserAdmin) {
-        window.location.href = '/admin';
-      } else {
-        onAuth(res.user, res.token);
-      }
+      // Always open the assessment form (/app) upon login for all users (including Super Admin)
+      onAuth(res.user, res.token);
     } catch (err: any) {
       setError(err.message);
     } finally {

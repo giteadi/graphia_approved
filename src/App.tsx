@@ -278,6 +278,14 @@ interface AppProps {
 }
 
 export default function App({ user, onLogout, reportTabMode = false }: AppProps) {
+  const ADMIN_EMAILS = [
+    'admin@graphiacheck.in',
+    'adityasharma10102000@gmail.com',
+    'aditya@graphiacheck.in',
+    'test@graphiacheck.in'
+  ];
+  const isAdmin = Boolean(user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase().trim()));
+
   const [tourStep, setTourStep] = useState<number | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(true);
   const [activeStep, setActiveStep] = useState<number>(1);
@@ -1428,36 +1436,42 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
       return;
     }
 
-    // Load Razorpay script and process payment
+    // Prepare report data
+    const userInfo = JSON.parse(localStorage.getItem('user') || '{}');
+    const userId = userInfo.id || user?.id || 1;
+    const reportData = {
+      studentName,
+      grade,
+      age: chronologicalAge,
+      contactEmail,
+      contactPhone,
+      schoolName,
+      cityName,
+      countryName,
+      description: 'GraphiaCheck Report Generation Fee'
+    };
+
+    // If Super Admin is running the analysis, bypass payment and start directly
+    if (isAdmin) {
+      console.log('[App] Super Admin bypass active — generating report directly without payment charge');
+      setIsProcessingPayment(false);
+      await performAnalysis(userId, reportData);
+      return;
+    }
+
+    // For all other users (SAAS Customer Mode): Enforce original Razorpay live payment
     try {
       setIsProcessingPayment(true);
-      console.log('[App] Starting payment process...');
+      console.log('[App] Starting original live Razorpay payment process...');
       
       // Load Razorpay script
       await loadRazorpayScript();
       console.log('[App] Razorpay script loaded');
       
-      // Create payment order
-      const order = await createPaymentOrder(899, 'GraphiaCheck Report Generation Fee'); // ₹899
+      // Create payment order (₹899)
+      const order = await createPaymentOrder(899, 'GraphiaCheck Report Generation Fee');
       console.log('[App] Payment order created:', order.id);
-      
-      // Get user ID from localStorage
-      const userInfo = JSON.parse(localStorage.getItem('user') || '{}');
-      const userId = userInfo.id || 1; // Default to 1 if not logged in
       console.log('[App] User ID:', userId);
-      
-      // Prepare report data
-      const reportData = {
-        studentName,
-        grade,
-        age: chronologicalAge,
-        contactEmail,
-        contactPhone,
-        schoolName,
-        cityName,
-        countryName,
-        description: 'GraphiaCheck Report Generation Fee'
-      };
 
       console.log('[App] Initiating Razorpay payment...');
       // Initiate payment
@@ -3383,13 +3397,15 @@ ${result.report}
                     transition-all duration-300 relative overflow-hidden
                     ${!image || !grade || isAnalyzing || isProcessingPayment 
                       ? 'bg-[#141414]/10 text-[#141414]/30 cursor-not-allowed' 
-                      : 'bg-[#141414] text-[#E4E3E0] hover:bg-[#2a2a2a] active:scale-[0.98]'}
+                      : isAdmin
+                        ? 'bg-emerald-800 text-white hover:bg-emerald-900 active:scale-[0.98]'
+                        : 'bg-[#141414] text-[#E4E3E0] hover:bg-[#2a2a2a] active:scale-[0.98]'}
                   `}
                 >
                   {isProcessingPayment ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
-                      Processing Payment (₹1)...
+                      Processing Secure Payment (₹899)...
                     </>
                   ) : isAnalyzing ? (
                     <>
@@ -3399,11 +3415,11 @@ ${result.report}
                   ) : (
                     <div className="flex flex-col items-center">
                       <div className="flex items-center gap-2">
-                        <Activity className="w-5 h-5" />
-                        Generate Clinical Report
+                        {isAdmin ? <Shield className="w-5 h-5 text-emerald-300" /> : <Activity className="w-5 h-5" />}
+                        {isAdmin ? 'Generate Clinical Report (Admin Bypass)' : 'Generate Clinical Report'}
                       </div>
-                      <span className="text-[8px] opacity-40 mt-1 font-mono tracking-widest">
-                        ₹1 Payment Required • [ CTRL + ENTER ]
+                      <span className="text-[8px] opacity-60 mt-1 font-mono tracking-widest">
+                        {isAdmin ? '⚡ Super Admin Access • No Payment Required • [ CTRL + ENTER ]' : '₹899 Secure Razorpay Payment • [ CTRL + ENTER ]'}
                       </span>
                     </div>
                   )}
