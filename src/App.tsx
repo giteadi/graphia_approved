@@ -1421,6 +1421,13 @@ A formal Psycho-Educational Assessment is highly recommended to confirm the diag
       return;
     }
 
+    const authToken = localStorage.getItem('token');
+    if (!authToken) {
+      setError("Please log in to your account before starting the assessment.");
+      window.location.href = '/auth';
+      return;
+    }
+
     // Load Razorpay script and process payment
     try {
       setIsProcessingPayment(true);

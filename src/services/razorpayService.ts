@@ -87,20 +87,11 @@ export async function createPaymentOrder(amount: number = 899, description?: str
 
     console.log('[Razorpay] Create order response status:', response.status);
     
-    // Auto-retry once without stale token if 401 returned
-    if (response.status === 401 && headers['Authorization']) {
-      console.warn('[Razorpay] 401 received with token, retrying order creation without stale token...');
-      delete headers['Authorization'];
-      response = await fetch(`${API_URL}/payments/create-order`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ 
-          amount, 
-          currency: 'INR',
-          description: description || 'GraphiaCheck Report Generation Fee'
-        }),
-      });
-      console.log('[Razorpay] Retry response status:', response.status);
+    if (response.status === 401) {
+      console.warn('[Razorpay] 401 received: session expired or token invalid.');
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      throw new Error('Your session has expired. Please log in again to continue.');
     }
     
     if (!response.ok) {
