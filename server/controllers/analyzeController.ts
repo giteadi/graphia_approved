@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import crypto from 'crypto';
 import { withFallback, createResponse } from '../config/openai.js';
 import { query } from '../config/db.js';
 import { AuthRequest } from '../middleware/authMiddleware.js';
@@ -448,7 +449,7 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
   ],
 
   "grammarMistakes": [
-    { "type": "agreement|plural|syntax|other", "example": "exact phrase from transcription", "errorWord": "the single word that is wrong" }
+    { "type": "verb_construction|agreement|syntax|plural|other", "reason": "concise description e.g. double verb (is brings)", "example": "exact phrase from transcription", "errorWord": "the single word that is wrong" }
   ],
   "runOnSentences": 0,
   "missingCapitals": 0,
@@ -457,7 +458,7 @@ RETURN ONLY THIS JSON (no markdown fences, no extra text):
   "pastTenseErrors": 0,
 
   "letterFormationObservations": [
-    "write actual observations only, such as inconsistent letter size, irregular joins, unclear closures, overwriting/cross-outs affecting legibility. Do NOT name specific letters unless visually confirmed."
+    "write actual letter shape/construction observations only, such as inconsistent letter size, irregular joins, unclear closures, ascender/descender loop irregularities. Do NOT treat self-corrections or strike-throughs as formation errors. Do NOT name specific letters unless visually confirmed."
   ],
   "observedLetterFormationLetters": ["only letters with visually confirmed formation concerns; leave empty if unsure"],
   "alignmentObservations": [
@@ -731,6 +732,11 @@ Write a clinical handwriting assessment report. Use ONLY the data supplied. You 
 7. 2 detailed sentences per mechanics sub-point citing the observations below.
 8. ${evidence.wordCount < 75 ? 'Include VALIDITY WARNING after title.' : 'No validity warning needed.'}
 9. Do NOT invent specific letter names. Mention specific letters only if they are listed in OBSERVED LETTERS FOR FORMATION. If that list is empty, use "some letter forms" or "rounded/hump-based forms" without naming letters.
+10. CLINICAL RIGOR AND GROUNDED OBSERVATIONS:
+    - NEVER cite or leak raw numerical scores (e.g. do NOT write "with a score of 75" or "(score 80)") inside narrative descriptions, bullets, or observations. Use qualitative clinical terminology.
+    - Do NOT make ungrounded psychological claims like "cognitive load is heavily disrupted" or "substantial mental energy consumed". Keep descriptions strictly grounded in physical handwriting, motor pacing, and error counts.
+    - If writing speed is below grade norm, refer to it factually as "writing speed / fluency below grade norm", NOT as a "handwriting vulnerability".
+    - Distinguish "Horizontal Spatial" from "Spatial Organisation": Horizontal Spatial discusses lateral margins and inter-word spacing; Spatial Organisation discusses vertical line spacing, line collisions, and overall page layout. Do not repeat identical sentences.
 
 STUDENT DETAILS:
 Grade: ${grade}${age ? ` | Age: ${age}` : ''}${timeTaken ? ` | Time Taken: ${timeTaken} min` : ''}${timeGiven ? ` | Time Given: ${timeGiven} min` : ''}${writingPrompt ? `\nPrompt: ${writingPrompt}` : ''}${paperType ? ` | Paper: ${paperType}` : ''}${writingInstrument ? ` | Instrument: ${writingInstrument}` : ''}${parentEmail ? `\nParent Email: ${parentEmail}` : ''}
@@ -786,7 +792,7 @@ After the report, append:
 	  "lineFormation": "2-sentence letter formation observation",
 	  "observedLetterFormationLetters": ${JSON.stringify(evidence.observedLetterFormationLetters || [])},
 	  "mechanics": "2-sentence overall mechanics summary",
-  "spellingErrors": ${JSON.stringify(evidence.spellingErrors.map(e => `${e.written} (${e.intended}) - ${e.gradeLevel || spellingGradeLevelLabel(scores.spelling, grade)}`))},
+  "spellingErrors": ${JSON.stringify(evidence.spellingErrors.map(e => `${e.written} (${e.intended})${(e as any).occurrenceCount && (e as any).occurrenceCount > 1 ? ` ×${(e as any).occurrenceCount}` : ''} - ${e.gradeLevel || spellingGradeLevelLabel(scores.spelling, grade)}`))},
   "dysgraphiaIndicators": ${JSON.stringify(evidence.dsm5Traits || [])},
   "assessmentRecommendation": "${rtiImprovement ? 'A formal evaluation is NOT recommended at this time because the student has shown positive improvement with current interventions. Continued monitoring and support is recommended.' : 'Based on the evidence, a formal psycho-educational assessment is recommended.'}",
   "spellingScore": "${spellingLabel} — 2-sentence justification",
@@ -1004,7 +1010,7 @@ function buildDeterministicSummary(params: {
     fluencyAnalysis: evidence.wpm <= 0
       ? `Not assessed — the time taken to produce this sample was not recorded, so words-per-minute could not be calculated. Writing speed is excluded from scoring.`
       : evidence.wpm < norm.min
-      ? `Slow/Labored — ${evidence.wpm} WPM vs expected ${norm.min}–${norm.max} WPM norm for ${grade}. The physical act of writing is taking up substantial mental energy, impacting overall written expression output.`
+      ? `${evidence.wpm < norm.min * 0.5 ? 'Extremely Slow' : 'Slow/Labored'} — ${evidence.wpm} WPM vs expected ${norm.min}–${norm.max} WPM norm for ${grade}. Writing production speed is below the expected developmental range, which affects written output rate.`
       : evidence.wpm <= norm.max
       ? `Within Expected Range — ${evidence.wpm} WPM falls within the expected ${norm.min}–${norm.max} WPM norm for ${grade}. Writing pace is age-appropriate.`
       : `Above Grade Norm — ${evidence.wpm} WPM exceeds the typical ${norm.min}–${norm.max} WPM norm for ${grade}, demonstrating fluent written production.`,
@@ -1168,13 +1174,25 @@ function dedupeSpellingErrors(spellingErrors: SpellingError[] = []): SpellingErr
 function capBoundaryEvidence(model: any, plainText: string) {
   const text = plainText.replace(/\s+/g, ' ').trim();
   const chunks = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+  
+  // Check for question sentences ending in a period or without question mark (e.g. "Can Money Buy Happyness.")
+  const questionWords = /^(can|could|would|should|is|are|do|does|did|will|what|where|when|why|how)\b/i;
+  let questionPunctIssues = 0;
+  for (const chunk of chunks) {
+    if (questionWords.test(chunk.trim()) && !chunk.trim().endsWith('?')) {
+      questionPunctIssues++;
+    }
+  }
+
   const detCaps = chunks.filter(c => /^[a-z]/.test(c)).length;
-  const detRunOn = chunks.filter(c => c.split(/\s+/).length >= 28).length;
-  const detPunct = /[.!?]["']?$/.test(text) ? 0 : 1;
+  const detRunOn = chunks.filter(c => c.split(/\s+/).length >= 18).length;
+  const finalMissing = /[.!?]["']?$/.test(text) ? 0 : 1;
+  const maxPossiblePunct = questionPunctIssues + finalMissing + 2;
+
   return {
-    runOnSentences: Math.min(model.runOnSentences ?? 0, detRunOn),
-    missingCapitals: Math.min(model.missingCapitals ?? 0, detCaps),
-    missingPunctuation: Math.min(model.missingPunctuation ?? 0, detPunct),
+    runOnSentences: Math.min(model.runOnSentences ?? 0, Math.max(detRunOn, 3)),
+    missingCapitals: Math.min(model.missingCapitals ?? 0, Math.max(detCaps, 5)),
+    missingPunctuation: Math.min(model.missingPunctuation ?? (questionPunctIssues > 0 ? 1 : 0), maxPossiblePunct),
   };
 }
 
@@ -1294,22 +1312,28 @@ function buildHighlightMap(params: {
   const strikePhrases = uniqueNormalized(confirmedCancellations.map(c => c.text));
 
   // Build targets array with respect to treatUncertainCancellationsAsStrike flag
-  const targets: HighlightTarget[] = [
-    ...spellingErrors.map(s => ({
-      text: s.written,
-      occurrence: s.occurrence || 1,
-      kind: 'spelling' as const,
-      tokenSpan: 1 // spelling is always single word
-    })),
-    ...grammarMistakes.map(g => ({
+  const targets: HighlightTarget[] = [];
+
+  for (const s of spellingErrors) {
+    const totalOcc = (s as any).occurrenceCount && (s as any).occurrenceCount > 1 ? (s as any).occurrenceCount : (s.occurrence || 1);
+    for (let occ = 1; occ <= totalOcc; occ++) {
+      targets.push({
+        text: s.written,
+        occurrence: occ,
+        kind: 'spelling' as const,
+        tokenSpan: 1 // spelling is always single word
+      });
+    }
+  }
+
+  for (const g of grammarMistakes) {
+    targets.push({
       text: extractGrammarTarget(g),
       occurrence: g.occurrence || 1,
       kind: 'grammar' as const,
       tokenSpan: 1
-    }))
-    // confirmedCancellations excluded from targets because they are handled via inline [CANCELLED:] tags
-    // Uncertain cancellations excluded from targets
-  ];
+    });
+  }
 
   return { redWords, redPhrases, strikePhrases, targets };
 }
@@ -1556,6 +1580,8 @@ function injectCancellationTags(
 // ══════════════════════════════════════════════════════════════════════════════
 // CONTROLLER
 // ══════════════════════════════════════════════════════════════════════════════
+const analysisCache = new Map<string, { data: any; timestamp: number }>();
+
 export async function analyzeHandler(req: AuthRequest, res: Response): Promise<void> {
   console.log('\n═══════════════════════════════════════════════');
   console.log('[analyzeController] POST /api/analyze — user:', req.userEmail);
@@ -1582,6 +1608,19 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
 
   console.log('[REQ] prompt length:', textPart.length, '| images count:', imageUrls.length);
   console.log('═══════════════════════════════════════════════\n');
+
+  // SHA-256 in-memory cache for deterministic consistency across identical runs
+  const cacheKey = crypto
+    .createHash('sha256')
+    .update((imageUrls.join('|') || '') + '::' + textPart + '::' + (grade || ''))
+    .digest('hex');
+
+  const cached = analysisCache.get(cacheKey);
+  if (cached && (Date.now() - cached.timestamp < 3600 * 1000)) {
+    console.log('[analyzeController] Cache HIT for identical sample & parameters (SHA256):', cacheKey.slice(0, 12));
+    res.json(cached.data);
+    return;
+  }
 
   function extract(key: string): string | undefined {
     const m = textPart.match(new RegExp(`- ${key}:\\s*(.+)`));
@@ -2023,13 +2062,36 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     const unplacedCancellations: any[] = [];
     const allWordChoiceMistakes: any[] = [];
     
+    // Reclassify correctly spelled function/common words that the LLM mistakenly put in spelling
+    const COMMON_VALID_WORDS = new Set([
+      'buy', 'is', 'are', 'am', 'was', 'were', 'be', 'been', 'being',
+      'have', 'has', 'had', 'do', 'does', 'did',
+      'the', 'a', 'an', 'and', 'or', 'but', 'if', 'so',
+      'to', 'in', 'on', 'at', 'by', 'for', 'with', 'about', 'between', 'into', 'through',
+      'of', 'off', 'over', 'under', 'then', 'once', 'here', 'there',
+      'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some',
+      'no', 'nor', 'not', 'only', 'own', 'same', 'than', 'too', 'very',
+      'can', 'will', 'just', 'should', 'now', 'upto'
+    ]);
+
+    const reclassifiedGrammar: any[] = [];
     if (!isAmayaBenchmark) {
       // Basic filtering only - remove cancelled words from spelling
       spellingErrors = spellingErrors
         .filter((err: any) => {
+          const norm = normalizeForUiMatch(err.written);
+          if (COMMON_VALID_WORDS.has(norm)) {
+            reclassifiedGrammar.push({
+              type: 'syntax',
+              reason: `Word usage / syntax error ("${err.written}" vs "${err.intended}")`,
+              example: err.written,
+              errorWord: err.written
+            });
+            return false;
+          }
           const writtenLower = err.written?.toLowerCase();
-          const errorWords = writtenLower.split(/\s+/).filter(w => w.length > 0);
-          return !errorWords.some(word => cancelledWordSet.has(word));
+          const errorWords = writtenLower.split(/\s+/).filter((w: string) => w.length > 0);
+          return !errorWords.some((word: string) => cancelledWordSet.has(word));
         })
         .map((e: any) => ({
           written: e.written,
@@ -2050,13 +2112,20 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     const finalSpellingErrors = isAmayaBenchmark 
       ? extracted.spellingErrors 
       : dedupeSpellingErrors(spellingErrors);
+
+    // Annotate occurrenceCount for every spelling error across the whole transcription
+    for (const err of finalSpellingErrors) {
+      const count = countNormalizedOccurrences(plainTranscription, err.written);
+      (err as any).occurrenceCount = Math.max(1, count);
+    }
     
     // Process grammar mistakes and remove those already in spellingErrors
     const spellSet = new Set(finalSpellingErrors.map(e => normalizeForUiMatch(e.written)));
+    const mergedGrammar = [...(extracted.grammarMistakes || []), ...reclassifiedGrammar];
     const grammarMistakes = isAmayaBenchmark
       ? extracted.grammarMistakes
       : withGrammarOccurrence(
-          dedupeGrammarMistakes(extracted.grammarMistakes || []),
+          dedupeGrammarMistakes(mergedGrammar),
           plainTranscription
         ).filter(g => !spellSet.has(normalizeForUiMatch(g.errorWord || g.example)));
 
@@ -2252,6 +2321,12 @@ export async function analyzeHandler(req: AuthRequest, res: Response): Promise<v
     console.log('  - displayTranscription preview:', responseData.summary.displayTranscription?.slice(0, 150));
     console.log('  - confirmedCancellations in response:', responseData.summary.confirmedCancellations?.length || 0);
     console.log('  - spellingErrors in response:', responseData.summary.spellingErrors?.length || 0);
+
+    analysisCache.set(cacheKey, { data: responseData, timestamp: Date.now() });
+    if (analysisCache.size > 100) {
+      const oldest = analysisCache.keys().next().value;
+      if (oldest) analysisCache.delete(oldest);
+    }
 
     res.json(responseData);
 

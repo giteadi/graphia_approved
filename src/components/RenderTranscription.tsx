@@ -170,6 +170,9 @@ function processTokens(text: string, highlightMap?: HighlightMap): Token[] {
     for (const wt of wordTokens) {
       let target = singleWordErrors.get(`${wt.norm}#${wt.occ}`);
       if (!target) target = singleWordErrors.get(`${wt.spellNorm}#${wt.spellOcc}`);
+      if (!target && (redWords.includes(wt.spellNorm) || redWords.includes(wt.norm))) {
+        target = singleWordErrors.get(`${wt.spellNorm}#1`) || singleWordErrors.get(`${wt.norm}#1`) || { text: wt.spellNorm, kind: 'spelling' as const };
+      }
 
       if (!target && wt.spellNorm.includes('-')) {
         for (const part of wt.spellNorm.split('-').filter(Boolean)) {

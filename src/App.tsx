@@ -3922,10 +3922,12 @@ ${result.report}
                                   score: result.summary.scores.grammar ?? 85,
                                   comment: result.summary.languageSkills.grammar || "Uses complex sentence structures appropriate for high school with solid foundational syntax.",
                                   issues: (result.summary.grammarMistakes || []).map((g: any) =>
-                                    g.type === 'agreement'
+                                    g.reason
+                                      ? `${g.reason.charAt(0).toUpperCase() + g.reason.slice(1)} — wrote "${g.example}"`
+                                      : g.type === 'agreement'
                                       ? `Subject-verb mismatch — wrote "${g.example}"`
                                       : g.type === 'syntax'
-                                      ? `Wrong verb form — wrote "${g.example}"`
+                                      ? `Verb construction / syntax error — wrote "${g.example}"`
                                       : g.type === 'plural'
                                       ? `Wrong plural — wrote "${g.example}"`
                                       : `Grammar issue — "${g.example}"`

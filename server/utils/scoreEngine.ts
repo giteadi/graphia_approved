@@ -226,6 +226,8 @@ function scoreSentenceBoundaries(
     estimatedSentences * 0.6 // cap at 60% error rate maximum
   );
   
+  if (totalBoundaryErrors === 0) return totalWords < 30 ? 90 : 95;
+
   const errorRate = (totalBoundaryErrors / estimatedSentences) * 100;
   const adjustedDeduction = errorRate * penaltyMultiplier;
 

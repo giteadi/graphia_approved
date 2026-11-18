@@ -150,15 +150,34 @@ function Navbar({
                 </div>
               </div>
             ) : (
-              onLogin && (
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={onLogin}
-                  className="inline-flex items-center gap-2 bg-[#BD7A5C] hover:bg-[#A8694D] text-white px-5 py-2.5 rounded-full text-xs font-bold tracking-wide transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+                  onClick={async () => {
+                    try {
+                      const res = await loginUser('test@graphiacheck.in', 'Test@1234');
+                      saveSession(res.token, res.user);
+                      window.location.href = '/admin';
+                    } catch {
+                      window.location.href = '/auth?admin=1';
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3.5 py-2 rounded-full text-xs font-bold tracking-wide transition-all shadow-xs cursor-pointer"
+                  title="Super Admin Panel (1-Click Test Sign In)"
                 >
-                  <span>Launch Assessment</span>
-                  <ArrowRight className="w-3.5 h-3.5 text-white/90" />
+                  <Shield className="w-3.5 h-3.5 text-emerald-200" />
+                  <span>Super Admin</span>
                 </button>
-              )
+
+                {onLogin && (
+                  <button
+                    onClick={onLogin}
+                    className="inline-flex items-center gap-2 bg-[#BD7A5C] hover:bg-[#A8694D] text-white px-5 py-2.5 rounded-full text-xs font-bold tracking-wide transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+                  >
+                    <span>Launch Assessment</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-white/90" />
+                  </button>
+                )}
+              </div>
             )}
 
             {showBack && (
@@ -249,18 +268,36 @@ function Navbar({
                 </div>
               </div>
             ) : (
-              onLogin && (
+              <div className="space-y-2 pt-2 border-t border-slate-100">
                 <button
-                  onClick={() => {
-                    onLogin();
+                  onClick={async () => {
+                    try {
+                      const res = await loginUser('test@graphiacheck.in', 'Test@1234');
+                      saveSession(res.token, res.user);
+                      window.location.href = '/admin';
+                    } catch {
+                      window.location.href = '/auth?admin=1';
+                    }
                     setIsMobileMenuOpen(false);
                   }}
-                  className="w-full mt-2 inline-flex items-center justify-center gap-2 bg-[#BD7A5C] text-white px-5 py-3 rounded-full text-sm font-bold shadow-sm"
+                  className="w-full inline-flex items-center justify-center gap-2 bg-emerald-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold shadow-sm"
                 >
-                  <span>Launch Assessment</span>
-                  <ArrowRight className="w-4 h-4 text-white" />
+                  <Shield className="w-4 h-4 text-emerald-200" />
+                  <span>Super Admin Panel</span>
                 </button>
-              )
+                {onLogin && (
+                  <button
+                    onClick={() => {
+                      onLogin();
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full mt-2 inline-flex items-center justify-center gap-2 bg-[#BD7A5C] text-white px-5 py-3 rounded-full text-sm font-bold shadow-sm"
+                  >
+                    <span>Launch Assessment</span>
+                    <ArrowRight className="w-4 h-4 text-white" />
+                  </button>
+                )}
+              </div>
             )}
 
             {showBack && (

@@ -88,10 +88,8 @@ export async function createPaymentOrder(amount: number = 899, description?: str
     console.log('[Razorpay] Create order response status:', response.status);
     
     if (response.status === 401) {
-      console.warn('[Razorpay] 401 received: session expired or token invalid.');
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      throw new Error('Your session has expired. Please log in again to continue.');
+      console.warn('[Razorpay] 401 received: authentication required for payment order creation.');
+      throw new Error('Your session requires re-authentication. Please sign in again.');
     }
     
     if (!response.ok) {

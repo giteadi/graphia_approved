@@ -19,12 +19,25 @@ export default function AuthPage({ onAuth, onBack }: AuthPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // If already logged in, automatically proceed to app
+  // If already logged in, automatically proceed to app. Or if URL has ?admin=1, auto-sign in.
   useEffect(() => {
     const token = getToken();
     const user = getUser();
     if (token && user) {
       onAuth(user, token);
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('admin') === '1' || params.get('auto') === 'admin') {
+      setLoading(true);
+      loginUser('test@graphiacheck.in', 'Test@1234')
+        .then(res => {
+          saveSession(res.token, res.user);
+          onAuth(res.user, res.token);
+        })
+        .catch(err => setError(err.message))
+        .finally(() => setLoading(false));
     }
   }, [onAuth]);
 

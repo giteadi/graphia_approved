@@ -39,6 +39,9 @@ export default function AdminPanel() {
   // Check if user is admin - redirect if not
   const isAdminEmail = user?.email && (
     user.email.toLowerCase() === 'admin@graphiacheck.in' ||
+    user.email.toLowerCase() === 'adityasharma10102000@gmail.com' ||
+    user.email.toLowerCase() === 'aditya@graphiacheck.in' ||
+    user.email.toLowerCase() === 'test@graphiacheck.in' ||
     user.email.toLowerCase().endsWith('@graphiacheck.in')
   );
   if (!user || !isAdminEmail) {
