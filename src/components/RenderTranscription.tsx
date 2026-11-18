@@ -302,7 +302,7 @@ export const RenderTranscription = React.memo(function RenderTranscription({
             );
           case 'maybeCancelled':
             return (
-              <span key={`token-${index}`} className="text-red-600 font-bold underline decoration-red-600/50 underline-offset-2">
+              <span key={`token-${index}`} className="text-gray-500 line-through decoration-gray-400">
                 {token.text}
               </span>
             );
@@ -310,7 +310,8 @@ export const RenderTranscription = React.memo(function RenderTranscription({
             return (
               <span
                 key={`token-${index}`}
-                className="text-red-600 font-bold underline decoration-red-600/50 underline-offset-2"
+                className="text-rose-600 font-bold underline decoration-rose-500 underline-offset-2"
+                title="Spelling Discrepancy"
               >
                 {token.text}
               </span>
@@ -319,7 +320,8 @@ export const RenderTranscription = React.memo(function RenderTranscription({
             return (
               <span
                 key={`token-${index}`}
-                className="text-red-600 font-bold underline decoration-red-600/50 underline-offset-2"
+                className="text-amber-700 font-bold underline decoration-amber-500 underline-offset-2"
+                title="Grammar / Syntax Discrepancy"
               >
                 {token.text}
               </span>

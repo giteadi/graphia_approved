@@ -195,16 +195,18 @@ Do not delete overwritten words unless a clear strike-through exists.
 ONLY transcribe words that are CLEARLY VISIBLE in the handwriting.
 Do NOT guess or infer words that are not actually written.
 
-CRITICAL — NO AUTOCORRECTION WHATSOEVER:
-- Do NOT fix spelling errors: "incresse" stays "incresse", not "increase"
-- Do NOT fix grammar errors: preserve exactly as written
-- Do NOT add missing words: if a word is not written, do not add it
-- Do NOT rewrite text to make it "correct English"
-- The transcription MUST be verbatim — errors and all
-- Every spelling error MUST be captured in both transcription AND spellingErrors array
+CRITICAL — NO AUTOCORRECTION OR NORMALIZATION WHATSOEVER:
+- Transcribe EXACTLY what is written on paper, character-by-character.
+- Do NOT fix spelling errors: "incresse" stays "incresse", not "increase". "Happyness" stays "Happyness". "opposion" stays "opposion".
+- Do NOT normalize colloquialisms or apostrophes: "pro's & con's" must stay "pro's & con's", NOT "pros & cons".
+- Do NOT fix grammatical omissions: "you friends" must stay "you friends", NOT "your friends".
+- Do NOT add missing words or rewrite sentences to make them "proper English".
+- The transcription MUST be 100% verbatim — all student errors and letter patterns must be preserved.
+- If a struck-through scribble or cancellation is illegible or unreadable, mark it strictly as [CANCELLED: illegible]. NEVER guess, invent, or hallucinate phonetic strings (e.g. do not guess made-up words like "cobill it soshine").
 
 1. CANCELLED / CROSSED-OUT WORDS (BE CONSERVATIVE):
    - Mark as CONFIRMED cancellation ONLY if the word is clearly and unambiguously struck out (e.g. with a horizontal line) to remove it.
+   - If the struck text is illegible, transcribe as [CANCELLED: illegible].
    - Overwriting / rewriting / messy strokes (like writing letters on top of other letters) are NOT confirmed cancellations. Put them in uncertainCancellations instead.
    - If uncertain (e.g. word just looks heavily overwritten but no clear strike line): KEEP the word in transcription AND add it to uncertainCancellations (do NOT cancel).
    - CRITICAL: A word that is only overwritten or retraced, with no separate strike line through it, must NEVER be a confirmed cancellation.
@@ -232,7 +234,7 @@ CRITICAL — NO AUTOCORRECTION WHATSOEVER:
      "[CANCELLED: my wordA wordAs]"
 
    TRANSCRIPTION REQUIREMENT:
-   - Include confirmed cancellations inline in transcription as [CANCELLED: text]
+   - Include confirmed cancellations inline in transcription as [CANCELLED: text] (or [CANCELLED: illegible] if illegible)
    - Example: "we have fun every month [CANCELLED: every sunday] we go out"
 
    - If a phrase is crossed out and then rewritten immediately after it, include the crossed phrase in uncertainCancellations even if partially legible.
@@ -244,9 +246,9 @@ CRITICAL — NO AUTOCORRECTION WHATSOEVER:
    Do NOT classify struck words as uncertain.
    When in doubt, KEEP word in transcription + add to uncertainCancellations.
 
-PARTIAL WORD RULE:
-   - If a word appears cut off or truncated, transcribe the FULL visible word up to the last stroke. Do not truncate words mid-letter.
-   - Always read till the last visible stroke of the handwritten word.
+VERBATIM STROKE RULE:
+   - Transcribe strictly what the student actually inked on the page.
+   - Do NOT extrapolate, auto-complete, or imagine strokes that are not clearly visible.
 
 HALLUCINATION PREVENTION:
    - Do NOT add words that are not written in the image.
@@ -960,20 +962,20 @@ function buildDeterministicSummary(params: {
       // 1. Identify which key domains are impaired or show significant grade discrepancy
       const impairedDomains: string[] = [];
 
-      if (scores.spelling < 75 || evidence.spellingErrors.length >= 3) impairedDomains.push("spelling");
-      if (scores.grammar < 70) impairedDomains.push("grammar");
+      if (scores.spelling < 60) impairedDomains.push("spelling");
+      if (scores.grammar < 60) impairedDomains.push("grammar");
       if (evidence.wpm > 0 && evidence.wpm < norm.min) impairedDomains.push("fluency (writing speed)");
-      if (scores.letterFormation < 70) impairedDomains.push("letter formation");
-      if (scores.alignment < 70) impairedDomains.push("alignment");
+      if (scores.letterFormation < 60) impairedDomains.push("letter formation");
+      if (scores.alignment < 60) impairedDomains.push("alignment");
 
       // 2. If NO domains are impaired
       if (impairedDomains.length === 0) {
         return `Writing fluency and core mechanics remain at or near expected ${grade} expectations.`;
       }
 
-      // If both fluency and spelling have significant discrepancies in high school:
-      if (impairedDomains.includes("fluency (writing speed)") && impairedDomains.includes("spelling")) {
-        return `Writing fluency is significantly more than two grade levels below expected norms for ${grade}. Spelling accuracy also falls at least two grade levels below. Grammar and ideation remain at or near grade level expectations.`;
+      // If both fluency and spelling are clinically impaired:
+      if (impairedDomains.includes("fluency (writing speed)") && scores.spelling < 60) {
+        return `Writing fluency is significantly below expected norms for ${grade}. Spelling accuracy also falls below grade expectations, while grammar and ideation remain relatively preserved.`;
       }
 
       // 3. Format the impaired domains as a readable string
@@ -1007,8 +1009,10 @@ function buildDeterministicSummary(params: {
       ? `Within Expected Range — ${evidence.wpm} WPM falls within the expected ${norm.min}–${norm.max} WPM norm for ${grade}. Writing pace is age-appropriate.`
       : `Above Grade Norm — ${evidence.wpm} WPM exceeds the typical ${norm.min}–${norm.max} WPM norm for ${grade}, demonstrating fluent written production.`,
     wpm: evidence.wpm,
-    basalLevel: existingSummary.basalLevel || 'Consistently demonstrates the ability to organize thoughts sequentially, structure a basic paragraph, and use high-level vocabulary.',
-    ceilingLevel: existingSummary.ceilingLevel || 'Performance breaks down significantly in writing fluency (speed) and execution self-monitoring (repeated words, uncorrected fragments).',
+    basalLevel: existingSummary.basalLevel || 'Consistently demonstrates the ability to organize thoughts sequentially, structure a basic paragraph, and use grade-appropriate vocabulary.',
+    ceilingLevel: existingSummary.ceilingLevel || (evidence.wpm > 0 && evidence.wpm < norm.min
+      ? `Performance breaks down primarily in writing fluency and motor production speed (${evidence.wpm} WPM vs expected norm of ${norm.min}–${norm.max} WPM), while cognitive and syntactic formulation remain preserved.`
+      : 'Performance breaks down when extended handwriting stamina is demanded, requiring extra time to complete extended written tasks.'),
     ocrConfidence: evidence.ocrConfidence || 80,
     uncertainWords: evidence.uncertainWords || [],
     features: evidence.features || {},

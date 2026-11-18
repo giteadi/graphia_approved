@@ -3750,6 +3750,11 @@ ${result.report}
                                 <RenderTranscription text={result.summary.displayTranscription || result.summary.transcription} highlightMap={result.summary.highlightMap} />
                                 <span>"</span>
                               </div>
+                              <div className="flex items-center gap-4 mt-1.5 px-1 text-[7.5pt] font-sans text-gray-500">
+                                <span className="flex items-center gap-1.5"><span className="text-rose-600 font-bold underline decoration-rose-500">Red Underline</span> Spelling Error</span>
+                                <span className="flex items-center gap-1.5"><span className="text-amber-700 font-bold underline decoration-amber-500">Amber Underline</span> Grammar / Syntax</span>
+                                <span className="flex items-center gap-1.5"><span className="line-through text-gray-500 font-medium">Strikethrough</span> Struck / Cancelled</span>
+                              </div>
                             </>
                           )}
                         </div>

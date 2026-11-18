@@ -277,14 +277,16 @@ function scorePastTense(pastTenseErrors: number, totalWords: number): number {
 
 function scoreLetterFormation(observations: string[], features?: EvidenceData['features']): number {
   if (features?.legibility || features?.letterShapeQuality || features?.letterSizeConsistency) {
-    if (features.legibility === 'low' || features.letterShapeQuality === 'poor' || features.letterSizeConsistency === 'poor') {
+    if (features.legibility === 'low' || (features.legibility !== 'high' && (features.letterShapeQuality === 'poor' || features.letterSizeConsistency === 'poor'))) {
       return 45;
+    }
+    if (features.legibility === 'high') {
+      if (features.letterShapeQuality === 'good' || !features.letterShapeQuality) return 85;
+      if (features.letterShapeQuality === 'fair' || features.letterSizeConsistency === 'fair') return 75;
+      return 70; // Highly legible text does not collapse to severe impairment
     }
     if (features.legibility === 'moderate' || features.letterShapeQuality === 'fair' || features.letterSizeConsistency === 'fair') {
       return 70;
-    }
-    if (features.legibility === 'high' && (features.letterShapeQuality === 'good' || !features.letterShapeQuality)) {
-      return 85;
     }
   }
 
@@ -500,15 +502,14 @@ export function calculateProbability(
     return 'MODERATE';
   }
 
-  // Count impaired domains (score < 60 OR visual impairment >= 1)
+  // Count independent impaired domains (score < 60 OR visual impairment >= 1)
   const impaired = [
     scores.spelling < 60,
     scores.grammar < 60,
     scores.sentenceBoundaries < 60,
     scores.pastTenseUsage < 60,
     visualImpairedCount >= 1,
-    speedAssessed && scores.writingSpeed <= 60,
-    scores.mechanics < 65 // Visual mechanics poor fallback
+    speedAssessed && scores.writingSpeed <= 60
   ].filter(Boolean).length;
 
   if (impaired >= 3) return 'HIGH';
