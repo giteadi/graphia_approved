@@ -1,4 +1,9 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+dotenv.config();
+// If DB_PASSWORD was inherited as empty string from PM2/shell, allow .env to populate it
+if (!process.env.DB_PASSWORD || !process.env.JWT_SECRET) {
+  dotenv.config({ override: true });
+}
 import mysql, { PoolConnection } from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 
